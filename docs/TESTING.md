@@ -17,20 +17,24 @@ L1-L3 全部不依赖硬件，任何贡献者本机可跑；L4 由维护者在�
 ## 2. 标准命令
 
 ```bash
-# Mac 端全量（L1+L2+L3）
-xcodebuild test -scheme BeecordStudio -destination 'platform=macOS'
+# Mac 端 L1：BuzzLinkCore 单测（SwiftPM 包测试，独立于 Xcode 工程）
+cd apps/mac/Packages/BuzzLink && swift test
+
+# Mac 端 L2+L3：Studio/Sim 构建 + UI 测试（Xcode 工程）
+cd apps/mac && xcodebuild test -scheme BeecordStudio -destination 'platform=macOS'
 
 # 固件协议层宿主单测（L1）
 cd firmware/test_host && make test
 ```
 
-两个命令必须在提交前本地通过；接入 CI 后作为合并门禁（GitHub Actions，排期待定）。
+本地 SwiftPM 包的测试 target 不属于 xcodeproj scheme，故 L1 与 L2/L3 分两条命令；
+三个命令都必须在提交前本地通过；接入 CI 后作为合并门禁（GitHub Actions，排期待定）。
 
 ## 3. 测试向量（协议行为的唯一事实来源）
 
 - 向量格式为 **JSON**（可读性优先），schema 定义在 BuzzLinkCore（字段：命名的时间戳、
   方向 `tx/rx`、帧 type、channel、payload hex、注释 `comment`）；一文件一会话。
-- **合成向量入库**：`Packages/BuzzLink/Tests/Fixtures/`（Mac 侧）与经转换脚本生成的 C 表
+- **合成向量入库**：`Packages/BuzzLink/Tests/BuzzLinkCoreTests/Fixtures/`（Mac 侧）与经转换脚本生成的 C 表
   （固件侧，工具在 `tools/`）。同一份 JSON 两端消费，保证 Mac 与固件对协议的理解一致。
 - BuzzLink 协议控制台导出的会话可直接作为向量回放（格式同源，见 ux-design §3.5）。
 - 修改协议行为 = 先更新 [`BUZZLINK.md`](BUZZLINK.md) 与向量，再改实现。

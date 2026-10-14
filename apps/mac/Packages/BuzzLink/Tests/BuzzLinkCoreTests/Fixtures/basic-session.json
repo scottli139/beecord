@@ -1,0 +1,60 @@
+{
+  "schema": "buzzlink-vector/1",
+  "comment": "基础会话：PING/PONG + INFO_GET/INFO + LIST 一页（虚构数据，见 TESTING.md §8）",
+  "entries": [
+    {
+      "ts": 0.0,
+      "direction": "tx",
+      "type": "0x01",
+      "channel": "0x0000",
+      "session": "0x2A",
+      "payloadHex": "",
+      "comment": "PING"
+    },
+    {
+      "ts": 3.2,
+      "direction": "rx",
+      "type": "0x02",
+      "channel": "0x0000",
+      "session": "0x2A",
+      "payloadHex": "",
+      "comment": "PONG"
+    },
+    {
+      "ts": 10.0,
+      "direction": "tx",
+      "type": "0x04",
+      "channel": "0x0001",
+      "session": "0x2B",
+      "payloadHex": "",
+      "comment": "INFO_GET"
+    },
+    {
+      "ts": 18.5,
+      "direction": "rx",
+      "type": "0x03",
+      "channel": "0x0001",
+      "session": "0x2B",
+      "payloadHex": "7b226d6f64656c223a22626565636f72642d7761746368222c22667756657273696f6e223a22302e312e30222c2270726f746f636f6c223a312c226465766963654e616d65223a224243442d44454d4f222c2262617474657279223a38372c226368617267696e67223a66616c73652c2273746f72616765546f74616c223a33313030303030302c2273746f7261676546726565223a31323334353637387d",
+      "comment": "INFO 设备信息"
+    },
+    {
+      "ts": 30.0,
+      "direction": "tx",
+      "type": "0x10",
+      "channel": "0x0001",
+      "session": "0x2C",
+      "payloadHex": "7b226f6666736574223a307d",
+      "comment": "LIST_REQ {\"offset\":0}"
+    },
+    {
+      "ts": 41.7,
+      "direction": "rx",
+      "type": "0x11",
+      "channel": "0x0001",
+      "session": "0x2C",
+      "payloadHex": "7b22737461747573223a226f6b222c22746f74616c223a312c226f6666736574223a302c2266696c6573223a5b7b226964223a225245435f32303236303130315f313230303030222c226475726174696f6e4d73223a35383231332c2273697a65223a3332303031327d5d7d",
+      "comment": "LIST_RESP 一页一条"
+    }
+  ]
+}
