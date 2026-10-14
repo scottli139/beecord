@@ -14,7 +14,9 @@ Open-source AI voice recorder: watch-form firmware + local-first companion apps.
   on-device transcription (whisper.cpp), optional cloud-AI summaries via
   OpenAI-compatible endpoints (Kimi, DeepSeek, ...).
 
-> Status: early development (pre-M0). Protocol spec draft: [`docs/BUZZLINK.md`](docs/BUZZLINK.md).
+> Status: early development (pre-M0). Docs: [BuzzLink protocol spec](docs/BUZZLINK.md) ·
+> [Studio tech design](docs/studio-tech-design.md) · [Coding standards](docs/CODING_STANDARDS.md) ·
+> [Testing](docs/TESTING.md)
 
 ## 简介（中文）
 
