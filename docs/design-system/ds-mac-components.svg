@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1240" width="1600" height="1240">
+  <rect width="1600" height="1240" fill="#F5F5F7"/>
+  <text x="60" y="70" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="30"
+        font-weight="700" fill="#1D1D1F">Beecord Studio · Mac 组件库</text>
+  <text x="60" y="98" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14"
+        fill="#6E6E73">DESIGN_SYSTEM.md §2/§4 · SwiftUI 实现对照（Light 模式为准，Dark 走系统语义色自动适配）· 2026-10-14</text>
+
+  <!-- ① 按钮与控件 -->
+  <text x="60" y="150" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="18"
+        font-weight="700" fill="#1D1D1F">① 按钮与控件</text>
+  <rect x="60" y="172" width="122" height="28" rx="6" fill="#007AFF"/>
+  <text x="121" y="191" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        font-weight="500" fill="#FFFFFF" text-anchor="middle">下载所选(3)</text>
+  <text x="60" y="222" font-family="Menlo, monospace" font-size="10" fill="#E5484D">h28 r6 · 主按钮 accent</text>
+
+  <rect x="210" y="172" width="76" height="28" rx="6" fill="#FFFFFF" stroke="#D1D1D6"/>
+  <text x="248" y="191" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#1D1D1F" text-anchor="middle">刷新</text>
+  <text x="210" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">次按钮 · 1px 边框</text>
+
+  <rect x="316" y="172" width="76" height="28" rx="6" fill="#FFFFFF" stroke="#D1D1D6"/>
+  <text x="354" y="191" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#FF3B30" text-anchor="middle">删除</text>
+  <text x="316" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">危险按钮 · 红字</text>
+
+  <rect x="422" y="174" width="96" height="24" rx="6" fill="#FFFFFF" stroke="#D1D1D6"/>
+  <text x="470" y="190" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12"
+        fill="#1D1D1F" text-anchor="middle">导出 m4a</text>
+  <text x="422" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">小按钮 h24</text>
+
+  <rect x="548" y="172" width="110" height="28" rx="6" fill="#007AFF" opacity="0.45"/>
+  <text x="603" y="191" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        font-weight="500" fill="#FFFFFF" text-anchor="middle">下载所选(0)</text>
+  <text x="548" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">disabled 45%</text>
+
+  <rect x="700" y="174" width="44" height="26" rx="13" fill="#34C759"/>
+  <circle cx="731" cy="187" r="11" fill="#FFFFFF"/>
+  <rect x="800" y="174" width="44" height="26" rx="13" fill="#C7C7CC"/>
+  <circle cx="813" cy="187" r="11" fill="#FFFFFF"/>
+  <text x="700" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">switch on/off（系统控件）</text>
+  <rect x="884" y="178" width="16" height="16" rx="4" fill="#007AFF"/>
+  <text x="892" y="191" font-family="Helvetica Neue, sans-serif" font-size="12" fill="#FFFFFF" text-anchor="middle">✓</text>
+  <text x="908" y="191" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13" fill="#1D1D1F">全选</text>
+  <text x="884" y="222" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">checkbox（系统控件）</text>
+
+  <!-- ② 侧栏导航 -->
+  <text x="60" y="290" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="18"
+        font-weight="700" fill="#1D1D1F">② 侧栏导航</text>
+  <rect x="60" y="308" width="216" height="212" rx="10" fill="#ECECF0" stroke="#D1D1D6"/>
+  <rect x="72" y="322" width="14" height="16" fill="#F5A623"/>
+  <text x="94" y="335" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        font-weight="600" fill="#6E6E73">Beecord Studio</text>
+  <rect x="68" y="350" width="200" height="28" rx="6" fill="#007AFF" opacity="0.15"/>
+  <text x="84" y="369" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14"
+        font-weight="500" fill="#007AFF">◼ 设备</text>
+  <text x="84" y="405" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14" fill="#1D1D1F">◻ 录音库</text>
+  <text x="84" y="441" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14" fill="#1D1D1F">◻ 协议控制台</text>
+  <rect x="68" y="466" width="200" height="42" rx="8" fill="#E1E1E6"/>
+  <circle cx="84" cy="487" r="4" fill="#34C759"/>
+  <text x="96" y="491" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12" fill="#6E6E73">已连接 · Beecord-A1B2</text>
+  <g font-family="Menlo, monospace" font-size="10" fill="#E5484D">
+    <text x="300" y="330">w216（180~240 可调）</text>
+    <text x="300" y="366">nav 项 h28 r6</text>
+    <text x="300" y="386">active = accent 15% 底 + accent 字</text>
+    <text x="300" y="406">hover = 黑 5% 底</text>
+    <text x="300" y="484">底部：连接状态卡（绿点=已连接）</text>
+    <text x="300" y="504" fill="#6E6E73">AX: sidebar.navItem.devices / .library / .console</text>
+  </g>
+
+  <!-- ③ 卡片与文件表 -->
+  <text x="60" y="566" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="18"
+        font-weight="700" fill="#1D1D1F">③ 卡片与文件表</text>
+  <rect x="60" y="584" width="660" height="252" rx="10" fill="#FFFFFF" stroke="#E3E3E6"/>
+  <text x="76" y="608" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14"
+        font-weight="600" fill="#1D1D1F">设备文件（5）</text>
+  <g font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13" fill="#1D1D1F">
+    <rect x="76" y="618" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#C7C7CC"/>
+    <text x="98" y="630">全选</text>
+    <text x="160" y="630" fill="#6E6E73" font-size="12">自动同步新录音 ●</text>
+    <rect x="520" y="616" width="96" height="24" rx="6" fill="#007AFF"/>
+    <text x="568" y="632" font-size="12" font-weight="500" fill="#FFFFFF" text-anchor="middle">下载所选(1)</text>
+    <rect x="624" y="616" width="52" height="24" rx="6" fill="#FFFFFF" stroke="#D1D1D6"/>
+    <text x="650" y="632" font-size="12" text-anchor="middle">刷新</text>
+  </g>
+  <g font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13" fill="#1D1D1F">
+    <text x="76" y="662">☐ REC_20261014_093012</text><text x="330" y="662" font-family="Menlo, monospace" font-size="12">30:42</text>
+    <text x="420" y="662" font-family="Menlo, monospace" font-size="12">9.6MB</text>
+    <text x="620" y="662" font-size="12" fill="#8E8E93" text-anchor="middle">未下载</text>
+    <rect x="68" y="670" width="644" height="28" rx="4" fill="#007AFF" opacity="0.06"/>
+    <text x="76" y="690">☑ REC_20261014_110518</text><text x="330" y="690" font-family="Menlo, monospace" font-size="12">05:05</text>
+    <text x="420" y="690" font-family="Menlo, monospace" font-size="12">1.6MB</text>
+    <text x="620" y="690" font-size="12" fill="#8E8E93" text-anchor="middle">未下载</text>
+    <text x="76" y="718">☐ REC_20261014_134722</text><text x="330" y="718" font-family="Menlo, monospace" font-size="12">01:36</text>
+    <text x="420" y="718" font-family="Menlo, monospace" font-size="12">0.5MB</text>
+    <rect x="540" y="711" width="60" height="4" rx="2" fill="#E3E3E6"/><rect x="540" y="711" width="37" height="4" rx="2" fill="#007AFF"/>
+    <text x="608" y="718" font-size="12" fill="#007AFF">62%</text>
+    <text x="76" y="746">☐ REC_20261013_190204</text><text x="330" y="746" font-family="Menlo, monospace" font-size="12">12:34</text>
+    <text x="420" y="746" font-family="Menlo, monospace" font-size="12">3.9MB</text>
+    <text x="620" y="746" font-size="12" fill="#34C759" text-anchor="middle">✓ 已校验</text>
+    <text x="76" y="774">☐ REC_20261013_083011</text><text x="330" y="774" font-family="Menlo, monospace" font-size="12">08:20</text>
+    <text x="420" y="774" font-family="Menlo, monospace" font-size="12">2.6MB</text>
+    <text x="612" y="774" font-size="12" fill="#FF3B30" text-anchor="middle">CRC 失败 · 重试</text>
+  </g>
+  <g font-family="Menlo, monospace" font-size="10" fill="#E5484D">
+    <text x="740" y="608">卡 r10 · padding 16 · 行 h28</text>
+    <text x="740" y="690">选中行 = accent 6% 底</text>
+  </g>
+  <g font-family="Menlo, monospace" font-size="10" fill="#6E6E73">
+    <text x="740" y="630">状态徽标（右对齐，12px）：</text>
+    <text x="740" y="650" fill="#8E8E93">未下载 = text.tertiary</text>
+    <text x="740" y="670" fill="#007AFF">下载中 = accent + 迷你进度</text>
+    <text x="740" y="710" fill="#34C759">✓ 已校验 = success</text>
+    <text x="740" y="730" fill="#FF3B30">失败 = danger + 重试按钮</text>
+    <text x="740" y="770">AX: device.fileTable.row.{fileName}</text>
+    <text x="740" y="790">行内操作必须真实 button（R6）</text>
+  </g>
+
+  <!-- ④ 播放器与标签页 -->
+  <text x="60" y="886" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="18"
+        font-weight="700" fill="#1D1D1F">④ 播放器与标签页</text>
+  <rect x="60" y="904" width="200" height="24" rx="6" fill="#E3E3E6"/>
+  <rect x="62" y="906" width="98" height="20" rx="5" fill="#FFFFFF"/>
+  <text x="111" y="920" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12" fill="#1D1D1F" text-anchor="middle">转写</text>
+  <text x="210" y="920" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12" fill="#6E6E73" text-anchor="middle">纪要</text>
+  <text x="60" y="948" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">.segmented · library.detailTabs</text>
+
+  <g>
+    <rect x="300" y="904" width="640" height="110" rx="10" fill="#FFFFFF" stroke="#E3E3E6"/>
+    <g>
+      <rect x="320" y="946" width="8" height="16" rx="4" fill="#007AFF"/><rect x="332" y="940" width="8" height="28" rx="4" fill="#007AFF"/>
+      <rect x="344" y="934" width="8" height="40" rx="4" fill="#007AFF"/><rect x="356" y="942" width="8" height="26" rx="4" fill="#007AFF"/>
+      <rect x="368" y="930" width="8" height="48" rx="4" fill="#007AFF"/><rect x="380" y="938" width="8" height="34" rx="4" fill="#007AFF"/>
+      <rect x="392" y="926" width="8" height="56" rx="4" fill="#007AFF"/><rect x="404" y="934" width="8" height="42" rx="4" fill="#007AFF"/>
+      <rect x="416" y="942" width="8" height="28" rx="4" fill="#007AFF"/><rect x="428" y="948" width="8" height="18" rx="4" fill="#007AFF"/>
+      <rect x="440" y="938" width="8" height="34" rx="4" fill="#007AFF"/><rect x="452" y="930" width="8" height="48" rx="4" fill="#007AFF"/>
+      <rect x="464" y="944" width="8" height="24" rx="4" fill="#C7C7CC"/><rect x="476" y="950" width="8" height="16" rx="4" fill="#C7C7CC"/>
+      <rect x="488" y="940" width="8" height="34" rx="4" fill="#C7C7CC"/><rect x="500" y="946" width="8" height="24" rx="4" fill="#C7C7CC"/>
+      <rect x="512" y="936" width="8" height="40" rx="4" fill="#C7C7CC"/><rect x="524" y="944" width="8" height="28" rx="4" fill="#C7C7CC"/>
+      <rect x="536" y="950" width="8" height="18" rx="4" fill="#C7C7CC"/><rect x="548" y="942" width="8" height="30" rx="4" fill="#C7C7CC"/>
+      <rect x="560" y="948" width="8" height="20" rx="4" fill="#C7C7CC"/><rect x="572" y="938" width="8" height="36" rx="4" fill="#C7C7CC"/>
+      <rect x="584" y="946" width="8" height="24" rx="4" fill="#C7C7CC"/><rect x="596" y="952" width="8" height="14" rx="4" fill="#C7C7CC"/>
+      <rect x="608" y="944" width="8" height="26" rx="4" fill="#C7C7CC"/><rect x="620" y="950" width="8" height="18" rx="4" fill="#C7C7CC"/>
+      <rect x="632" y="948" width="8" height="22" rx="4" fill="#C7C7CC"/><rect x="644" y="952" width="8" height="14" rx="4" fill="#C7C7CC"/>
+      <rect x="656" y="946" width="8" height="26" rx="4" fill="#C7C7CC"/><rect x="668" y="952" width="8" height="12" rx="4" fill="#C7C7CC"/>
+      <rect x="680" y="950" width="8" height="16" rx="4" fill="#C7C7CC"/><rect x="692" y="954" width="8" height="10" rx="4" fill="#C7C7CC"/>
+    </g>
+    <text x="716" y="934" font-family="Menlo, monospace" font-size="12" fill="#1D1D1F">04:21</text>
+    <text x="920" y="934" font-family="Menlo, monospace" font-size="12" fill="#6E6E73" text-anchor="end">30:42</text>
+    <rect x="716" y="944" width="52" height="24" rx="6" fill="#F5F5F7" stroke="#E3E3E6"/>
+    <text x="742" y="960" font-family="Menlo, monospace" font-size="11" fill="#1D1D1F" text-anchor="middle">−15s</text>
+    <circle cx="800" cy="956" r="18" fill="#007AFF"/>
+    <polygon points="794,946 794,966 810,956" fill="#FFFFFF"/>
+    <rect x="832" y="944" width="52" height="24" rx="6" fill="#F5F5F7" stroke="#E3E3E6"/>
+    <text x="858" y="960" font-family="Menlo, monospace" font-size="11" fill="#1D1D1F" text-anchor="middle">+15s</text>
+    <rect x="896" y="944" width="36" height="24" rx="6" fill="#F5F5F7" stroke="#E3E3E6"/>
+    <text x="914" y="960" font-family="Menlo, monospace" font-size="11" fill="#1D1D1F" text-anchor="middle">1×</text>
+  </g>
+  <g font-family="Menlo, monospace" font-size="10" fill="#6E6E73">
+    <text x="960" y="930">波形 h80 · 已播=accent / 未播=text3</text>
+    <text x="960" y="950">播放钮 36 圆 · ±15s · 倍速 1/1.5/2</text>
+    <text x="960" y="970">AX: library.player.playButton / .progressSlider</text>
+    <text x="960" y="990">波形自定义绘制 → 包 accessibilityElement（R5）</text>
+  </g>
+
+  <!-- ⑤ Toast / 空态 / 确认对话框 -->
+  <text x="60" y="1064" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="18"
+        font-weight="700" fill="#1D1D1F">⑤ Toast / 空态 / 确认对话框</text>
+  <rect x="60" y="1084" width="280" height="36" rx="18" fill="#1D1D1F"/>
+  <text x="200" y="1107" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12"
+        fill="#F5F5F7" text-anchor="middle">已下载 3 个文件，校验通过</text>
+  <text x="60" y="1142" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">toast · 底部居中胶囊 2s · common.toast</text>
+
+  <rect x="380" y="1084" width="300" height="120" rx="10" fill="#FFFFFF" stroke="#E3E3E6"/>
+  <circle cx="530" cy="1112" r="20" fill="#E3E3E6"/>
+  <text x="530" y="1150" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        font-weight="600" fill="#1D1D1F" text-anchor="middle">还没有录音</text>
+  <text x="530" y="1170" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12"
+        fill="#6E6E73" text-anchor="middle">连接设备后自动同步</text>
+  <text x="530" y="1194" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12"
+        font-weight="500" fill="#007AFF" text-anchor="middle">立即扫描</text>
+  <text x="380" y="1226" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">空态 = 图标40 + 标题 + 说明 + 主按钮</text>
+
+  <rect x="720" y="1084" width="320" height="120" rx="10" fill="#FFFFFF" stroke="#E3E3E6"/>
+  <text x="740" y="1114" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="14"
+        font-weight="600" fill="#1D1D1F">删除该录音？</text>
+  <text x="740" y="1136" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="12" fill="#6E6E73">未同步副本删除后无法恢复。</text>
+  <rect x="830" y="1156" width="90" height="28" rx="6" fill="#FFFFFF" stroke="#D1D1D6"/>
+  <text x="875" y="1175" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13" fill="#1D1D1F" text-anchor="middle">取消</text>
+  <rect x="930" y="1156" width="90" height="28" rx="6" fill="#FF3B30"/>
+  <text x="975" y="1175" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        font-weight="500" fill="#FFFFFF" text-anchor="middle">删除</text>
+  <text x="720" y="1226" font-family="Menlo, monospace" font-size="10" fill="#6E6E73">NSAlert · 默认焦点=取消 · 动词+后果文案</text>
+
+  <g font-family="Menlo, monospace" font-size="10" fill="#6E6E73">
+    <text x="1120" y="1100">快捷键：</text>
+    <text x="1120" y="1120">Cmd+1/2/3 切页 · Cmd+D 下载 · Cmd+R 刷新</text>
+    <text x="1120" y="1140">空格 播放 · Cmd+←/→ -/+15s · Cmd+, 设置</text>
+    <text x="1120" y="1180" fill="#E5484D">AX 规则 R1-R8 见 DESIGN_SYSTEM.md §4</text>
+  </g>
+</svg>
