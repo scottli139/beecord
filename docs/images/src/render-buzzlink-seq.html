@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1400px; height:980px; }
+  body {
+    font-family:"PingFang SC","Helvetica Neue",sans-serif;
+    background:#FFFFFF; color:#1C1C1E; padding:34px 40px;
+  }
+  .title { font-size:26px; font-weight:700; letter-spacing:.5px; }
+  .subtitle { font-size:14px; color:#6E6E73; margin-top:6px; }
+  .legend { position:absolute; right:44px; top:44px; display:flex; gap:16px; font-size:12.5px; color:#48484A; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .dot { width:22px; height:3px; border-radius:2px; display:inline-block; }
+
+  .stage { position:relative; margin-top:22px; }
+  .heads { display:flex; justify-content:space-between; padding:0 90px; }
+  .head { font-size:15.5px; font-weight:600; padding:9px 22px; border-radius:999px; background:#F5F5F7; border:1.5px solid #D8D8DC; }
+  .head.dev { background:#FFF6E8; border-color:#F0B23E; }
+
+  .lines { position:absolute; top:64px; bottom:26px; left:0; right:0; }
+  .lifeline { position:absolute; top:0; bottom:0; border-left:2px dashed #D8D8DC; }
+  .ll-c { left:230px; } .ll-d { right:230px; }
+
+  .rows { position:relative; margin-top:14px; }
+  .phase { margin:14px 0 10px; text-align:center; font-size:12.5px; font-weight:600; color:#8E8E93; letter-spacing:2px; }
+
+  .msg { position:relative; height:56px; margin:2px 0; }
+  .arrow { position:absolute; top:34px; height:0; }
+  .arrow .bar { position:absolute; top:-1.5px; height:3px; border-radius:2px; left:0; right:0; }
+  .arrow .head-tri {
+    position:absolute; top:-7px; width:0; height:0;
+    border-top:6.5px solid transparent; border-bottom:6.5px solid transparent;
+  }
+  .msg.c2d .arrow { left:232px; right:240px; }
+  .msg.d2c .arrow { left:240px; right:232px; }
+  .msg.c2d .head-tri { right:-1px; border-left:11px solid; border-left-color:inherit; }
+  .msg.d2c .head-tri { left:-1px; border-right:11px solid; border-right-color:inherit; }
+  .msg.dash .bar { background:transparent !important; border-top:3px dashed; height:0; top:0; }
+
+  .lbl { position:absolute; top:0; font-size:13.5px; font-weight:600; }
+  .sub { position:absolute; top:18px; font-size:11.5px; font-weight:400; color:#6E6E73; font-family:"Menlo",monospace; }
+  .msg.c2d .lbl,.msg.c2d .sub { left:250px; }
+  .msg.d2c .lbl,.msg.d2c .sub { right:250px; text-align:right; }
+
+  .num {
+    position:absolute; top:24px; width:19px; height:19px; border-radius:50%;
+    font-size:11px; font-weight:700; color:#fff; text-align:center; line-height:19px; z-index:2;
+  }
+  .msg.c2d .num { left:222px; } .msg.d2c .num { right:222px; }
+
+  .ctrl  .bar { background:#0A84FF; }
+  .filec .bar { background:#E8930C; }
+  .link  .bar { background:#8E8E93; }
+  .msg.c2d.ctrl  .head-tri { border-left-color:#0A84FF; }
+  .msg.c2d.filec .head-tri { border-left-color:#E8930C; }
+  .msg.c2d.link  .head-tri { border-left-color:#8E8E93; }
+  .msg.d2c.ctrl  .head-tri { border-right-color:#0A84FF; }
+  .msg.d2c.filec .head-tri { border-right-color:#E8930C; }
+  .msg.d2c.link  .head-tri { border-right-color:#8E8E93; }
+  .ctrl  .num { background:#0A84FF; } .filec .num { background:#E8930C; } .link .num { background:#8E8E93; }
+
+  .looprow { position:relative; text-align:center; margin:6px 0 0; }
+  .looprow span {
+    display:inline-block; font-size:11.5px; color:#8E8E93;
+    border:1px solid #E5E5EA; border-radius:6px; padding:3px 12px; background:#FAFAFC;
+  }
+  .note {
+    position:relative; margin:14px auto 0; width:520px; text-align:center;
+    font-size:12.5px; color:#30A46C; font-weight:600;
+    background:#F0FBF4; border:1.5px solid #B7E4C7; border-radius:10px; padding:9px 12px;
+  }
+</style>
+</head>
+<body>
+  <div class="title">BuzzLink · 文件下载时序</div>
+  <div class="subtitle">BE EC 帧 · 控制通道 JSON（蓝）/ 文件通道二进制（琥珀）/ 链路（灰）</div>
+  <div class="legend">
+    <span><i class="dot" style="background:#0A84FF"></i>控制通道 0x0001</span>
+    <span><i class="dot" style="background:#E8930C"></i>文件通道 0x0002</span>
+    <span><i class="dot" style="background:#8E8E93"></i>链路 0x0000</span>
+  </div>
+
+  <div class="stage">
+    <div class="lines"><div class="lifeline ll-c"></div><div class="lifeline ll-d"></div></div>
+    <div class="heads">
+      <div class="head">Beecord Studio（Central）</div>
+      <div class="head dev">Beecord 设备（Peripheral）</div>
+    </div>
+
+    <div class="rows">
+      <div class="phase">阶段一 · 连接初始化</div>
+      <div class="msg c2d link">
+        <div class="num">1</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">连接 → MTU 协商 247 → 订阅 Notify</div>
+        <div class="sub">扫描按 Service UUID 过滤</div>
+      </div>
+      <div class="msg d2c ctrl dash">
+        <div class="num">2</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">INFO（可选主动推送）</div>
+        <div class="sub">type=0x03 · session=0x00 · 型号/固件/电量/存储</div>
+      </div>
+
+      <div class="phase">阶段二 · 列表与信息</div>
+      <div class="msg c2d ctrl">
+        <div class="num">3</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">LIST_REQ</div>
+        <div class="sub">type=0x10 · {"offset":0}</div>
+      </div>
+      <div class="msg d2c ctrl">
+        <div class="num">4</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">LIST_RESP（超 232B 自动分片重组）</div>
+        <div class="sub">type=0x11 · {"total":42,"files":[…]} · 每页 ≤16 条，翻页重复 3-4</div>
+      </div>
+      <div class="msg c2d ctrl">
+        <div class="num">5</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">FILE_INFO_REQ</div>
+        <div class="sub">type=0x20 · {"id":"REC_…"}</div>
+      </div>
+      <div class="msg d2c ctrl">
+        <div class="num">6</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">FILE_INFO_RESP</div>
+        <div class="sub">type=0x21 · size / crc16 / durationMs / format</div>
+      </div>
+
+      <div class="phase">阶段三 · 下载与校验</div>
+      <div class="msg c2d filec">
+        <div class="num">7</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">DL_BEGIN_REQ</div>
+        <div class="sub">type=0x30 · [idLen][id]</div>
+      </div>
+      <div class="msg d2c filec">
+        <div class="num">8</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">DL_BEGIN_RESP</div>
+        <div class="sub">type=0x31 · status · chunkDataLen=224 · totalChunks · size · fileCrc16</div>
+      </div>
+      <div class="looprow"><span>循环 totalChunks 次 · seq 0 → N-1 · 除末块外每块恰好 chunkDataLen 字节</span></div>
+      <div class="msg d2c filec">
+        <div class="num">9</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">DL_CHUNK × N（设备连续推流）</div>
+        <div class="sub">type=0x32 · [seq][data…] · 间隔超时 10s</div>
+      </div>
+      <div class="msg c2d filec">
+        <div class="num">10</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">DL_END_REQ</div>
+        <div class="sub">type=0x33 · 收齐重组后请求结束校验</div>
+      </div>
+      <div class="msg d2c filec">
+        <div class="num">11</div>
+        <div class="arrow"><div class="bar"></div><div class="head-tri"></div></div>
+        <div class="lbl">DL_END_RESP</div>
+        <div class="sub">type=0x34 · status · fileCrc16</div>
+      </div>
+
+      <div class="note">✓ 三处 CRC16 全等（本地计算 / BEGIN 携带 / END 返回）→ 校验通过，入库；不等则整文件重下（≤2 次）</div>
+    </div>
+  </div>
+</body>
+</html>
