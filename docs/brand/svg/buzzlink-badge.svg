@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 112" width="360" height="112">
+  <polygon points="78,56 63,82 33,82 18,56 33,30 63,30"
+           fill="none" stroke="#F5A623" stroke-width="6" stroke-linejoin="round"/>
+  <polygon points="118,56 103,82 73,82 58,56 73,30 103,30"
+           fill="none" stroke="#0A84FF" stroke-width="6" stroke-linejoin="round"/>
+  <text x="136" y="62" font-family="Helvetica Neue, Arial, sans-serif" font-size="32"
+        font-weight="700" fill="#ECECF1">BuzzLink</text>
+  <text x="136" y="88" font-family="Menlo, monospace" font-size="13" fill="#8E8E93">frame magic · BE EC</text>
+</svg>

@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1260" width="1600" height="1260">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFCE5C"/>
+      <stop offset="1" stop-color="#F0980A"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1B1B21"/>
+      <stop offset="1" stop-color="#0A0A0C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#F5A623" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#F5A623" stop-opacity="0"/>
+    </radialGradient>
+    <polygon id="mk-hex" points="120,64 92,112.5 36,112.5 8,64 36,15.5 92,15.5"
+             fill="url(#amber)" stroke="url(#amber)" stroke-width="12" stroke-linejoin="round"/>
+    <g id="mk-bars-w" fill="#FFFFFF">
+      <rect x="23" y="51" width="10" height="26" rx="5"/>
+      <rect x="41" y="42" width="10" height="44" rx="5"/>
+      <rect x="59" y="33" width="10" height="62" rx="5"/>
+      <rect x="77" y="42" width="10" height="44" rx="5"/>
+      <rect x="95" y="51" width="10" height="26" rx="5"/>
+    </g>
+    <clipPath id="bd"><rect x="43" y="40" width="42" height="60" rx="21"/></clipPath>
+    <g id="bee">
+      <ellipse cx="46" cy="44" rx="22" ry="13" transform="rotate(-28 46 44)" fill="#EDEDF2"/>
+      <ellipse cx="82" cy="44" rx="22" ry="13" transform="rotate(28 82 44)" fill="#EDEDF2"/>
+      <rect x="43" y="40" width="42" height="60" rx="21" fill="url(#amber)"/>
+      <g clip-path="url(#bd)" fill="#101014">
+        <rect x="43" y="58" width="42" height="8"/>
+        <rect x="43" y="74" width="42" height="8"/>
+      </g>
+      <circle cx="64" cy="34" r="13" fill="#101014"/>
+      <polygon points="64,112 58,99 70,99" fill="#101014"/>
+    </g>
+    <g id="candc">
+      <rect x="28" y="16" width="15" height="96" rx="7.5" fill="url(#amber)"/>
+      <circle cx="76" cy="80" r="33" fill="none" stroke="url(#amber)" stroke-width="15"/>
+      <g fill="#FFFFFF">
+        <rect x="64" y="69" width="7" height="22" rx="3.5"/>
+        <rect x="74" y="63" width="7" height="34" rx="3.5"/>
+        <rect x="84" y="67" width="7" height="26" rx="3.5"/>
+      </g>
+    </g>
+  </defs>
+
+  <rect width="1600" height="1260" fill="#0B0B0D"/>
+
+  <text x="60" y="74" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="34"
+        font-weight="700" fill="#F7F7F8">Beecord 视觉识别（VI）v0.1</text>
+  <text x="60" y="106" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="16"
+        fill="#8E8E93">已定稿 · 2026-10-14 · 主标志 / 锁定版 / 应用 / 色彩 / 字体</text>
+
+  <!-- ① 候选标志 -->
+  <text x="60" y="160" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="20"
+        font-weight="700" fill="#F7F7F8">① 主标志（选定 A，B/C 为弃用候选）</text>
+  <rect x="60" y="180" width="300" height="300" rx="20" fill="#151518"/>
+  <g transform="translate(210,320) scale(1.8) translate(-64,-64)">
+    <use href="#mk-hex"/><use href="#mk-bars-w"/>
+  </g>
+  <text x="210" y="512" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="15"
+        font-weight="600" fill="#F5A623" text-anchor="middle">A · 蜂巢声纹（选定）</text>
+  <rect x="400" y="180" width="300" height="300" rx="20" fill="#151518"/>
+  <g transform="translate(550,320) scale(1.8) translate(-64,-64)">
+    <use href="#bee"/>
+  </g>
+  <text x="550" y="512" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="15"
+        fill="#8E8E93" text-anchor="middle">B · 抽象蜜蜂（弃用）</text>
+  <rect x="740" y="180" width="300" height="300" rx="20" fill="#151518"/>
+  <g transform="translate(890,320) scale(1.8) translate(-64,-64)">
+    <use href="#candc"/>
+  </g>
+  <text x="890" y="512" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="15"
+        fill="#8E8E93" text-anchor="middle">C · 字母 b 声纹（弃用）</text>
+
+  <!-- ② 锁定版 -->
+  <text x="1060" y="160" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="20"
+        font-weight="700" fill="#F7F7F8">② 标志锁定版</text>
+  <rect x="1060" y="180" width="480" height="140" rx="20" fill="#151518"/>
+  <g transform="translate(1091,189) scale(0.95)">
+    <use href="#mk-hex"/><use href="#mk-bars-w"/>
+    <text x="156" y="88" font-family="Helvetica Neue, Arial, sans-serif" font-size="58"
+          font-weight="700" letter-spacing="0.5" fill="#F7F7F8">Beecord</text>
+  </g>
+  <text x="1300" y="348" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">深色背景版</text>
+  <rect x="1060" y="368" width="480" height="140" rx="20" fill="#F7F7F8"/>
+  <g transform="translate(1091,377) scale(0.95)">
+    <use href="#mk-hex"/><use href="#mk-bars-w"/>
+    <text x="156" y="88" font-family="Helvetica Neue, Arial, sans-serif" font-size="58"
+          font-weight="700" letter-spacing="0.5" fill="#101014">Beecord</text>
+  </g>
+  <text x="1300" y="536" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">浅色背景版</text>
+
+  <!-- ③ 应用场景 -->
+  <text x="60" y="570" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="20"
+        font-weight="700" fill="#F7F7F8">③ 应用场景</text>
+  <g transform="translate(60,600) scale(0.25)">
+    <rect width="1024" height="1024" rx="228" fill="url(#ink)"/>
+    <rect width="1024" height="1024" rx="228" fill="url(#glow)"/>
+    <g transform="translate(512,516) scale(5.0) translate(-64,-64)">
+      <use href="#mk-hex"/><use href="#mk-bars-w"/>
+    </g>
+  </g>
+  <text x="188" y="886" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">Mac App 图标（Beecord Studio）</text>
+  <g transform="translate(356,600) scale(0.4878)">
+    <rect width="410" height="502" rx="36" fill="#000000" stroke="#2A2A2E" stroke-width="2"/>
+    <g transform="translate(205,196) scale(1.25) translate(-64,-64)">
+      <use href="#mk-hex"/><use href="#mk-bars-w"/>
+    </g>
+    <text x="205" y="352" font-family="Helvetica Neue, Arial, sans-serif" font-size="42"
+          font-weight="700" letter-spacing="1" fill="#F7F7F8" text-anchor="middle">Beecord</text>
+    <text x="205" y="386" font-family="Helvetica Neue, Arial, sans-serif" font-size="16"
+          fill="#8E8E93" text-anchor="middle">v0.1.0 · PoC</text>
+  </g>
+  <text x="456" y="886" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">手表开机画面 410×502</text>
+  <rect x="596" y="600" width="480" height="140" rx="20" fill="#151518"/>
+  <g transform="translate(665,617) scale(0.95)">
+    <polygon points="78,56 63,82 33,82 18,56 33,30 63,30"
+             fill="none" stroke="#F5A623" stroke-width="6" stroke-linejoin="round"/>
+    <polygon points="118,56 103,82 73,82 58,56 73,30 103,30"
+             fill="none" stroke="#0A84FF" stroke-width="6" stroke-linejoin="round"/>
+    <text x="136" y="62" font-family="Helvetica Neue, Arial, sans-serif" font-size="32"
+          font-weight="700" fill="#ECECF1">BuzzLink</text>
+    <text x="136" y="88" font-family="Menlo, monospace" font-size="13" fill="#8E8E93">frame magic · BE EC</text>
+  </g>
+  <text x="836" y="766" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">协议标识 BuzzLink</text>
+  <rect x="596" y="790" width="230" height="120" rx="20" fill="#F7F7F8"/>
+  <g transform="translate(711,850) scale(0.72) translate(-64,-64)">
+    <polygon points="120,64 92,112.5 36,112.5 8,64 36,15.5 92,15.5"
+             fill="none" stroke="#101014" stroke-width="9" stroke-linejoin="round"/>
+    <g fill="#101014">
+      <rect x="23" y="51" width="10" height="26" rx="5"/>
+      <rect x="41" y="42" width="10" height="44" rx="5"/>
+      <rect x="59" y="33" width="10" height="62" rx="5"/>
+      <rect x="77" y="42" width="10" height="44" rx="5"/>
+      <rect x="95" y="51" width="10" height="26" rx="5"/>
+    </g>
+  </g>
+  <text x="711" y="936" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">单色 · 墨黑（浅底用）</text>
+  <rect x="846" y="790" width="230" height="120" rx="20" fill="#151518"/>
+  <g transform="translate(961,850) scale(0.72) translate(-64,-64)">
+    <polygon points="120,64 92,112.5 36,112.5 8,64 36,15.5 92,15.5"
+             fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linejoin="round"/>
+    <g fill="#FFFFFF">
+      <rect x="23" y="51" width="10" height="26" rx="5"/>
+      <rect x="41" y="42" width="10" height="44" rx="5"/>
+      <rect x="59" y="33" width="10" height="62" rx="5"/>
+      <rect x="77" y="42" width="10" height="44" rx="5"/>
+      <rect x="95" y="51" width="10" height="26" rx="5"/>
+    </g>
+  </g>
+  <text x="961" y="936" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93" text-anchor="middle">单色 · 白（深底用）</text>
+
+  <!-- ④ 色彩 -->
+  <text x="60" y="1000" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="20"
+        font-weight="700" fill="#F7F7F8">④ 色彩</text>
+  <g font-family="Helvetica Neue, PingFang SC, sans-serif" text-anchor="middle">
+    <rect x="60" y="1020" width="64" height="64" rx="14" fill="#F5A623"/>
+    <text x="92" y="1106" font-size="13" fill="#ECECF1">琥珀</text>
+    <text x="92" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#F5A623</text>
+    <rect x="262" y="1020" width="64" height="64" rx="14" fill="#D9820B"/>
+    <text x="294" y="1106" font-size="13" fill="#ECECF1">琥珀深</text>
+    <text x="294" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#D9820B</text>
+    <rect x="464" y="1020" width="64" height="64" rx="14" fill="#101014" stroke="#2A2A2E"/>
+    <text x="496" y="1106" font-size="13" fill="#ECECF1">墨黑</text>
+    <text x="496" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#101014</text>
+    <rect x="666" y="1020" width="64" height="64" rx="14" fill="#F7F7F8"/>
+    <text x="698" y="1106" font-size="13" fill="#ECECF1">纸白</text>
+    <text x="698" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#F7F7F8</text>
+    <rect x="868" y="1020" width="64" height="64" rx="14" fill="#E5484D"/>
+    <text x="900" y="1106" font-size="13" fill="#ECECF1">录音红</text>
+    <text x="900" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#E5484D</text>
+    <rect x="1070" y="1020" width="64" height="64" rx="14" fill="#0A84FF"/>
+    <text x="1102" y="1106" font-size="13" fill="#ECECF1">同步蓝</text>
+    <text x="1102" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#0A84FF</text>
+    <rect x="1272" y="1020" width="64" height="64" rx="14" fill="#30D158"/>
+    <text x="1304" y="1106" font-size="13" fill="#ECECF1">成功绿</text>
+    <text x="1304" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#30D158</text>
+    <rect x="1474" y="1020" width="64" height="64" rx="14" fill="#8E8E93"/>
+    <text x="1506" y="1106" font-size="13" fill="#ECECF1">云雾灰</text>
+    <text x="1506" y="1124" font-size="11" fill="#8E8E93" font-family="Menlo, monospace">#8E8E93</text>
+  </g>
+
+  <!-- ⑤ 字体 -->
+  <text x="60" y="1170" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="20"
+        font-weight="700" fill="#F7F7F8">⑤ 字体</text>
+  <text x="60" y="1206" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="26"
+        fill="#ECECF1">Beecord · 录音笔同步助手 · 0123456789</text>
+  <text x="60" y="1234" font-family="Helvetica Neue, PingFang SC, sans-serif" font-size="13"
+        fill="#8E8E93">Mac：SF Pro / PingFang SC（系统字体）· 手表固件（开源）：Montserrat / 思源黑体 CN（SIL OFL，可裁剪子集）</text>
+</svg>

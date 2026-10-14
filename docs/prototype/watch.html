@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Beecord 手表端交互原型</title>
+<style>
+  :root{ --bg:#0b0b0d; --card:#1c1c1e; --card2:#2c2c2e; --text:#ececf1; --text2:#9a9aa2;
+    --red:#e5484d; --green:#30d158; --blue:#0a84ff; --amber:#f5a623; }
+  *{box-sizing:border-box;margin:0;padding:0;user-select:none;-webkit-user-select:none}
+  body{ background:var(--bg); color:var(--text); min-height:100vh; padding:22px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif; }
+  header.top{ max-width:860px;margin:0 auto 18px; }
+  header.top h1{font-size:17px;font-weight:600}
+  header.top p{font-size:12px;color:var(--text2);margin-top:4px}
+  .stage{ display:flex; gap:30px; justify-content:center; align-items:flex-start; flex-wrap:wrap; }
+
+  /* ============ 手表 ============ */
+  .watch{ background:#151517;border-radius:58px;padding:16px;box-shadow:0 12px 44px rgba(0,0,0,.6),inset 0 0 0 2px #2a2a2e; }
+  .screen{ width:410px;height:502px;border-radius:44px;overflow:hidden;background:#000;position:relative;cursor:default; }
+  #inner{ position:absolute;inset:0; }
+  .page{ position:absolute;inset:0;display:none;flex-direction:column;padding:16px 16px 30px; }
+  .page.on{ display:flex; }
+  .pg-title{ font-size:15px;font-weight:600;color:var(--text2);text-align:center;padding:2px 0 10px; }
+
+  .statusbar{ display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text2); }
+  .ble{ display:flex;align-items:center;gap:5px; }
+  .ble i{ width:8px;height:8px;border-radius:50%;border:1.5px solid var(--text2);display:inline-block; }
+  .ble.on i{ background:var(--blue);border-color:var(--blue); }
+  .batt{ display:flex;align-items:center;gap:5px; }
+  .batt .shell{ width:20px;height:10px;border:1.5px solid var(--text2);border-radius:3px;position:relative; }
+  .batt .shell i{ position:absolute;inset:1.5px;background:var(--green);border-radius:1px; }
+
+  /* 表盘主页 */
+  .h-time{ font-size:64px;font-weight:200;text-align:center;margin-top:26px;letter-spacing:1px; }
+  .h-date{ text-align:center;color:var(--text2);font-size:14px;margin-top:2px; }
+  .h-comps{ display:flex;gap:10px;margin:30px 6px 0; }
+  .comp{ flex:1;background:var(--card);border-radius:14px;padding:12px 8px;text-align:center; }
+  .comp .c-lbl{ display:block;font-size:10px;color:var(--text2);margin-bottom:4px; }
+  .comp b{ font-size:16px;font-weight:600; }
+  .h-fn-hint{ margin-top:auto;text-align:center;font-size:11px;color:var(--text2);padding-bottom:6px; }
+  .h-recb{ display:none;margin:14px 8px 0;background:#3a1518;border:1px solid var(--red);border-radius:12px;
+    padding:9px 12px;font-size:12px;color:#ffb3b6;cursor:pointer;align-items:center;gap:8px; }
+  .h-recb i{ width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite; }
+
+  /* 录音页 */
+  .rec-wrap{ flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px; }
+  .rec-dot{ display:flex;align-items:center;gap:8px;color:var(--red);font-size:14px;font-weight:600;letter-spacing:2px; }
+  .rec-dot i{ width:10px;height:10px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite; }
+  .rec-dot.paused i{ animation:none;opacity:.4; }
+  .rec-dot.paused{ color:var(--text2); }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+  #rec-time{ font-size:56px;font-weight:200;font-variant-numeric:tabular-nums; }
+  #rec-bars{ display:flex;gap:3px;align-items:flex-end;height:56px; }
+  #rec-bars i{ width:6px;background:var(--red);border-radius:3px;height:8%;transition:height .16s;opacity:.85; }
+  #rec-marks{ display:flex;gap:6px;font-size:10px;color:var(--amber);min-height:14px;flex-wrap:wrap;justify-content:center; }
+  .rec-ops{ display:flex;gap:12px;align-items:center;margin-top:6px; }
+  .rop{ background:var(--card);border-radius:14px;padding:12px 18px;font-size:14px;cursor:pointer;text-align:center; }
+  .rop:active{ background:var(--card2); }
+  .rop small{ display:block;font-size:10px;color:var(--text2);margin-top:2px; }
+  #stop-hold{ position:relative;overflow:hidden;background:#3a1518;border:1px solid var(--red);color:#ffb3b6;min-width:104px; }
+  #stop-fill{ position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(229,72,77,.45); }
+  #stop-hold b{ position:relative;font-weight:500; }
+  .rec-hint{ font-size:10px;color:var(--text2);margin-top:8px; }
+
+  /* 列表 */
+  #list-rows{ flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px; }
+  #list-rows::-webkit-scrollbar{ display:none; }
+  .row{ background:var(--card);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer; }
+  .row:active{ background:var(--card2); }
+  .row .r-main{ flex:1;min-width:0; }
+  .row .r-main b{ display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .row .r-main span{ font-size:11px;color:var(--text2); }
+  .row .r-meta{ font-size:11px;color:var(--text2);text-align:right;white-space:nowrap; }
+  .row .r-sync{ width:18px;text-align:center;color:var(--green);font-size:13px; }
+  .empty{ flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text2);font-size:13px;gap:8px; }
+
+  /* 播放页 */
+  .p-back{ color:var(--blue);font-size:13px;cursor:pointer;margin-bottom:8px; }
+  .p-name{ font-size:15px;font-weight:600; }
+  .p-date{ font-size:12px;color:var(--text2);margin-top:2px; }
+  .p-times{ display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin:26px 4px 6px;font-variant-numeric:tabular-nums; }
+  #p-cur{ color:var(--text); }
+  .p-bar{ height:26px;display:flex;align-items:center;cursor:pointer; }
+  .p-bar .trk{ flex:1;height:4px;background:var(--card2);border-radius:2px;overflow:hidden; }
+  .p-bar .trk i{ display:block;height:100%;background:var(--amber);width:0; }
+  .p-ctl{ display:flex;justify-content:center;align-items:center;gap:22px;margin-top:14px; }
+  .p-ctl .skip{ font-size:12px;color:var(--text);background:var(--card);border-radius:10px;padding:8px 10px;cursor:pointer; }
+  .p-ctl .play{ width:60px;height:60px;border-radius:50%;background:var(--amber);color:#101014;font-size:20px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer; }
+  .p-sub{ display:flex;justify-content:center;gap:14px;margin-top:16px; }
+  .p-sub .rop{ font-size:12px;padding:8px 14px; }
+  .p-sub .danger{ color:#ffb3b6;background:#3a1518; }
+
+  /* 同步页 */
+  .card{ background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px; }
+  .card .t{ font-size:13px;font-weight:600;margin-bottom:8px; }
+  .kv{ display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:3px 0; }
+  .kv b{ color:var(--text);font-weight:500; }
+  .syn-bar{ height:6px;background:var(--card2);border-radius:3px;overflow:hidden;margin-top:8px; }
+  .syn-bar i{ display:block;height:100%;background:var(--blue);width:0;transition:width .3s; }
+
+  /* 设置 */
+  .set-row{ background:var(--card);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;
+    align-items:center;font-size:13px;margin-bottom:8px;cursor:pointer; }
+  .set-row:active{ background:var(--card2); }
+  .set-row .v{ color:var(--text2);font-size:12px; }
+  .set-row.static{ cursor:default; }
+  .set-hint{ text-align:center;font-size:10px;color:var(--text2);margin-top:auto; }
+
+  /* 页面指示点 */
+  .dots{ position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:center;gap:6px;z-index:5;pointer-events:none; }
+  .dots i{ width:6px;height:6px;border-radius:50%;background:var(--card2); }
+  .dots i.cur{ background:var(--text); }
+
+  /* 浮层 */
+  #toast{ position:absolute;top:14px;left:50%;transform:translateX(-50%) translateY(-8px);background:rgba(44,44,46,.96);
+    border-radius:20px;padding:8px 16px;font-size:12px;opacity:0;transition:all .25s;z-index:90;pointer-events:none;white-space:nowrap; }
+  #toast.on{ opacity:1;transform:translateX(-50%) translateY(0); }
+  .ovl{ position:absolute;inset:0;background:rgba(0,0,0,.66);display:none;align-items:center;justify-content:center;z-index:70; }
+  .ovl.on{ display:flex; }
+  .ovl .box{ background:var(--card);border-radius:16px;padding:18px;width:240px;text-align:center; }
+  .ovl .box p{ font-size:13px;margin-bottom:14px;line-height:1.5; }
+  .ovl .box .btns{ display:flex;gap:10px;justify-content:center; }
+  .ovl .box button{ flex:1;border:none;border-radius:10px;padding:9px 0;font-size:13px;cursor:pointer;background:var(--card2);color:var(--text); }
+  .ovl .box button.warn{ background:var(--red);color:#fff; }
+  #layer-off,#layer-power{ position:absolute;inset:0;background:#000;display:none; }
+  #layer-off{ z-index:60; } #layer-power{ z-index:80; }
+
+  /* ============ 右侧面板 ============ */
+  .panel{ width:290px;display:flex;flex-direction:column;gap:14px; }
+  .p-card{ background:var(--card);border-radius:14px;padding:14px; }
+  .p-card h3{ font-size:13px;color:var(--text2);font-weight:600;margin-bottom:10px; }
+  .pbtns{ display:flex;flex-wrap:wrap;gap:8px; }
+  .pbtn{ border:1px solid #3a3a3e;background:var(--card2);color:var(--text);border-radius:10px;
+    padding:8px 10px;font-size:12px;cursor:pointer; }
+  .pbtn:hover{ background:#3a3a3e; }
+  .pbtn:disabled{ opacity:.35;cursor:default; }
+  .pbtn.wide{ flex:1 1 100%; }
+  .p-card ul{ font-size:11.5px;color:var(--text2);line-height:1.7;padding-left:16px; }
+  #st-line{ font-size:11.5px;color:var(--amber);line-height:1.6;word-break:break-all; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Beecord 手表端交互原型 <span style="font-weight:400;color:var(--text2)">410×502 等比 · 数据全 mock</span></h1>
+  <p>左屏 = 设备（鼠标拖拽模拟滑动，也可用方向键）；右侧 = 硬件键与环境模拟。设计依据与待评估问题见 <code>ux-device.md</code>。</p>
+</header>
+
+<div class="stage">
+  <!-- ================= 手表 ================= -->
+  <div class="watch">
+    <div class="screen" id="screen">
+      <div id="inner">
+
+        <!-- 表盘主页 -->
+        <section class="page on" id="pg-home">
+          <div class="statusbar">
+            <span class="ble" id="h-ble"><i></i>BLE</span>
+            <span class="batt"><span id="h-batt">68%</span><span class="shell"><i id="h-batt-i" style="width:68%"></i></span></span>
+          </div>
+          <div class="h-time" id="h-time">14:05</div>
+          <div class="h-date" id="h-date">10月14日 周二</div>
+          <div class="h-recb" id="h-recb"><i></i><span id="h-recb-t">录音中 00:00</span><span style="margin-left:auto;color:var(--text2)">查看 ›</span></div>
+          <div class="h-comps">
+            <div class="comp"><span class="c-lbl">存储</span><b id="c-store">62%</b></div>
+            <div class="comp"><span class="c-lbl">待同步</span><b id="c-pend">2</b></div>
+            <div class="comp" id="c-last" style="cursor:pointer"><span class="c-lbl">最近录音</span><b id="c-last-v">—</b></div>
+          </div>
+          <div class="h-fn-hint">按功能键开始录音</div>
+        </section>
+
+        <!-- 录音页 -->
+        <section class="page" id="pg-rec">
+          <div class="rec-wrap">
+            <div class="rec-dot" id="rec-dot"><i></i>REC</div>
+            <div id="rec-time">00:00</div>
+            <div id="rec-bars"></div>
+            <div id="rec-marks"></div>
+            <div class="rec-ops">
+              <div class="rop" id="btn-pause">暂停<small>或双击功能键</small></div>
+              <div class="rop" id="btn-mark">标记<small>或长按功能键</small></div>
+              <div class="rop" id="stop-hold"><i id="stop-fill"></i><b>按住停止</b></div>
+            </div>
+            <div class="rec-hint">10s 无操作自动熄屏，录音继续 · 停止 = 功能键单击 / 按住上方按钮</div>
+          </div>
+        </section>
+
+        <!-- 录音列表 -->
+        <section class="page" id="pg-list">
+          <div class="pg-title">录音列表（<span id="list-n">0</span>）</div>
+          <div id="list-rows"></div>
+        </section>
+
+        <!-- 播放页 -->
+        <section class="page" id="pg-play">
+          <div class="p-back" id="p-back">‹ 返回列表</div>
+          <div class="p-name"><span id="p-name">—</span> <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:6px;padding:1px 6px;vertical-align:2px">P1</span></div>
+          <div class="p-date" id="p-date">—</div>
+          <div class="p-times"><span id="p-cur">00:00</span><span id="p-total">00:00</span></div>
+          <div class="p-bar" id="p-bar"><div class="trk"><i id="p-fill"></i></div></div>
+          <div class="p-ctl">
+            <div class="skip" id="p-m15">−15s</div>
+            <div class="play" id="p-play">▶</div>
+            <div class="skip" id="p-p15">+15s</div>
+          </div>
+          <div class="p-sub">
+            <div class="rop" id="p-speed">1×</div>
+            <div class="rop danger" id="p-del">删除</div>
+          </div>
+        </section>
+
+        <!-- 同步页 -->
+        <section class="page" id="pg-sync">
+          <div class="pg-title">同步</div>
+          <div class="card">
+            <div class="t">BLE 状态</div>
+            <div class="kv"><span>状态</span><b id="syn-state">广播中…</b></div>
+            <div class="kv"><span>对端</span><b id="syn-peer">—</b></div>
+            <div class="kv"><span>上次对时</span><b id="syn-time">2026-10-13 21:14</b></div>
+          </div>
+          <div class="card">
+            <div class="t">文件同步</div>
+            <div class="kv"><span>待同步</span><b id="syn-pend">0 条</b></div>
+            <div class="kv"><span>方式</span><b>Mac 端发起 · 自动对时</b></div>
+            <div class="syn-bar" id="syn-barw" style="display:none"><i id="syn-bar"></i></div>
+            <div class="kv" id="syn-prog" style="display:none"><span>同步中</span><b id="syn-prog-t"></b></div>
+          </div>
+          <div class="card">
+            <div class="t">说明</div>
+            <div class="kv"><span>手表侧仅展示状态；用右侧「环境模拟」面板模拟 Mac 连接与拉取。</span></div>
+          </div>
+        </section>
+
+        <!-- 设置 -->
+        <section class="page" id="pg-settings">
+          <div class="pg-title">设置</div>
+          <div id="set-rows"></div>
+          <div class="set-hint">下滑返回主页</div>
+        </section>
+
+        <div class="dots" id="dots"><i class="cur"></i><i></i><i></i></div>
+      </div>
+
+      <div id="toast"></div>
+
+      <div class="ovl" id="confirm">
+        <div class="box"><p id="cf-msg"></p>
+          <div class="btns"><button id="cf-no">取消</button><button class="warn" id="cf-ok">删除</button></div>
+        </div>
+      </div>
+      <div class="ovl" id="alert">
+        <div class="box"><p id="al-msg"></p></div>
+      </div>
+
+      <div id="layer-off"></div>
+      <div id="layer-power"></div>
+    </div>
+  </div>
+
+  <!-- ================= 硬件键 / 环境模拟 ================= -->
+  <div class="panel">
+    <div class="p-card">
+      <h3>硬件键（设备右侧两枚实体键）</h3>
+      <div class="pbtns">
+        <button class="pbtn" id="b-fn-click">功能键 · 单击</button>
+        <button class="pbtn" id="b-fn-dbl">功能键 · 双击</button>
+        <button class="pbtn" id="b-fn-long">功能键 · 长按 1.5s</button>
+        <button class="pbtn" id="b-pwr-click">电源键 · 单击</button>
+        <button class="pbtn" id="b-pwr-dbl">电源键 · 双击</button>
+        <button class="pbtn" id="b-pwr-long">电源键 · 长按 6s</button>
+        <button class="pbtn wide" id="b-raise">抬腕亮屏（IMU）</button>
+      </div>
+    </div>
+    <div class="p-card">
+      <h3>环境模拟</h3>
+      <div class="pbtns">
+        <button class="pbtn" id="b-mac">Mac 连接</button>
+        <button class="pbtn" id="b-sync" disabled>Mac 发起同步</button>
+      </div>
+    </div>
+    <div class="p-card">
+      <h3>状态</h3>
+      <div id="st-line">—</div>
+    </div>
+    <div class="p-card">
+      <h3>操作提示</h3>
+      <ul>
+        <li>任意界面「功能键单击」＝ 开始/停止录音（含熄屏）</li>
+        <li>录音中：双击功能键＝暂停/继续；长按＝打标记</li>
+        <li>录音页「按住停止」需按住 0.8s（防误触）</li>
+        <li>主页/列表/同步：左右滑动切换；主页上滑进设置</li>
+        <li>熄屏后：电源键单击或抬腕亮屏</li>
+        <li>录音中按「电源键长按6s」→ 模拟强制关机，再开机看 journal 恢复</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const p2=n=>String(n).padStart(2,"0");
+function fmtH(s){ s=Math.max(0,Math.floor(s)); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+  return (h?p2(h)+":":"")+p2(m)+":"+p2(x); }
+function sizeOf(dur){ return (dur*5.5/1024).toFixed(1)+" MB"; }
+function nameOf(d){ return "REC_"+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"_"+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds()); }
+const WEEK=["周日","周一","周二","周三","周四","周五","周六"];
+
+const S={
+  power:true, screenOff:false, page:"home", recovery:false,
+  rec:null, playing:null,
+  files:[
+    {name:"REC_20261014_134722", date:"10-14 13:47", dur:96,   synced:false},
+    {name:"REC_20261014_110518", date:"10-14 11:05", dur:305,  synced:false},
+    {name:"REC_20261014_093012", date:"10-14 09:30", dur:1842, synced:true},
+    {name:"REC_20261013_190204", date:"10-13 19:02", dur:754,  synced:true},
+  ],
+  ble:{connected:false, syncing:false, lastSync:"2026-10-13 21:14"},
+  set:{bright:80, timeout:10, quality:"标准 44kbps", beep:true, raise:true},
+  batt:68, store:62,
+};
+const MAINS=["home","list","sync"];
+const PNAMES={home:"表盘主页",rec:"录音页",list:"录音列表",play:"播放页",sync:"同步页",settings:"设置"};
+let lastAct=Date.now();
+
+/* ---------- 声音（无震动马达的反馈） ---------- */
+let ac=null;
+function beep(kind){
+  if(!S.set.beep) return;
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    const seq = kind==="long"?[[740,.34]] : kind===2?[[880,.09],[880,.09]]
+      : kind===3?[[620,.08],[620,.08],[620,.08]] : kind==="up"?[[660,.09],[990,.12]] : [[880,.09]];
+    let t=ac.currentTime;
+    seq.forEach(([f,d])=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type="sine"; o.frequency.value=f;
+      g.gain.setValueAtTime(.001,t); g.gain.exponentialRampToValueAtTime(.1,t+.012);
+      g.gain.exponentialRampToValueAtTime(.001,t+d);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+d+.03);
+      t+=d+.1;
+    });
+  }catch(e){}
+}
+let toastT=null;
+function toast(msg){ const el=$("toast"); el.textContent=msg; el.classList.add("on");
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove("on"),1600); }
+
+/* ---------- 导航 ---------- */
+function showPage(p){
+  S.page=p; lastAct=Date.now();
+  document.querySelectorAll(".page").forEach(el=>el.classList.remove("on"));
+  $("pg-"+p).classList.add("on");
+  const mi=MAINS.indexOf(p);
+  $("dots").style.display=mi>=0?"flex":"none";
+  if(mi>=0) document.querySelectorAll("#dots i").forEach((d,i)=>d.classList.toggle("cur",i===mi));
+  if(p==="home") renderHome();
+  if(p==="list") renderList();
+  if(p==="sync") renderSync();
+  if(p==="settings") renderSettings();
+  if(p==="rec") renderRec();
+  updStatus();
+}
+function swipe(dir){
+  if(!S.power||S.screenOff) return;
+  const p=S.page;
+  if(p==="home"){ if(dir==="left") showPage("list"); else if(dir==="up") showPage("settings"); }
+  else if(p==="list"){ if(dir==="right") showPage("home"); else if(dir==="left") showPage("sync"); }
+  else if(p==="sync"){ if(dir==="right") showPage("list"); }
+  else if(p==="settings"){ if(dir==="down") showPage("home"); }
+  else if(p==="play"){ if(dir==="right") showPage("list"); }
+}
+function setOff(v){
+  if(!S.power) return;
+  S.screenOff=v; $("layer-off").style.display=v?"block":"none";
+  if(!v) lastAct=Date.now();
+  updStatus();
+}
+function wake(){ setOff(false); if(S.rec&&S.page!=="rec") showPage("rec"); }
+
+/* 手势（鼠标拖拽模拟滑动） */
+let g=null, suppress=false;
+const scr=$("screen");
+scr.addEventListener("mousedown",e=>{
+  if(!S.power||S.screenOff) return;
+  lastAct=Date.now(); g={x:e.clientX,y:e.clientY};
+});
+window.addEventListener("mouseup",e=>{
+  if(!g) return;
+  const dx=e.clientX-g.x, dy=e.clientY-g.y; g=null;
+  if(Math.abs(dx)>40||Math.abs(dy)>40){
+    suppress=true; setTimeout(()=>suppress=false,60);
+    if(Math.abs(dx)>Math.abs(dy)) swipe(dx<0?"left":"right"); else swipe(dy<0?"up":"down");
+  }
+});
+document.addEventListener("click",e=>{ if(suppress){ e.stopPropagation(); e.preventDefault(); } },true);
+document.addEventListener("keydown",e=>{
+  const m={ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down"}[e.key];
+  if(m){ e.preventDefault(); swipe(m); }
+});
+
+/* ---------- 录音 ---------- */
+function startRec(){
+  if(S.rec) return;
+  S.rec={t:0,paused:false,marks:[],started:new Date()};
+  beep(1); toast("♪ 滴 — 开始录音");
+  setOff(false); showPage("rec");
+}
+function finalizeRec(){
+  const r=S.rec; if(!r) return;
+  const d=r.started;
+  S.files.unshift({name:nameOf(d), date:p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+":"+p2(d.getMinutes()),
+    dur:Math.max(1,Math.floor(r.t)), synced:false});
+  S.rec=null;
+}
+function stopRec(){
+  if(!S.rec) return;
+  finalizeRec();
+  beep(2); toast("♪ 滴滴 — 已保存");
+  setOff(false); showPage("home");
+}
+function togglePause(){
+  if(!S.rec) return;
+  S.rec.paused=!S.rec.paused;
+  beep(S.rec.paused?"long":1);
+  if(!S.screenOff) toast(S.rec.paused?"♪ 滴— 已暂停":"♪ 滴 — 继续录音");
+  renderRec(); updStatus();
+}
+function addMark(){
+  if(!S.rec) return;
+  S.rec.marks.push(S.rec.t);
+  beep(1); if(!S.screenOff) toast("标记 "+fmtH(S.rec.t));
+  renderRec();
+}
+function renderRec(){
+  const r=S.rec; if(!r) return;
+  $("rec-time").textContent=fmtH(r.t);
+  $("rec-dot").classList.toggle("paused",r.paused);
+  $("rec-dot").lastChild.textContent=r.paused?"PAUSED":"REC";
+  $("btn-pause").firstChild.textContent=r.paused?"继续":"暂停";
+  $("rec-marks").innerHTML=r.marks.map(m=>"◆ "+fmtH(m)).join("");
+  if(r.paused){ const bs=barsEl.children; for(let i=0;i<bs.length;i++) bs[i].style.height="6%"; }
+}
+const barsEl=$("rec-bars");
+for(let i=0;i<24;i++) barsEl.appendChild(document.createElement("i"));
+function updateBars(){
+  const bars=barsEl.children, r=S.rec;
+  for(let i=0;i<bars.length;i++)
+    bars[i].style.height=(r&&!r.paused?12+Math.random()*88:6)+"%";
+}
+$("h-recb").onclick=()=>showPage("rec");
+$("btn-pause").onclick=()=>togglePause();
+$("btn-mark").onclick=()=>addMark();
+let holdT=null,holdStart=0;
+const sh=$("stop-hold");
+sh.addEventListener("mousedown",e=>{
+  e.preventDefault(); holdStart=Date.now();
+  holdT=setInterval(()=>{
+    const p=Math.min(1,(Date.now()-holdStart)/800);
+    $("stop-fill").style.width=(p*100)+"%";
+    if(p>=1){ clearInterval(holdT); $("stop-fill").style.width="0%"; stopRec(); }
+  },30);
+});
+["mouseup","mouseleave"].forEach(ev=>sh.addEventListener(ev,()=>{
+  clearInterval(holdT); $("stop-fill").style.width="0%";
+}));
+
+/* ---------- 主页 ---------- */
+function renderHome(){
+  $("h-ble").classList.toggle("on",S.ble.connected);
+  $("h-batt").textContent=S.batt+"%";
+  $("h-batt-i").style.width=S.batt+"%";
+  $("c-store").textContent=S.store+"%";
+  $("c-pend").textContent=pending().length;
+  $("c-last-v").textContent=S.files.length?fmtH(S.files[0].dur):"—";
+  const d=new Date();
+  $("h-date").textContent=(d.getMonth()+1)+"月"+d.getDate()+"日 "+WEEK[d.getDay()];
+}
+$("c-last").onclick=()=>showPage("list");
+
+/* ---------- 列表 ---------- */
+function renderList(){
+  $("list-n").textContent=S.files.length;
+  const box=$("list-rows");
+  if(!S.files.length){ box.innerHTML='<div class="empty">还没有录音<br>按功能键录一条试试</div>'; return; }
+  box.innerHTML=S.files.map((f,i)=>
+    '<div class="row" data-i="'+i+'"><div class="r-main"><b>'+f.name+'</b><span>'+f.date+'</span></div>'+
+    '<div class="r-meta">'+fmtH(f.dur)+'<br>'+sizeOf(f.dur)+'</div>'+
+    '<div class="r-sync">'+(f.synced?"✓":"")+'</div></div>').join("");
+}
+$("list-rows").addEventListener("click",e=>{
+  const r=e.target.closest(".row"); if(!r) return;
+  openPlay(+r.dataset.i);
+});
+
+/* ---------- 播放 ---------- */
+function openPlay(i){
+  S.playing={idx:i,t:0,play:false,speed:1};
+  showPage("play"); renderPlay();
+}
+function renderPlay(){
+  const p=S.playing; if(!p) return;
+  const f=S.files[p.idx]; if(!f) return;
+  $("p-name").textContent=f.name;
+  $("p-date").textContent=f.date+" · "+sizeOf(f.dur)+(f.synced?" · 已同步 Mac":" · 未同步");
+  $("p-total").textContent=fmtH(f.dur);
+  $("p-speed").textContent=p.speed+"×";
+  renderPlayProg();
+}
+function renderPlayProg(){
+  const p=S.playing; if(!p) return;
+  const f=S.files[p.idx]; if(!f) return;
+  $("p-cur").textContent=fmtH(p.t);
+  $("p-fill").style.width=Math.min(100,p.t/f.dur*100)+"%";
+  $("p-play").textContent=p.play?"❚❚":"▶";
+}
+$("p-back").onclick=()=>{ showPage("list"); };
+$("p-play").onclick=()=>{
+  const p=S.playing; if(!p) return;
+  const f=S.files[p.idx];
+  if(!p.play&&p.t>=f.dur) p.t=0;
+  p.play=!p.play; renderPlayProg();
+};
+$("p-m15").onclick=()=>{ const p=S.playing; if(p){ p.t=Math.max(0,p.t-15); renderPlayProg(); } };
+$("p-p15").onclick=()=>{ const p=S.playing; if(p){ p.t=Math.min(S.files[p.idx].dur,p.t+15); renderPlayProg(); } };
+$("p-speed").onclick=()=>{
+  const p=S.playing; if(!p) return;
+  p.speed=p.speed===1?1.5:p.speed===1.5?2:1;
+  renderPlay();
+};
+$("p-bar").onclick=e=>{
+  const p=S.playing; if(!p) return;
+  const r=e.currentTarget.getBoundingClientRect();
+  p.t=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*S.files[p.idx].dur;
+  renderPlayProg();
+};
+$("p-del").onclick=()=>{
+  const p=S.playing; if(!p) return;
+  const f=S.files[p.idx];
+  askConfirm(f.synced?"删除该录音？Mac 上的副本保留。":"该录音尚未同步到 Mac，删除后无法恢复。",()=>{
+    S.files.splice(p.idx,1); S.playing=null;
+    beep(2); toast("已删除"); showPage("list");
+  });
+};
+function askConfirm(msg,cb){
+  $("cf-msg").textContent=msg; $("confirm").classList.add("on");
+  $("cf-ok").onclick=()=>{ $("confirm").classList.remove("on"); cb(); };
+  $("cf-no").onclick=()=>$("confirm").classList.remove("on");
+}
+
+/* ---------- 同步 ---------- */
+function pending(){ return S.files.filter(f=>!f.synced); }
+function renderSync(){
+  $("syn-state").textContent=S.ble.connected?"已连接":"广播中…";
+  $("syn-state").style.color=S.ble.connected?"var(--blue)":"var(--text)";
+  $("syn-peer").textContent=S.ble.connected?"Beecord Studio（Mac）":"—";
+  $("syn-time").textContent=S.ble.lastSync;
+  $("syn-pend").textContent=pending().length+" 条";
+  const on=S.ble.syncing;
+  $("syn-barw").style.display=on?"block":"none";
+  $("syn-prog").style.display=on?"flex":"none";
+  $("b-sync").disabled=!S.ble.connected||S.ble.syncing||!pending().length;
+  $("b-mac").textContent=S.ble.connected?"Mac 断开":"Mac 连接";
+}
+let syncTimer=null;
+$("b-mac").onclick=()=>{
+  if(!S.power){ toast("设备已关机，BLE 不可用"); return; }
+  S.ble.connected=!S.ble.connected;
+  if(!S.ble.connected&&syncTimer){ clearInterval(syncTimer); syncTimer=null; S.ble.syncing=false; toast("连接断开，同步中止"); }
+  else if(S.ble.connected){ beep("up"); toast("已连接 Beecord Studio"); }
+  renderSync(); renderHome(); updStatus();
+};
+$("b-sync").onclick=()=>{
+  if(!S.ble.connected||S.ble.syncing) return;
+  const list=pending(); if(!list.length) return;
+  S.ble.syncing=true; let i=0;
+  renderSync();
+  syncTimer=setInterval(()=>{
+    if(i<list.length){
+      list[i].synced=true; i++;
+      $("syn-bar").style.width=(i/list.length*100)+"%";
+      $("syn-prog-t").textContent=i+"/"+list.length+" "+list[i-1].name;
+      renderList();
+    }else{
+      clearInterval(syncTimer); syncTimer=null; S.ble.syncing=false;
+      const d=new Date();
+      S.ble.lastSync=d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+      beep(2); toast("同步完成 · 已对时");
+      renderSync(); renderList(); renderHome();
+    }
+  },900);
+};
+
+/* ---------- 设置 ---------- */
+const SETDEF=[
+  {k:"bright",  t:"亮度",     fmt:v=>v+"%"},
+  {k:"timeout", t:"熄屏时间", fmt:v=>v+"s"},
+  {k:"quality", t:"录音质量", fmt:v=>v},
+  {k:"beep",    t:"提示音",   fmt:v=>v?"开":"关"},
+  {k:"raise",   t:"抬腕亮屏", fmt:v=>v?"开":"关"},
+];
+function cycle(k){
+  const s=S.set;
+  if(k==="bright"){ const a=[40,60,80,100]; s.bright=a[(a.indexOf(s.bright)+1)%a.length];
+    $("inner").style.filter="brightness("+(0.45+0.55*s.bright/100).toFixed(2)+")"; }
+  else if(k==="timeout"){ const a=[5,10,30]; s.timeout=a[(a.indexOf(s.timeout)+1)%a.length]; lastAct=Date.now(); }
+  else if(k==="quality"){ s.quality=s.quality==="标准 44kbps"?"省空间 24kbps":"标准 44kbps"; }
+  else if(k==="beep"){ s.beep=!s.beep; if(s.beep) beep(1); }
+  else if(k==="raise"){ s.raise=!s.raise; }
+  renderSettings();
+}
+function renderSettings(){
+  let h=SETDEF.map(d=>'<div class="set-row" data-k="'+d.k+'"><span>'+d.t+'</span><span class="v">'+d.fmt(S.set[d.k])+' ›</span></div>').join("");
+  h+='<div class="set-row static"><span>时间对时</span><span class="v">自动 · '+S.ble.lastSync+'</span></div>';
+  h+='<div class="set-row static"><span>关于</span><span class="v">Beecord FW 0.1.0 · 电池 '+S.batt+'%</span></div>';
+  $("set-rows").innerHTML=h;
+}
+$("set-rows").addEventListener("click",e=>{
+  const r=e.target.closest(".set-row[data-k]"); if(r) cycle(r.dataset.k);
+});
+$("inner").style.filter="brightness("+(0.45+0.55*S.set.bright/100).toFixed(2)+")";
+
+/* ---------- 硬件键 ---------- */
+$("b-fn-click").onclick=()=>{ if(!S.power) return; S.rec?stopRec():startRec(); };
+$("b-fn-dbl").onclick=()=>{ if(!S.power) return;
+  if(S.rec) togglePause(); else toast("（空闲态双击无操作）"); };
+$("b-fn-long").onclick=()=>{ if(!S.power) return;
+  if(S.rec) addMark(); else toast("（空闲态长按无操作）"); };
+$("b-pwr-click").onclick=()=>{ S.power?(S.screenOff?wake():setOff(true)):powerOn(); };
+$("b-pwr-dbl").onclick=()=>{ if(S.power&&!S.screenOff&&S.page!=="rec") showPage("home"); };
+$("b-pwr-long").onclick=()=>{
+  if(!S.power) return;
+  toast("电源键按住中…");
+  setTimeout(()=>{ if(S.power){ $("al-msg").textContent="即将强制关机（硬件行为，无法取消）"; $("alert").classList.add("on"); } },1300);
+  setTimeout(()=>powerOff(),2700);
+};
+$("b-raise").onclick=()=>{
+  if(!S.power) return;
+  if(!S.set.raise){ toast("抬腕亮屏已关闭"); return; }
+  if(S.screenOff) wake();
+};
+function powerOff(){
+  $("alert").classList.remove("on");
+  if(S.rec){ finalizeRec(); S.recovery=true; }
+  S.playing=null; S.ble.connected=false; S.ble.syncing=false;
+  if(syncTimer){ clearInterval(syncTimer); syncTimer=null; }
+  S.power=false; S.screenOff=false;
+  $("layer-off").style.display="none";
+  $("layer-power").style.display="block";
+  renderSync(); updStatus();
+}
+function powerOn(){
+  S.power=true;
+  $("layer-power").style.display="none";
+  showPage("home"); beep("up");
+  toast(S.recovery?"已恢复未保存的录音（journal 修复）":"Beecord 已开机");
+  S.recovery=false;
+  renderSync(); renderList();
+}
+
+/* ---------- 状态行 ---------- */
+function updStatus(){
+  let s;
+  if(!S.power) s="已关机";
+  else if(S.rec) s="录音中"+(S.rec.paused?"·暂停":"")+" "+fmtH(S.rec.t)+(S.screenOff?"·熄屏":"");
+  else s=S.screenOff?"熄屏待机":"亮屏待机";
+  $("st-line").textContent="状态："+s+" ｜ 页面："+(S.power?PNAMES[S.page]:"—")+
+    " ｜ BLE："+(S.ble.connected?"已连接":"广播中")+" ｜ 待同步："+pending().length;
+  $("b-pwr-click").textContent=S.power?"电源键 · 单击":"电源键 · 单击（开机）";
+}
+
+/* ---------- 主循环 ---------- */
+setInterval(()=>{
+  const now=Date.now(), d=new Date();
+  const hm=p2(d.getHours())+":"+p2(d.getMinutes());
+  if($("h-time").textContent!==hm) $("h-time").textContent=hm;
+  if(S.power&&!S.screenOff&&now-lastAct>S.set.timeout*1000) setOff(true);
+  if(S.rec&&!S.rec.paused){
+    S.rec.t+=0.25;
+    if(S.page==="rec"&&!S.screenOff){ $("rec-time").textContent=fmtH(S.rec.t); updateBars(); }
+  }
+  const rb=$("h-recb");
+  if(S.rec&&S.page==="home"){ rb.style.display="flex"; $("h-recb-t").textContent="录音中 "+fmtH(S.rec.t); }
+  else rb.style.display="none";
+  if(S.playing&&S.playing.play){
+    const p=S.playing, f=S.files[p.idx];
+    if(f){ p.t+=0.25*p.speed; if(p.t>=f.dur){ p.t=f.dur; p.play=false; } if(S.page==="play") renderPlayProg(); }
+    else S.playing=null;
+  }
+  updStatus();
+},250);
+
+/* ---------- 启动 ---------- */
+renderHome(); renderList(); renderSync(); renderSettings(); updStatus();
+</script>
+</body>
+</html>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/png/beecord-mark-512.png" width="120" alt="Beecord logo">
+</p>
+
 # Beecord
 
 Open-source AI voice recorder: watch-form firmware + local-first companion apps.

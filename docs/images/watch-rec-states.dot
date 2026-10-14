@@ -1,0 +1,31 @@
+digraph rec_states {
+  graph [fontname="PingFang SC", rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.6];
+  node [fontname="PingFang SC", shape=box, style="rounded,filled", fillcolor="#F2F6FF", color="#4A6FA5", fontsize=13, margin="0.14,0.09"];
+  edge [fontname="PingFang SC", color="#555555", fontsize=11, arrowsize=0.8];
+
+  idle    [label="空闲"];
+  start   [label="启动中\n建文件·初始化 Opus 编码器"];
+  rec_on  [label="录音中 · 亮屏\n计时 + 电平条", fillcolor="#FFE3E3", color="#C04545"];
+  rec_off [label="录音中 · 熄屏\n低功耗后台采集", fillcolor="#FFE3E3", color="#C04545"];
+  paused  [label="已暂停\n（保留现场，可继续）"];
+  saving  [label="保存中\nflush·更新索引·Ogg 收尾"];
+  alert   [label="告警提示\n低电 / 存储满 / 无 SD 卡", fillcolor="#FFF7DB", color="#B89A45"];
+  recover [label="开机恢复\njournal 修复未闭合文件", fillcolor="#FFF7DB", color="#B89A45"];
+
+  idle -> start       [label="功能键 / 录音钮"];
+  start -> rec_on     [label="就绪"];
+  start -> alert      [label="无卡 / 存储满", style=dashed];
+  rec_on -> rec_off   [label="10s 无操作 / PWR 单击"];
+  rec_off -> rec_on   [label="抬腕 / 按键亮屏"];
+  rec_on -> paused    [label="暂停"];
+  paused -> rec_on    [label="继续"];
+  rec_on -> saving    [label="停止"];
+  rec_off -> saving   [label="功能键停止"];
+  paused -> saving    [label="停止"];
+  rec_on -> saving    [label="低电 / 存储满自动停止", style=dashed];
+  saving -> idle      [label="完成"];
+  saving -> alert     [label="异常原因停止时"];
+  alert -> idle       [label="确认"];
+  rec_off -> recover  [label="异常断电 → 重新上电", style=dashed];
+  recover -> idle;
+}

@@ -1,0 +1,25 @@
+digraph nav {
+  graph [fontname="PingFang SC", rankdir=LR, bgcolor="white", pad=0.3, nodesep=0.5, ranksep=0.9];
+  node [fontname="PingFang SC", shape=box, style="rounded,filled", fillcolor="#F2F6FF", color="#4A6FA5", fontsize=14, margin="0.16,0.10"];
+  edge [fontname="PingFang SC", color="#555555", fontsize=11, arrowsize=0.8];
+
+  home     [label="表盘主页（传统表盘）\n时间为主·状态小件·无录音钮", fillcolor="#DCEBFF"];
+  rec      [label="录音页（模态）\n计时·电平·暂停/停止", fillcolor="#FFE3E3", color="#C04545"];
+  list     [label="录音列表\n文件项·已同步标记"];
+  play     [label="播放页\n进度·倍速·删除"];
+  sync     [label="同步页\nBLE 状态·同步进度"];
+  settings [label="设置\n亮度·质量·提示音·关于"];
+  note     [shape=note, label="任意界面按功能键（BOOT）\n＝ 开始 / 停止录音", fillcolor="#FFF7DB", color="#B89A45", fontsize=11];
+
+  home -> list     [label="左滑"];
+  list -> home     [label="右滑"];
+  list -> sync     [label="左滑"];
+  sync -> list     [label="右滑"];
+  home -> settings [label="上滑"];
+  settings -> home [label="下滑返回"];
+  list -> play     [label="点击文件"];
+  play -> list     [label="返回"];
+  home -> rec      [label="点录音中横幅", color="#C04545", penwidth=1.6];
+  rec -> home      [label="停止并保存", color="#C04545", penwidth=1.6];
+  note -> rec      [style=dashed, arrowhead=none];
+}

@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beecord Studio — 交互原型</title>
+<style>
+  :root{
+    --accent:#0a84ff; --text:#1d1d1f; --text2:#6e6e73; --text3:#8e8e93;
+    --bg:#f5f5f7; --sidebar:rgba(237,237,242,.92); --card:#ffffff;
+    --border:rgba(0,0,0,.08); --ok:#30d158; --warn:#ff9f0a; --danger:#ff453a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{height:100%}
+  body{
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
+    background:#d9d9de;color:var(--text);display:flex;align-items:center;justify-content:center;
+  }
+  .window{
+    width:1060px;height:720px;background:var(--bg);border-radius:12px;overflow:hidden;
+    box-shadow:0 24px 80px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.15);
+    display:flex;flex-direction:column;
+  }
+  .titlebar{
+    height:38px;flex:none;display:flex;align-items:center;padding:0 14px;gap:8px;
+    background:var(--sidebar);border-bottom:1px solid var(--border);user-select:none;
+  }
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .titlebar span{margin-left:8px;font-size:13px;color:var(--text2)}
+  .titlebar .proto{margin-left:auto;font-size:11px;color:#fff;background:#8e8e93;border-radius:4px;padding:1px 7px}
+  .body{flex:1;display:flex;min-height:0}
+  /* ---------- 侧栏 ---------- */
+  .sidebar{
+    width:224px;flex:none;background:var(--sidebar);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:12px 10px;user-select:none;
+  }
+  .brand{font-size:13px;font-weight:600;color:var(--text2);padding:4px 10px 10px;display:flex;align-items:center;gap:7px}
+  .brand .hex{width:14px;height:16px;flex:none;background:linear-gradient(135deg,#ffce5c,#f0980a);
+    clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+  .nav-item{
+    display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer;
+    font-size:14px;color:var(--text);margin-bottom:2px;
+  }
+  .nav-item .ico{width:18px;text-align:center}
+  .nav-item:hover{background:rgba(0,0,0,.05)}
+  .nav-item.active{background:rgba(10,132,255,.15);color:var(--accent);font-weight:500}
+  .nav-item.hidden{display:none}
+  .sidebar .spacer{flex:1}
+  .dev-status{
+    margin:8px 4px 2px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.04);
+    font-size:12px;color:var(--text2);display:flex;align-items:center;gap:7px;
+  }
+  .dev-status .sd{width:8px;height:8px;border-radius:50%;background:var(--text3)}
+  .dev-status.on .sd{background:var(--ok)}
+  /* ---------- 主区 ---------- */
+  .main{flex:1;overflow-y:auto;padding:22px 26px;min-width:0}
+  .main section{display:none}
+  .main section.active{display:block}
+  h1{font-size:22px;font-weight:700;margin-bottom:2px}
+  .sub{color:var(--text2);font-size:13px;margin-bottom:18px}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .card h3{font-size:14px;font-weight:600;margin-bottom:10px}
+  /* 按钮 */
+  button{
+    font:13px/1 -apple-system,sans-serif;padding:6px 14px;border-radius:6px;cursor:pointer;
+    border:1px solid var(--border);background:#fff;color:var(--text);
+  }
+  button:hover:not(:disabled){background:#f2f2f5}
+  button.primary{background:var(--accent);border-color:transparent;color:#fff}
+  button.primary:hover:not(:disabled){background:#0066d6}
+  button.danger{color:var(--danger)}
+  button:disabled{opacity:.45;cursor:default}
+  button.sm{padding:4px 10px;font-size:12px}
+  /* 扫描/设备 */
+  .scan-row{display:flex;align-items:center;gap:10px;color:var(--text2)}
+  .spinner{
+    width:16px;height:16px;border:2px solid rgba(0,0,0,.15);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite;flex:none;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .dev-row{display:flex;align-items:center;gap:14px}
+  .dev-ico{
+    width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#ffce5c,#f0980a);
+    display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;color:#101014;
+  }
+  .dev-meta{flex:1;min-width:0}
+  .dev-name{font-weight:600;font-size:15px}
+  .dev-sub{font-size:12px;color:var(--text2);margin-top:2px}
+  .info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:6px}
+  .info-item .k{font-size:11px;color:var(--text3)}
+  .info-item .v{font-size:15px;font-weight:600;margin-top:1px}
+  .meter{height:6px;border-radius:3px;background:rgba(0,0,0,.08);overflow:hidden;margin-top:6px}
+  .meter>i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  /* 文件表 */
+  .files-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:13px}
+  .files-toolbar .grow{flex:1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:11px;color:var(--text3);text-align:left;font-weight:500;padding:4px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid rgba(0,0,0,.05)}
+  tr:last-child td{border-bottom:none}
+  tr.sel td{background:rgba(10,132,255,.06)}
+  .st{font-size:12px;color:var(--text3);white-space:nowrap}
+  .st.ok{color:var(--ok)}
+  .st.dl{color:var(--accent)}
+  .st .mini{display:inline-block;width:80px;height:4px;background:rgba(0,0,0,.1);border-radius:2px;vertical-align:middle;margin-right:6px;overflow:hidden}
+  .st .mini>i{display:block;height:100%;background:var(--accent)}
+  .dl-footer{display:none;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)}
+  .dl-footer .bar{flex:1;height:6px;border-radius:3px;background:rgba(0,0,0,.08);overflow:hidden}
+  .dl-footer .bar>i{display:block;height:100%;background:var(--accent);width:0%}
+  /* 开关 */
+  .switch{position:relative;width:34px;height:20px;display:inline-block;vertical-align:middle}
+  .switch input{display:none}
+  .switch i{position:absolute;inset:0;background:rgba(0,0,0,.18);border-radius:10px;transition:.2s;cursor:pointer}
+  .switch i:before{content:"";position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:2px;left:2px;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch input:checked+i{background:var(--ok)}
+  .switch input:checked+i:before{left:16px}
+  /* 录音库 */
+  .lib-wrap{display:flex;gap:16px;min-height:0}
+  .lib-list{width:280px;flex:none;display:flex;flex-direction:column;gap:6px}
+  .lib-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer}
+  .lib-item:hover{border-color:rgba(10,132,255,.4)}
+  .lib-item.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .lib-item .t{font-weight:600;font-size:13px}
+  .lib-item .m{font-size:11px;color:var(--text3);margin-top:2px;display:flex;justify-content:space-between}
+  .badge{font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.07);color:var(--text2)}
+  .badge.tr{color:var(--accent);background:rgba(10,132,255,.12)}
+  .badge.sum{color:#bf5af2;background:rgba(191,90,242,.12)}
+  .lib-detail{flex:1;min-width:0}
+  .lib-title{font-size:17px;font-weight:700;border:none;background:transparent;width:100%;outline:none;padding:2px 0}
+  .player{display:flex;flex-direction:column;gap:10px}
+  .wave{display:flex;align-items:flex-end;gap:2px;height:56px;padding:4px 2px}
+  .wave i{flex:1;background:rgba(10,132,255,.35);border-radius:1px;min-height:3px}
+  .wave i.played{background:var(--accent)}
+  .pc{display:flex;align-items:center;gap:14px}
+  .pc button{border-radius:16px}
+  .pc .time{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums}
+  .pc .prog{flex:1;height:4px;background:rgba(0,0,0,.08);border-radius:2px;overflow:hidden;cursor:pointer}
+  .pc .prog>i{display:block;height:100%;background:var(--accent);width:0%}
+  .op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:16px 0 12px}
+  .tabs div{padding:6px 14px;font-size:13px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs div.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+  .tr-line{display:flex;gap:12px;font-size:13px;padding:5px 0;cursor:pointer}
+  .tr-line:hover{background:rgba(10,132,255,.05)}
+  .tr-line .ts{color:var(--accent);font-variant-numeric:tabular-nums;flex:none;font-size:12px;padding-top:1px}
+  .empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 0;color:var(--text2);font-size:13px}
+  .sum-sec{margin-bottom:14px}
+  .sum-sec h4{font-size:13px;color:var(--accent);margin-bottom:6px}
+  .sum-sec li{font-size:13px;margin-left:18px;margin-bottom:4px}
+  /* 控制台 */
+  .con-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  .con-toolbar select{font:12px -apple-system;padding:4px 8px;border-radius:6px;border:1px solid var(--border)}
+  .con-log{height:390px;overflow-y:auto;background:#1e1e24;border-radius:8px;padding:10px 12px;font:12px/1.7 "SF Mono",Menlo,monospace}
+  .con-log .row{display:flex;gap:10px;white-space:nowrap;cursor:default}
+  .con-log .t{color:#636366}
+  .con-log .dir.up{color:#64d2ff}
+  .con-log .dir.dn{color:#30d158}
+  .con-log .ty{color:#bf5af2}
+  .con-log .pl{color:#d9d9de;overflow:hidden;text-overflow:ellipsis}
+  .con-log .pl b{color:#ffd60a;font-weight:400}
+  .con-input{display:flex;gap:8px;margin-top:10px}
+  .con-input input{flex:1;font:12px "SF Mono",Menlo,monospace;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff}
+  /* 设置 */
+  .form-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.05)}
+  .form-row:last-child{border-bottom:none}
+  .form-row label{width:120px;flex:none;font-size:13px;color:var(--text2)}
+  .form-row input[type=text],.form-row input[type=password],.form-row select{
+    flex:1;font:13px -apple-system;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;max-width:360px;
+  }
+  .form-row .note{font-size:11px;color:var(--text3)}
+  .ck-row{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;padding-top:4px}
+  .ck-row label{display:flex;gap:6px;align-items:center}
+  .toast{
+    position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);
+    background:rgba(30,30,36,.94);color:#fff;font-size:13px;padding:9px 18px;border-radius:8px;
+    opacity:0;transition:.25s;pointer-events:none;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <span>Beecord Studio</span>
+    <span class="proto">交互原型 v0.1 · 数据均为演示 mock</span>
+  </div>
+  <div class="body">
+    <aside class="sidebar">
+      <div class="brand"><span class="hex"></span>Beecord Studio</div>
+      <div class="nav-item active" data-view="device"><span class="ico">⌚</span>设备</div>
+      <div class="nav-item" data-view="library"><span class="ico">🎙</span>录音库</div>
+      <div class="nav-item" data-view="console" id="nav-console"><span class="ico">⌨</span>协议控制台</div>
+      <div class="nav-item" data-view="settings"><span class="ico">⚙</span>设置</div>
+      <div class="spacer"></div>
+      <div class="dev-status" id="dev-status"><span class="sd"></span><span id="dev-status-text">未连接</span></div>
+    </aside>
+
+    <main class="main">
+      <!-- ============ 设备 ============ -->
+      <section id="view-device" class="active">
+        <h1>设备</h1>
+        <div class="sub">连接 Beecord 录音设备，同步机内录音</div>
+
+        <div class="card" id="scan-card">
+          <div class="scan-row"><div class="spinner"></div><span>正在扫描附近设备…（请在设备上三击电源键进入配对模式）</span></div>
+        </div>
+
+        <div class="card" id="found-card" style="display:none">
+          <h3>发现设备</h3>
+          <div class="dev-row">
+            <div class="dev-ico">⌚</div>
+            <div class="dev-meta">
+              <div class="dev-name">Beecord Watch · A1B2</div>
+              <div class="dev-sub">RSSI -52 dBm · BuzzLink · 固件 0.1.0</div>
+            </div>
+            <button class="primary" id="btn-connect">连接</button>
+          </div>
+        </div>
+
+        <div id="connected-area" style="display:none">
+          <div class="card">
+            <div class="dev-row" style="margin-bottom:12px">
+              <div class="dev-ico">⌚</div>
+              <div class="dev-meta">
+                <div class="dev-name">Beecord Watch · A1B2</div>
+                <div class="dev-sub">已连接 · MTU 247 · 52 KB/s</div>
+              </div>
+              <button id="btn-disconnect">断开</button>
+            </div>
+            <div class="info-grid">
+              <div class="info-item"><div class="k">型号</div><div class="v">Beecord Watch</div></div>
+              <div class="info-item"><div class="k">固件</div><div class="v">0.1.0 (BE EC)</div></div>
+              <div class="info-item"><div class="k">电量</div><div class="v" id="dev-batt">68%</div></div>
+              <div class="info-item"><div class="k">存储</div><div class="v">6.2 / 29,816 MB</div>
+                <div class="meter"><i style="width:21%"></i></div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="files-toolbar">
+              <label><input type="checkbox" id="ck-all"> 全选</label>
+              <span style="color:var(--text3)">设备文件（<span id="file-total">0</span>）</span>
+              <span class="grow"></span>
+              <label style="font-size:12px;color:var(--text2)">自动同步新录音
+                <span class="switch"><input type="checkbox" checked><i></i></span></label>
+              <button class="primary" id="btn-dl" disabled>下载所选(0)</button>
+              <button class="sm" id="btn-refresh">刷新</button>
+            </div>
+            <table>
+              <thead><tr><th style="width:26px"></th><th>文件名</th><th style="width:70px">时长</th><th style="width:80px">大小</th><th style="width:130px">状态</th></tr></thead>
+              <tbody id="file-tbody"></tbody>
+            </table>
+            <div class="dl-footer" id="dl-footer">
+              <span id="dl-text">准备中…</span>
+              <div class="bar"><i id="dl-bar"></i></div>
+              <button class="sm" id="btn-cancel-dl">取消</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 录音库 ============ -->
+      <section id="view-library">
+        <h1>录音库</h1>
+        <div class="sub">已同步录音的播放、转写与 AI 纪要（全部本地保存）</div>
+        <div class="lib-wrap">
+          <div class="lib-list" id="lib-list"></div>
+          <div class="lib-detail">
+            <div class="card">
+              <input class="lib-title" id="lib-title" value="选择左侧录音查看详情">
+              <div class="player" id="player" style="display:none;margin-top:10px">
+                <div class="wave" id="wave"></div>
+                <div class="pc">
+                  <button class="sm" id="btn-back15">−15s</button>
+                  <button class="primary" id="btn-play" style="width:64px">播放</button>
+                  <button class="sm" id="btn-fwd15">+15s</button>
+                  <button class="sm" id="btn-speed">1.0×</button>
+                  <div class="prog" id="pc-prog"><i id="pc-bar"></i></div>
+                  <span class="time" id="pc-time">00:00 / 00:34</span>
+                </div>
+                <div class="op-row">
+                  <button class="sm">导出 m4a</button>
+                  <button class="sm">导出 wav</button>
+                  <button class="sm" id="btn-finder">显示于 Finder</button>
+                  <button class="sm danger" id="btn-del">删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="card" id="lib-tabs-card" style="display:none">
+              <div class="tabs">
+                <div class="active" data-tab="transcript">转写</div>
+                <div data-tab="summary">AI 纪要</div>
+              </div>
+              <div id="tab-transcript">
+                <div class="empty" id="tr-empty">
+                  <div>尚未转写（本地 whisper，内容不出本机）</div>
+                  <button class="primary" id="btn-transcribe">开始转写</button>
+                </div>
+                <div id="tr-progress" style="display:none;padding:18px 0">
+                  <div class="scan-row"><div class="spinner"></div><span id="tr-progress-text">whisper-small 加载中…</span></div>
+                </div>
+                <div id="tr-lines" style="display:none"></div>
+              </div>
+              <div id="tab-summary" style="display:none">
+                <div class="empty" id="sum-empty">
+                  <div id="sum-empty-text">生成会议纪要需要已配置的 AI 端点与完成转写</div>
+                  <button class="primary" id="btn-summary">生成纪要</button>
+                </div>
+                <div id="sum-body" style="display:none"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 协议控制台 ============ -->
+      <section id="view-console">
+        <h1>协议控制台</h1>
+        <div class="sub">开发者模式 · BuzzLink 帧日志与原始命令（可导出为固件测试向量）</div>
+        <div class="card">
+          <div class="con-toolbar">
+            <button class="sm" data-cmd="list">列文件</button>
+            <button class="sm" data-cmd="info">查信息</button>
+            <button class="sm" data-cmd="begin">开始下载</button>
+            <button class="sm" data-cmd="verify">结束校验</button>
+            <span style="flex:1"></span>
+            <select id="con-filter"><option value="">全部</option><option value="up">上行 →</option><option value="dn">下行 ←</option></select>
+            <button class="sm" id="con-clear">清除</button>
+            <button class="sm" id="con-export">导出向量</button>
+          </div>
+          <div class="con-log" id="con-log"></div>
+          <div class="con-input">
+            <input id="con-hex" placeholder="自定义 hex，如：be ec 05 60 07ff 7b226f70223a226c697374227d">
+            <button class="primary" id="con-send">发送</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 设置 ============ -->
+      <section id="view-settings">
+        <h1>设置</h1>
+        <div class="sub">通用、AI 服务与转写（实际实现为标准 Settings 窗口 ⌘,）</div>
+        <div class="card">
+          <h3>通用</h3>
+          <div class="form-row"><label>下载目录</label><input type="text" value="~/Documents/Beecord" readonly><button class="sm">选择…</button></div>
+          <div class="form-row"><label>自动同步新录音</label><span class="switch"><input type="checkbox" checked><i></i></span><span class="note">连接设备后自动下载未同步的录音</span></div>
+          <div class="form-row"><label>开发者模式</label><span class="switch"><input type="checkbox" id="set-devmode" checked><i></i></span><span class="note">在侧栏显示协议控制台</span></div>
+        </div>
+        <div class="card">
+          <h3>AI 服务（云端，可选 · key 存于系统钥匙串）</h3>
+          <div class="form-row"><label>Provider</label>
+            <select id="ai-provider"><option>Kimi</option><option>DeepSeek</option><option>Qwen（通义千问）</option><option>自定义（OpenAI 兼容）</option></select>
+          </div>
+          <div class="form-row"><label>Base URL</label><input type="text" id="ai-base" value="https://api.moonshot.cn/v1"></div>
+          <div class="form-row"><label>API Key</label><input type="password" id="ai-key" value="sk-demo-key-not-real"></div>
+          <div class="form-row"><label>Model</label><input type="text" id="ai-model" value="kimi-k2-0905-preview"></div>
+          <div class="form-row"><label>功能开关</label>
+            <div class="ck-row">
+              <label><input type="checkbox" checked> 摘要</label>
+              <label><input type="checkbox" checked> 会议纪要</label>
+              <label><input type="checkbox" checked> 待办提取</label>
+              <label><input type="checkbox"> 翻译</label>
+            </div>
+          </div>
+          <div class="form-row"><label></label>
+            <button class="sm" id="btn-ai-test">测试连接</button>
+            <span class="note" id="ai-test-result">未测试</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>转写（本地 whisper.cpp）</h3>
+          <div class="form-row"><label>模型</label><select><option>whisper-small（推荐 461MB）</option><option>whisper-base 142MB</option><option>whisper-tiny 75MB</option></select><button class="sm">管理模型…</button></div>
+          <div class="form-row"><label>语言</label><select><option>自动检测</option><option>中文</option><option>English</option></select></div>
+        </div>
+        <div class="card">
+          <h3>关于</h3>
+          <div class="form-row"><label>版本</label><span class="note">Beecord Studio 0.1.0 (prototype) · Apache-2.0 · 本地优先，云端 AI 显式开启</span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+/* ================= 状态 ================= */
+const S = {
+  connected:false, scanned:false, aiConfigured:false, devMode:true,
+  files:[
+    {name:"2026-10-13 16_50_55.ogg",dur:"34s",size:"188 KB",dl:false},
+    {name:"2026-10-13 13_48_28.ogg",dur:"15s",size:"83 KB",dl:false},
+    {name:"2026-10-13 12_11_33.ogg",dur:"16s",size:"89 KB",dl:false},
+    {name:"2026-10-13 12_09_16.ogg",dur:"10s",size:"56 KB",dl:false},
+    {name:"2026-10-13 12_07_53.ogg",dur:"10s",size:"55 KB",dl:false},
+    {name:"2026-10-13 12_13_02.ogg",dur:"2s",size:"12 KB",dl:false},
+    {name:"2026-10-13 11_17_52.ogg",dur:"20s",size:"112 KB",dl:false},
+  ],
+  lib:[
+    {t:"周会同步 10-13", m:"10-13 16:50 · 34s", dur:34, badge:"已纪要", cls:"sum"},
+    {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, badge:"已转写", cls:"tr"},
+    {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, badge:"未转写", cls:""},
+  ],
+  curLib:null, playing:false, playT:0, speed:1, timer:null, dlCancel:false,
+};
+const $ = id => document.getElementById(id);
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
+const fmtT = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+
+/* ================= 视图路由 ================= */
+document.querySelectorAll(".nav-item").forEach(n=>{
+  n.onclick = ()=>{
+    document.querySelectorAll(".nav-item").forEach(x=>x.classList.remove("active"));
+    n.classList.add("active");
+    document.querySelectorAll(".main section").forEach(s=>s.classList.remove("active"));
+    $("view-"+n.dataset.view).classList.add("active");
+    if(n.dataset.view==="library" && !S.curLib) selectLib(0);
+  };
+});
+
+/* ================= 设备页 ================= */
+function startScan(){
+  if(S.connected||S.scanned) return;
+  $("scan-card").style.display="";
+  setTimeout(()=>{ $("scan-card").style.display="none"; $("found-card").style.display=""; S.scanned=true; },1600);
+}
+$("btn-connect").onclick = ()=>{
+  $("btn-connect").textContent="连接中…"; $("btn-connect").disabled=true;
+  setTimeout(()=>{
+    S.connected=true;
+    $("found-card").style.display="none";
+    $("connected-area").style.display="";
+    $("dev-status").classList.add("on");
+    $("dev-status-text").textContent="Beecord Watch · A1B2 已连接";
+    renderFiles();
+    toast("已连接 · MTU 247 协商完成");
+  },900);
+};
+$("btn-disconnect").onclick = ()=>{
+  S.connected=false;
+  $("connected-area").style.display="none";
+  $("found-card").style.display="";
+  $("btn-connect").textContent="连接"; $("btn-connect").disabled=false;
+  $("dev-status").classList.remove("on");
+  $("dev-status-text").textContent="未连接";
+};
+$("btn-refresh").onclick = ()=>{ renderFiles(); toast("文件列表已刷新"); };
+
+function renderFiles(){
+  const tb=$("file-tbody"); tb.innerHTML="";
+  $("file-total").textContent=S.files.length;
+  S.files.forEach((f,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="checkbox" data-i="${i}" ${f.dl?"disabled":""}></td>
+      <td>${f.name}</td><td>${f.dur}</td><td>${f.size}</td>
+      <td><span class="st ${f.dl?"ok":""}" id="st-${i}">${f.dl?"✓ 已校验":"未下载"}</span></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("input[type=checkbox]").forEach(ck=>{
+    ck.onchange=()=>{ ck.closest("tr").classList.toggle("sel",ck.checked); updateDlBtn(); };
+  });
+  updateDlBtn();
+}
+function selectedIdx(){ return [...document.querySelectorAll("#file-tbody input[type=checkbox]")]
+  .filter(c=>c.checked&&!c.disabled).map(c=>+c.dataset.i); }
+function updateDlBtn(){
+  const n=selectedIdx().length;
+  $("btn-dl").textContent=`下载所选(${n})`; $("btn-dl").disabled=n===0;
+}
+$("ck-all").onchange = e=>{
+  document.querySelectorAll("#file-tbody input[type=checkbox]").forEach(c=>{
+    if(!c.disabled){ c.checked=e.target.checked; c.closest("tr").classList.toggle("sel",c.checked); }
+  });
+  updateDlBtn();
+};
+$("btn-cancel-dl").onclick = ()=>{ S.dlCancel=true; };
+$("btn-dl").onclick = async ()=>{
+  const list=selectedIdx(); if(!list.length) return;
+  S.dlCancel=false;
+  $("btn-dl").disabled=true; $("ck-all").disabled=true;
+  $("dl-footer").style.display="flex";
+  for(let k=0;k<list.length;k++){
+    const i=list[k], f=S.files[i], st=$("st-"+i);
+    st.className="st dl"; st.innerHTML=`<span class="mini"><i style="width:0%"></i></span>0%`;
+    for(let p=0;p<=100;p+=4){
+      if(S.dlCancel){ st.className="st"; st.textContent="未完成";
+        $("dl-footer").style.display="none"; $("ck-all").disabled=false; toast("已取消");
+        return; }
+      st.innerHTML=`<span class="mini"><i style="width:${p}%"></i></span>${p}%`;
+      $("dl-text").textContent=`${k+1}/${list.length} · ${f.name} · 52 KB/s · 剩余 ${Math.ceil((100-p)/28)}s`;
+      $("dl-bar").style.width=((k+p/100)/list.length*100)+"%";
+      await new Promise(r=>setTimeout(r,45));
+    }
+    S.files[i].dl=true;
+    st.className="st ok"; st.textContent="✓ 已校验";
+    const ck=document.querySelector(`#file-tbody input[data-i="${i}"]`);
+    ck.checked=false; ck.disabled=true; ck.closest("tr").classList.remove("sel");
+  }
+  $("dl-footer").style.display="none"; $("ck-all").disabled=false; $("ck-all").checked=false;
+  toast(`同步完成：${list.length} 个文件，CRC 全部通过`);
+};
+
+/* ================= 录音库 ================= */
+function renderLib(){
+  const el=$("lib-list"); el.innerHTML="";
+  S.lib.forEach((r,i)=>{
+    const d=document.createElement("div");
+    d.className="lib-item"+(S.curLib===i?" active":"");
+    d.innerHTML=`<div class="t">${r.t}</div>
+      <div class="m"><span>${r.m}</span><span class="badge ${r.cls}" id="lib-badge-${i}">${r.badge}</span></div>`;
+    d.onclick=()=>selectLib(i);
+    el.appendChild(d);
+  });
+}
+function selectLib(i){
+  S.curLib=i; renderLib();
+  const r=S.lib[i];
+  $("lib-title").value=r.t;
+  $("player").style.display=""; $("lib-tabs-card").style.display="";
+  $("pc-time").textContent=`00:00 / ${fmtT(r.dur)}`;
+  genWave(); setProgress(0);
+}
+function genWave(){
+  const w=$("wave"); w.innerHTML="";
+  for(let i=0;i<72;i++){
+    const h=12+Math.abs(Math.sin(i*1.7)+Math.sin(i*.53)*1.6)*22;
+    const b=document.createElement("i"); b.style.height=h+"px"; w.appendChild(b);
+  }
+}
+function setProgress(sec){
+  const r=S.lib[S.curLib]; S.playT=Math.max(0,Math.min(sec,r.dur));
+  const pct=S.playT/r.dur*100;
+  $("pc-bar").style.width=pct+"%";
+  $("pc-time").textContent=`${fmtT(S.playT)} / ${fmtT(r.dur)}`;
+  const bars=$("wave").children, n=Math.floor(pct/100*bars.length);
+  for(let i=0;i<bars.length;i++) bars[i].classList.toggle("played",i<n);
+}
+$("btn-play").onclick = ()=>{
+  if(S.playing){ clearInterval(S.timer); S.playing=false; $("btn-play").textContent="播放"; return; }
+  S.playing=true; $("btn-play").textContent="暂停";
+  S.timer=setInterval(()=>{
+    setProgress(S.playT+0.2*S.speed);
+    if(S.playT>=S.lib[S.curLib].dur){ clearInterval(S.timer); S.playing=false; $("btn-play").textContent="播放"; }
+  },200);
+};
+$("btn-back15").onclick=()=>setProgress(S.playT-15);
+$("btn-fwd15").onclick=()=>setProgress(S.playT+15);
+$("btn-speed").onclick=e=>{
+  S.speed=S.speed===1?1.5:S.speed===1.5?2:1;
+  e.target.textContent=S.speed.toFixed(1)+"×";
+};
+$("pc-prog").onclick=e=>{
+  const r=e.currentTarget.getBoundingClientRect();
+  setProgress((e.clientX-r.left)/r.width*S.lib[S.curLib].dur);
+};
+$("btn-finder").onclick=()=>toast("原型演示：Finder 路径 ~/Documents/Beecord");
+$("btn-del").onclick=()=>toast("原型演示：删除需二次确认");
+$("lib-title").onchange=e=>{ S.lib[S.curLib].t=e.target.value; renderLib(); };
+
+/* tabs */
+document.querySelectorAll("#lib-tabs-card .tabs div").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll("#lib-tabs-card .tabs div").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    $("tab-transcript").style.display=t.dataset.tab==="transcript"?"":"none";
+    $("tab-summary").style.display=t.dataset.tab==="summary"?"":"none";
+  };
+});
+
+/* 转写 */
+const TRANSCRIPT=[
+  [0,"好，那我们开始今天的周会。"],[4,"首先是协议进展，BLE 文件同步已经全链路跑通。"],
+  [9,"下载速率稳定在 52KB/s，CRC 校验全部通过。"],[14,"下一步是开发板到货后的固件移植。"],
+  [19,"客户端这边先做 Mac 版，支持本地转写。"],[24,"AI 纪要走可选的云端端点，默认本地优先。"],
+  [29,"好，今天就这些，散会。"],
+];
+$("btn-transcribe").onclick=async ()=>{
+  $("tr-empty").style.display="none"; $("tr-progress").style.display="";
+  $("tr-progress-text").textContent="whisper-small 加载中…";
+  await new Promise(r=>setTimeout(r,900));
+  $("tr-progress-text").textContent="转写中… 00:12 / 00:34";
+  await new Promise(r=>setTimeout(r,900));
+  $("tr-progress-text").textContent="转写中… 00:27 / 00:34";
+  await new Promise(r=>setTimeout(r,800));
+  $("tr-progress").style.display="none";
+  const box=$("tr-lines"); box.style.display=""; box.innerHTML="";
+  TRANSCRIPT.forEach(([ts,tx])=>{
+    const d=document.createElement("div"); d.className="tr-line";
+    d.innerHTML=`<span class="ts">${fmtT(ts)}</span><span>${tx}</span>`;
+    d.onclick=()=>{ setProgress(ts); toast("已跳转到 "+fmtT(ts)); };
+    box.appendChild(d);
+  });
+  const b=$("lib-badge-"+S.curLib); b.textContent="已转写"; b.className="badge tr";
+  S.lib[S.curLib].badge="已转写"; S.lib[S.curLib].cls="tr";
+  toast("转写完成（本地 whisper-small）");
+};
+
+/* AI 纪要 */
+const SUMMARY={
+  "要点":["BLE 文件同步链路已跑通：52KB/s，CRC 校验全部通过","固件移植等待开发板到货","Mac 客户端优先实现本地转写能力"],
+  "决议":["客户端数据策略确定为本地优先","云端 AI 仅作为可选配置，由用户自行接入端点"],
+  "待办":["开发板到货后完成 M1 硬件自检","完成 Beecord Studio P0 交互评审并进入实现"],
+};
+$("btn-summary").onclick=async ()=>{
+  if(!S.aiConfigured){ toast("请先在 设置 → AI 服务 配置并测试端点");
+    document.querySelector('.nav-item[data-view="settings"]').click(); return; }
+  $("sum-empty").style.display="none";
+  const body=$("sum-body"); body.style.display=""; body.innerHTML="";
+  for(const [sec,items] of Object.entries(SUMMARY)){
+    const h=document.createElement("div"); h.className="sum-sec";
+    h.innerHTML=`<h4>${sec}</h4><ul></ul>`; body.appendChild(h);
+    const ul=h.querySelector("ul");
+    for(const it of items){
+      const li=document.createElement("li"); ul.appendChild(li);
+      for(let c=0;c<=it.length;c++){ li.textContent=it.slice(0,c); await new Promise(r=>setTimeout(r,14)); }
+    }
+  }
+  const b=$("lib-badge-"+S.curLib); b.textContent="已纪要"; b.className="badge sum";
+  S.lib[S.curLib].badge="已纪要"; S.lib[S.curLib].cls="sum";
+};
+
+/* ================= 协议控制台 ================= */
+let conT=0;
+function conLog(dir,ty,payload){
+  const log=$("con-log");
+  const row=document.createElement("div"); row.className="row";
+  const t=(conT+=0.031).toFixed(3).padStart(8," ");
+  const d=dir==="up"?'<span class="dir up">→ dev</span>':'<span class="dir dn">← app</span>';
+  row.innerHTML=`<span class="t">${t}</span>${d}<span class="ty">${ty}</span><span class="pl">${payload}</span>`;
+  row.dataset.dir=dir;
+  log.appendChild(row); log.scrollTop=log.scrollHeight;
+}
+const PRESETS={
+  list:[["up","be ec 05 60 07 ff","<b>{\"op\":\"list\",\"offset\":0}</b> 00 00"],
+        ["dn","be ec 05 61 07 ff","<b>{\"status\":0,\"total\":7,\"files\":[{\"id\":\"2026-10-13 16_50_55.ogg\",\"ms\":34000},{\"id\":\"2026-10-13 13_48_28.ogg\",\"ms\":15000}]}</b> 3f 2a"]],
+  info:[["up","be ec 05 62 07 ff","<b>{\"op\":\"info\",\"id\":\"2026-10-13 16_50_55.ogg\"}</b> 00 00"],
+        ["dn","be ec 05 63 07 ff","<b>{\"status\":0,\"size\":192543,\"crc16\":28533,\"fmt\":\"ogg\"}</b> c1 88"]],
+  begin:[["up","be ec 05 64 07 ff","<b>{\"op\":\"get\",\"id\":\"2026-10-13 16_50_55.ogg\"}</b> 00 00"],
+         ["dn","be ec 05 65 07 ff","chunks=876 · chunk=220B · crc16=28533"],
+         ["dn","be ec 06 66 02 04","seq=0 · 220B · e9 41"],
+         ["dn","be ec 06 66 02 04","seq=1 · 220B · 7b 0c"],
+         ["dn","be ec 06 66 02 04","seq=2 · 220B · 55 fe"],
+         ["dn","be ec 06 66 02 04","…（共 876 块，约 3.6s，52 KB/s）"]],
+  verify:[["up","be ec 05 68 07 ff","<b>{\"op\":\"done\",\"id\":\"2026-10-13 16_50_55.ogg\"}</b> 00 00"],
+          ["dn","be ec 05 69 07 ff","<b>{\"status\":0}</b> · CRC16 28533 MATCH"]],
+};
+document.querySelectorAll("[data-cmd]").forEach(b=>{
+  b.onclick=()=>{ PRESETS[b.dataset.cmd].forEach(([d,ty,pl])=>conLog(d,ty,pl)); };
+});
+$("con-clear").onclick=()=>{ $("con-log").innerHTML=""; };
+$("con-export").onclick=()=>toast("已导出 vectors/session-20261014.json（可喂 firmware/test_host）");
+$("con-send").onclick=()=>{
+  const v=$("con-hex").value.trim(); if(!v) return;
+  conLog("up",v.split(" ").slice(0,4).join(" ")||"be ec",v.split(" ").slice(4).join(" ")||"00 00");
+  setTimeout(()=>conLog("dn","be ec 05 61 07 ff","<b>{\"status\":0}</b> a0 1f"),280);
+  $("con-hex").value="";
+};
+$("con-filter").onchange=e=>{
+  document.querySelectorAll("#con-log .row").forEach(r=>{
+    r.style.display=!e.target.value||r.dataset.dir===e.target.value?"flex":"none";
+  });
+};
+
+/* ================= 设置 ================= */
+$("set-devmode").onchange=e=>{
+  S.devMode=e.target.checked;
+  $("nav-console").classList.toggle("hidden",!S.devMode);
+  toast(S.devMode?"开发者模式已开启":"开发者模式已关闭");
+};
+$("ai-provider").onchange=e=>{
+  const m={"Kimi":"https://api.moonshot.cn/v1","DeepSeek":"https://api.deepseek.com/v1",
+    "Qwen（通义千问）":"https://dashscope.aliyuncs.com/compatible-mode/v1"};
+  $("ai-base").value=m[e.target.value]||"";
+};
+$("btn-ai-test").onclick=async ()=>{
+  $("ai-test-result").innerHTML='<span class="spinner" style="display:inline-block;vertical-align:-3px"></span> 测试中…';
+  await new Promise(r=>setTimeout(r,1200));
+  $("ai-test-result").innerHTML='<span style="color:var(--ok)">● 连接成功</span>（'+$("ai-model").value+' · 200 OK）';
+  S.aiConfigured=true;
+  $("sum-empty-text").textContent="基于转写文本，由 "+$("ai-model").value+" 生成纪要";
+};
+
+/* ================= 启动 ================= */
+renderLib();
+startScan();
+conLog("dn","be ec 03 40 07 ff","<b>{\"sn\":\"A1B2\",\"fw\":\"0.1.0\",\"batt\":68}</b> 9c 01");
+conLog("up","be ec 04 40 07 ff","（回执 echo）9c 01");
+</script>
+</body>
+</html>
