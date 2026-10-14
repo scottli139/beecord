@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>render-mac</title>
+<style>
+  body.light{
+    --accent:#0a84ff; --text:#1d1d1f; --text2:#6e6e73; --text3:#8e8e93;
+    --bg:#f5f5f7; --sidebar:rgba(237,237,242,.94); --card:#ffffff;
+    --border:rgba(0,0,0,.08); --ok:#30a14b; --danger:#ff453a;
+    --sel-bg:rgba(10,132,255,.08); --sel-line:rgba(10,132,255,.5);
+    --wave:rgba(10,132,255,.32); --track:rgba(0,0,0,.08);
+  }
+  body.dark{
+    --accent:#0a84ff; --text:#f5f5f7; --text2:#98989f; --text3:#6e6e73;
+    --bg:#17171b; --sidebar:rgba(30,30,34,.94); --card:#1c1c1e;
+    --border:rgba(255,255,255,.09); --ok:#30d158; --danger:#ff453a;
+    --sel-bg:rgba(10,132,255,.16); --sel-line:rgba(10,132,255,.65);
+    --wave:rgba(10,132,255,.38); --track:rgba(255,255,255,.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:transparent;padding:36px;display:inline-block;
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:var(--text)}
+  .window{
+    width:1060px;height:720px;background:var(--bg);border-radius:12px;overflow:hidden;
+    box-shadow:0 30px 90px rgba(0,0,0,.45),0 0 0 .5px rgba(128,128,128,.35);
+    display:flex;flex-direction:column;
+  }
+  .titlebar{height:38px;flex:none;display:flex;align-items:center;padding:0 14px;gap:8px;
+    background:var(--sidebar);border-bottom:1px solid var(--border)}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .titlebar span{margin-left:8px;font-size:13px;color:var(--text2)}
+  .body{flex:1;display:flex;min-height:0}
+  /* 侧栏 */
+  .sidebar{width:224px;flex:none;background:var(--sidebar);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:12px 10px}
+  .brand{font-size:13px;font-weight:600;color:var(--text2);padding:4px 10px 10px;display:flex;align-items:center;gap:7px}
+  .brand .hex{width:14px;height:16px;flex:none;background:linear-gradient(135deg,#ffce5c,#f0980a);
+    clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+  .nav-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+    font-size:14px;color:var(--text);margin-bottom:2px}
+  .nav-item .ico{width:18px;text-align:center}
+  .nav-item.active{background:var(--sel-bg);color:var(--accent);font-weight:500;
+    box-shadow:inset 0 0 0 1px var(--sel-line)}
+  .sidebar .spacer{flex:1}
+  .dev-status{margin:8px 4px 2px;padding:8px 10px;border-radius:8px;background:rgba(128,128,128,.12);
+    font-size:12px;color:var(--text2);display:flex;align-items:center;gap:7px}
+  .dev-status .sd{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  /* 主区 */
+  .main{flex:1;overflow:hidden;padding:22px 26px;min-width:0}
+  h1{font-size:22px;font-weight:700;margin-bottom:2px}
+  .sub{color:var(--text2);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  button{font:13px/1 -apple-system,sans-serif;padding:6px 14px;border-radius:6px;
+    border:1px solid var(--border);background:transparent;color:var(--text)}
+  button.primary{background:var(--accent);border-color:transparent;color:#fff}
+  button.danger{color:var(--danger)}
+  button.sm{padding:4px 10px;font-size:12px}
+  /* 录音库 */
+  .lib-wrap{display:flex;gap:16px;min-height:0}
+  .lib-list{width:280px;flex:none;display:flex;flex-direction:column;gap:6px}
+  .lib-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .lib-item.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .lib-item .t{font-weight:600;font-size:13px}
+  .lib-item .m{font-size:11px;color:var(--text3);margin-top:2px;display:flex;justify-content:space-between}
+  .badge{font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(128,128,128,.16);color:var(--text2)}
+  .badge.tr{color:var(--accent);background:rgba(10,132,255,.14)}
+  .badge.sum{color:#bf5af2;background:rgba(191,90,242,.14)}
+  .lib-detail{flex:1;min-width:0}
+  .lib-title{font-size:17px;font-weight:700}
+  .player{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+  .wave{display:flex;align-items:flex-end;gap:2px;height:56px;padding:4px 2px}
+  .wave i{flex:1;background:var(--wave);border-radius:1px;min-height:3px}
+  .wave i.played{background:var(--accent)}
+  .pc{display:flex;align-items:center;gap:14px}
+  .pc button{border-radius:16px}
+  .pc .time{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums}
+  .pc .prog{flex:1;height:4px;background:var(--track);border-radius:2px;overflow:hidden}
+  .pc .prog>i{display:block;height:100%;background:var(--accent);width:41%}
+  .op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:4px 0 12px}
+  .tabs div{padding:6px 14px;font-size:13px;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs div.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+  .tr-line{display:flex;gap:12px;font-size:13px;padding:5px 0}
+  .tr-line .ts{color:var(--accent);font-variant-numeric:tabular-nums;flex:none;font-size:12px;padding-top:1px}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <span>Beecord Studio</span>
+  </div>
+  <div class="body">
+    <aside class="sidebar">
+      <div class="brand"><span class="hex"></span>Beecord Studio</div>
+      <div class="nav-item"><span class="ico">⌚️</span>设备</div>
+      <div class="nav-item active"><span class="ico">🎙️</span>录音库</div>
+      <div class="nav-item"><span class="ico">⌨️</span>协议控制台</div>
+      <div class="nav-item"><span class="ico">⚙️</span>设置</div>
+      <div class="spacer"></div>
+      <div class="dev-status"><span class="sd"></span><span>Watch A1B2 已连接</span></div>
+    </aside>
+    <main class="main">
+      <h1>录音库</h1>
+      <div class="sub">已同步录音的播放、转写与 AI 纪要（全部本地保存）</div>
+      <div class="lib-wrap">
+        <div class="lib-list">
+          <div class="lib-item active"><div class="t">周会同步 10-13</div>
+            <div class="m"><span>10-13 16:50 · 34s</span><span class="badge sum">已纪要</span></div></div>
+          <div class="lib-item"><div class="t">客户访谈片段</div>
+            <div class="m"><span>10-13 13:48 · 15s</span><span class="badge tr">已转写</span></div></div>
+          <div class="lib-item"><div class="t">2026-10-13 12_11_33</div>
+            <div class="m"><span>10-13 12:11 · 16s</span><span class="badge">未转写</span></div></div>
+        </div>
+        <div class="lib-detail">
+          <div class="card">
+            <div class="lib-title">周会同步 10-13</div>
+            <div class="player">
+              <div class="wave" id="wave"></div>
+              <div class="pc">
+                <button class="sm">−15s</button>
+                <button class="primary" style="width:64px">暂停</button>
+                <button class="sm">+15s</button>
+                <button class="sm">1.0×</button>
+                <div class="prog"><i></i></div>
+                <span class="time">00:14 / 00:34</span>
+              </div>
+              <div class="op-row">
+                <button class="sm">导出 m4a</button>
+                <button class="sm">导出 wav</button>
+                <button class="sm">显示于 Finder</button>
+                <button class="sm danger">删除</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="tabs"><div class="active">转写</div><div>AI 纪要</div></div>
+            <div id="trs"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+  document.body.className = new URLSearchParams(location.search).get("theme")==="light" ? "light" : "dark";
+  const w=document.getElementById("wave"), N=72, PLAYED=29;
+  for(let i=0;i<N;i++){
+    const h=12+Math.abs(Math.sin(i*1.7)+Math.sin(i*.53)*1.6)*22;
+    const b=document.createElement("i"); b.style.height=h+"px";
+    if(i<PLAYED) b.className="played";
+    w.appendChild(b);
+  }
+  const TR=[[0,"好，那我们开始今天的周会。"],[4,"首先是协议进展，BLE 文件同步已经全链路跑通。"],
+    [9,"下载速率稳定在 52KB/s，CRC 校验全部通过。"],[14,"下一步是开发板到货后的固件移植。"],
+    [19,"客户端这边先做 Mac 版，支持本地转写。"],[24,"AI 纪要走可选的云端端点，默认本地优先。"]];
+  const fmt=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+  document.getElementById("trs").innerHTML =
+    TR.map(([t,x])=>`<div class="tr-line"><span class="ts">${fmt(t)}</span><span>${x}</span></div>`).join("");
+</script>
+</body>
+</html>

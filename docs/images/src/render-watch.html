@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>render-watch</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root{ --card:#1c1c1e; --card2:#2c2c2e; --text:#ececf1; --text2:#9a9aa2;
+    --red:#e5484d; --green:#30d158; --blue:#0a84ff; --amber:#f5a623; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:transparent;padding:26px 30px;display:inline-block;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;color:var(--text)}
+  .row{display:flex;gap:38px}
+  .item{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .cap{font-size:13px;color:#8e8e93;letter-spacing:.4px}
+  .zoom{zoom:.72}
+
+  /* ===== 表壳 ===== */
+  .watch{position:relative;background:linear-gradient(160deg,#1b1b1f,#101012);border-radius:58px;padding:16px;
+    box-shadow:0 18px 50px rgba(0,0,0,.55),inset 0 0 0 2px #2b2b30}
+  .watch .knob{position:absolute;right:-3px;top:92px;width:5px;height:30px;border-radius:3px;
+    background:linear-gradient(90deg,#26262b,#3d3d44);box-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .watch .kbtn{position:absolute;right:-3px;top:146px;width:5px;height:54px;border-radius:3px;
+    background:linear-gradient(90deg,#26262b,#3d3d44);box-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .screen{width:410px;height:502px;border-radius:44px;overflow:hidden;background:#000;position:relative}
+  .page{position:absolute;inset:0;display:flex;flex-direction:column;padding:16px 16px 30px}
+  .pg-title{font-size:15px;font-weight:600;color:var(--text2);text-align:center;padding:2px 0 10px}
+
+  .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text2)}
+  .ble{display:flex;align-items:center;gap:5px}
+  .ble i{width:8px;height:8px;border-radius:50%;background:var(--blue);display:inline-block}
+  .batt{display:flex;align-items:center;gap:5px}
+  .batt .shell{width:20px;height:10px;border:1.5px solid var(--text2);border-radius:3px;position:relative}
+  .batt .shell i{position:absolute;inset:1.5px;right:32%;background:var(--green);border-radius:1px}
+
+  /* 表盘 */
+  .h-time{font-family:Montserrat,-apple-system,sans-serif;font-size:64px;font-weight:600;text-align:center;margin-top:26px;letter-spacing:1px}
+  .h-date{text-align:center;color:var(--text2);font-size:14px;margin-top:2px}
+  .h-comps{display:flex;gap:10px;margin:30px 6px 0}
+  .comp{flex:1;background:var(--card);border-radius:14px;padding:12px 8px;text-align:center}
+  .comp .c-lbl{display:block;font-size:10px;color:var(--text2);margin-bottom:4px}
+  .comp b{font-size:16px;font-weight:600;font-family:Montserrat,sans-serif}
+  .h-fn-hint{margin-top:auto;text-align:center;font-size:11px;color:var(--text2);padding-bottom:6px}
+
+  /* 录音 */
+  .rec-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+  .rec-dot{display:flex;align-items:center;gap:8px;color:var(--red);font-size:14px;font-weight:600;letter-spacing:2px}
+  .rec-dot i{width:10px;height:10px;border-radius:50%;background:var(--red)}
+  .rec-time{font-family:Montserrat,-apple-system,sans-serif;font-size:56px;font-weight:500;font-variant-numeric:tabular-nums}
+  .rec-bars{display:flex;gap:3px;align-items:flex-end;height:56px}
+  .rec-bars i{width:6px;background:var(--red);border-radius:3px;opacity:.85}
+  .rec-marks{display:flex;gap:6px;font-size:10px;color:var(--amber);min-height:14px}
+  .rec-ops{display:flex;gap:12px;align-items:center;margin-top:6px}
+  .rop{background:var(--card);border-radius:14px;padding:12px 18px;font-size:14px;text-align:center}
+  .rop small{display:block;font-size:10px;color:var(--text2);margin-top:2px}
+  .rop.stop{background:#3a1518;border:1px solid var(--red);color:#ffb3b6;min-width:104px}
+  .rec-hint{font-size:10px;color:var(--text2);margin-top:8px;text-align:center}
+
+  /* 列表 */
+  .rows{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+  .rrow{background:var(--card);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+  .rrow .r-main{flex:1;min-width:0}
+  .rrow .r-main b{display:block;font-size:13px;font-weight:500}
+  .rrow .r-main span{font-size:11px;color:var(--text2)}
+  .rrow .r-meta{font-size:11px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+  .rrow .r-sync{width:18px;text-align:center;color:var(--green);font-size:13px}
+
+  /* 同步 */
+  .card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px}
+  .card .t{font-size:13px;font-weight:600;margin-bottom:8px}
+  .kv{display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:3px 0}
+  .kv b{color:var(--text);font-weight:500}
+  .kv b.bl{color:var(--blue)}
+  .syn-bar{height:6px;background:var(--card2);border-radius:3px;overflow:hidden;margin-top:8px}
+  .syn-bar i{display:block;height:100%;background:var(--blue);width:52%}
+
+  .dots{position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:center;gap:6px}
+  .dots i{width:6px;height:6px;border-radius:50%;background:var(--card2)}
+  .dots i.cur{background:var(--text)}
+</style>
+</head>
+<body>
+<div class="row">
+
+  <!-- 1 表盘 -->
+  <div class="item"><div class="zoom"><div class="watch"><div class="knob"></div><div class="kbtn"></div>
+    <div class="screen"><div class="page">
+      <div class="statusbar">
+        <span class="ble"><i></i>BLE</span>
+        <span class="batt"><span>68%</span><span class="shell"><i></i></span></span>
+      </div>
+      <div class="h-time">14:05</div>
+      <div class="h-date">10月14日 周二</div>
+      <div class="h-comps">
+        <div class="comp"><span class="c-lbl">存储</span><b>62%</b></div>
+        <div class="comp"><span class="c-lbl">待同步</span><b>2</b></div>
+        <div class="comp"><span class="c-lbl">最近录音</span><b>01:36</b></div>
+      </div>
+      <div class="h-fn-hint">按功能键开始录音</div>
+      <div class="dots"><i class="cur"></i><i></i><i></i></div>
+    </div></div>
+  </div></div><div class="cap">Watch face</div></div>
+
+  <!-- 2 录音中 -->
+  <div class="item"><div class="zoom"><div class="watch"><div class="knob"></div><div class="kbtn"></div>
+    <div class="screen"><div class="page">
+      <div class="rec-wrap">
+        <div class="rec-dot"><i></i>REC</div>
+        <div class="rec-time">12:47</div>
+        <div class="rec-bars" id="bars"></div>
+        <div class="rec-marks">◆ 03:12</div>
+        <div class="rec-ops">
+          <div class="rop">暂停<small>或双击功能键</small></div>
+          <div class="rop">标记<small>或长按功能键</small></div>
+          <div class="rop stop">按住停止</div>
+        </div>
+        <div class="rec-hint">10s 无操作自动熄屏，录音继续</div>
+      </div>
+    </div></div>
+  </div></div><div class="cap">Recording</div></div>
+
+  <!-- 3 同步 -->
+  <div class="item"><div class="zoom"><div class="watch"><div class="knob"></div><div class="kbtn"></div>
+    <div class="screen"><div class="page">
+      <div class="pg-title">同步</div>
+      <div class="card">
+        <div class="t">BLE 状态</div>
+        <div class="kv"><span>状态</span><b class="bl">已连接</b></div>
+        <div class="kv"><span>对端</span><b>Beecord Studio（Mac）</b></div>
+        <div class="kv"><span>上次对时</span><b>2026-10-13 21:14</b></div>
+      </div>
+      <div class="card">
+        <div class="t">文件同步</div>
+        <div class="kv"><span>待同步</span><b>2 条</b></div>
+        <div class="kv"><span>方式</span><b>Mac 端发起 · 自动对时</b></div>
+        <div class="syn-bar"><i></i></div>
+        <div class="kv"><span>同步中</span><b>1/2 REC_20261014_110518</b></div>
+      </div>
+      <div class="dots"><i></i><i></i><i class="cur"></i></div>
+    </div></div>
+  </div></div><div class="cap">BLE sync</div></div>
+
+  <!-- 4 录音列表 -->
+  <div class="item"><div class="zoom"><div class="watch"><div class="knob"></div><div class="kbtn"></div>
+    <div class="screen"><div class="page">
+      <div class="pg-title">录音列表（4）</div>
+      <div class="rows">
+        <div class="rrow"><div class="r-main"><b>REC_20261014_134722</b><span>10-14 13:47</span></div>
+          <div class="r-meta">01:36<br>0.5 MB</div><div class="r-sync"></div></div>
+        <div class="rrow"><div class="r-main"><b>REC_20261014_110518</b><span>10-14 11:05</span></div>
+          <div class="r-meta">05:05<br>1.6 MB</div><div class="r-sync"></div></div>
+        <div class="rrow"><div class="r-main"><b>REC_20261014_093012</b><span>10-14 09:30</span></div>
+          <div class="r-meta">30:42<br>9.9 MB</div><div class="r-sync">✓</div></div>
+        <div class="rrow"><div class="r-main"><b>REC_20261013_190204</b><span>10-13 19:02</span></div>
+          <div class="r-meta">12:34<br>4.0 MB</div><div class="r-sync">✓</div></div>
+      </div>
+      <div class="dots"><i></i><i class="cur"></i><i></i></div>
+    </div></div>
+  </div></div><div class="cap">Recordings</div></div>
+
+</div>
+<script>
+  // 确定性的录音柱高度（避免每次渲染不一致）
+  const H=[30,52,78,44,92,66,38,84,58,26,70,96,48,34,74,88,40,62,20,80,54,36,68,46];
+  document.getElementById("bars").innerHTML = H.map(h=>`<i style="height:${h}%"></i>`).join("");
+</script>
+</body>
+</html>

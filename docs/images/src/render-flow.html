@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>render-flow</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root{ --card:#1c1c1e; --card2:#2c2c2e; --text:#ececf1; --text2:#9a9aa2;
+    --red:#e5484d; --green:#30d158; --blue:#0a84ff; --amber:#f5a623; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{background:transparent;padding:26px 24px;display:inline-block;
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:var(--text)}
+  .flow{display:flex;align-items:center;gap:0}
+  .node{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .cap{font-size:14px;font-weight:600;color:#d8d8de;text-align:center}
+  .cap small{display:block;font-size:11px;font-weight:400;color:#8e8e93;margin-top:2px}
+
+  /* 箭头 */
+  .arr{width:118px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 10px}
+  .arr .a-lbl{font-size:11.5px;font-weight:600;color:var(--amber);text-align:center;white-space:nowrap}
+  .arr .a-sub{font-size:10px;color:#8e8e93;text-align:center;white-space:nowrap}
+  .arr .a-line{position:relative;width:100%;height:2px;background:linear-gradient(90deg,#ffce5c,#f0980a);margin:2px 0}
+  .arr .a-line::after{content:"";position:absolute;right:-1px;top:-4px;
+    border-left:9px solid #f0980a;border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+  /* 节点 1：手表 */
+  .watch{background:linear-gradient(160deg,#1b1b1f,#101012);border-radius:34px;padding:10px;
+    box-shadow:0 14px 36px rgba(0,0,0,.5),inset 0 0 0 1.5px #2b2b30}
+  .screen{width:205px;height:251px;border-radius:26px;overflow:hidden;background:#000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+  .rec-dot{display:flex;align-items:center;gap:5px;color:var(--red);font-size:9px;font-weight:600;letter-spacing:1.5px}
+  .rec-dot i{width:6px;height:6px;border-radius:50%;background:var(--red)}
+  .rec-time{font-family:Montserrat,-apple-system,sans-serif;font-size:30px;font-weight:500}
+  .rec-bars{display:flex;gap:2px;align-items:flex-end;height:30px}
+  .rec-bars i{width:4px;background:var(--red);border-radius:2px;opacity:.85}
+
+  /* 节点 2/3/4：卡片 */
+  .panel{width:300px;height:220px;background:var(--card);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;overflow:hidden;box-shadow:0 14px 36px rgba(0,0,0,.4);
+    display:flex;flex-direction:column}
+  .panel.sm{width:252px}
+  .p-bar{height:24px;flex:none;display:flex;align-items:center;gap:5px;padding:0 10px;
+    background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08)}
+  .p-bar i{width:7px;height:7px;border-radius:50%}
+  .p-bar .r{background:#ff5f57}.p-bar .y{background:#febc2e}.p-bar .g{background:#28c840}
+  .p-bar span{margin-left:6px;font-size:9.5px;color:var(--text2)}
+  .p-body{flex:1;padding:10px 12px;font-size:10.5px;min-height:0}
+  .frow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .frow:last-child{border-bottom:none}
+  .frow .fn{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .frow .fs{color:var(--text2);font-variant-numeric:tabular-nums}
+  .frow .ok{color:var(--green)}
+  .frow .dl{color:var(--blue)}
+  .trow{display:flex;gap:8px;padding:4px 0}
+  .trow .ts{color:var(--blue);font-variant-numeric:tabular-nums;flex:none;font-size:9.5px;padding-top:1px}
+  .trow span:last-child{color:var(--text)}
+  .ssec{margin-bottom:8px}
+  .ssec h4{font-size:10px;color:var(--amber);margin-bottom:3px}
+  .ssec li{font-size:10px;color:var(--text);margin-left:13px;margin-bottom:2px;line-height:1.45}
+  .ssec li::marker{color:var(--text2)}
+</style>
+</head>
+<body>
+<div class="flow">
+
+  <div class="node">
+    <div class="watch"><div class="screen">
+      <div class="rec-dot"><i></i>REC</div>
+      <div class="rec-time">12:47</div>
+      <div class="rec-bars" id="bars"></div>
+    </div></div>
+    <div class="cap">1 · Record<small>Ogg Opus 16 kHz → TF card</small></div>
+  </div>
+
+  <div class="arr"><span class="a-lbl">BuzzLink</span><div class="a-line"></div><span class="a-sub">BLE · MTU 247 · CRC16</span></div>
+
+  <div class="node">
+    <div class="panel">
+      <div class="p-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>Beecord Studio — 设备</span></div>
+      <div class="p-body">
+        <div class="frow"><span class="fn">2026-10-14 13_47_22.ogg</span><span class="fs">0.5 MB</span><span class="ok">✓ 已校验</span></div>
+        <div class="frow"><span class="fn">2026-10-14 11_05_18.ogg</span><span class="fs">1.6 MB</span><span class="ok">✓ 已校验</span></div>
+        <div class="frow"><span class="fn">2026-10-14 09_30_12.ogg</span><span class="fs">9.9 MB</span><span class="dl">52%</span></div>
+        <div class="frow"><span class="fn">2026-10-13 19_02_04.ogg</span><span class="fs">4.0 MB</span><span class="fs">未下载</span></div>
+      </div>
+    </div>
+    <div class="cap">2 · Sync<small>auto-sync · CRC verify</small></div>
+  </div>
+
+  <div class="arr"><span class="a-lbl">whisper.cpp</span><div class="a-line"></div><span class="a-sub">local, on-device</span></div>
+
+  <div class="node">
+    <div class="panel sm">
+      <div class="p-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>转写</span></div>
+      <div class="p-body">
+        <div class="trow"><span class="ts">00:00</span><span>好，那我们开始今天的周会。</span></div>
+        <div class="trow"><span class="ts">00:04</span><span>BLE 文件同步已经全链路跑通。</span></div>
+        <div class="trow"><span class="ts">00:09</span><span>下载速率稳定在 52KB/s，CRC 全部通过。</span></div>
+        <div class="trow"><span class="ts">00:14</span><span>下一步是开发板到货后的固件移植。</span></div>
+      </div>
+    </div>
+    <div class="cap">3 · Transcribe<small>whisper-small · private</small></div>
+  </div>
+
+  <div class="arr"><span class="a-lbl">Kimi · DeepSeek · Qwen</span><div class="a-line"></div><span class="a-sub">optional · your own key</span></div>
+
+  <div class="node">
+    <div class="panel sm">
+      <div class="p-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>AI 纪要</span></div>
+      <div class="p-body">
+        <div class="ssec"><h4>要点</h4><ul>
+          <li>BLE 同步链路跑通：52KB/s，CRC 全过</li>
+          <li>固件移植等待开发板到货</li>
+        </ul></div>
+        <div class="ssec"><h4>待办</h4><ul>
+          <li>到货后完成 M1 硬件自检</li>
+          <li>Studio P0 进入实现</li>
+        </ul></div>
+      </div>
+    </div>
+    <div class="cap">4 · Summarize<small>cloud AI · explicit opt-in</small></div>
+  </div>
+
+</div>
+<script>
+  const H=[30,52,78,44,92,66,38,84,58,26,70,96,48,34,74,88,40,62,20,80,54,36,68,46];
+  document.getElementById("bars").innerHTML = H.slice(0,16).map(h=>`<i style="height:${h}%"></i>`).join("");
+</script>
+</body>
+</html>
