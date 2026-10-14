@@ -45,7 +45,7 @@ Beecord 是开源的 AI 录音手表项目：基于微雪 ESP32-S3-Touch-AMOLED-
 | Path | Content |
 |---|---|
 | `firmware/` | ESP-IDF project (ESP32-S3, NimBLE, LVGL) |
-| `apps/mac/` | Beecord Studio (SwiftUI, CoreBluetooth) |
+| `apps/mac/` | BeecordStudio Xcode project (Studio + BuzzLinkSim + UITests) and `Packages/BuzzLink` (BuzzLinkCore SwiftPM package) |
 | `sdk/python/`, `sdk/swift/` | BuzzLink client SDKs |
 | `docs/` | BuzzLink protocol spec, guides |
 | `tools/` | Development utilities |
