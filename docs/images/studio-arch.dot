@@ -1,0 +1,57 @@
+digraph studio_arch {
+  graph [fontname="PingFang SC", fontsize=13, rankdir=TB, bgcolor="transparent",
+         nodesep=0.3, ranksep=0.45, splines=polyline, pad=0.2, newrank=true];
+  node  [fontname="PingFang SC", fontsize=11, shape=box, style="rounded,filled",
+         color="#3A3A3C", fontcolor="#1C1C1E", fillcolor="#FFFFFF", penwidth=1.2, margin="0.14,0.08"];
+  edge  [fontname="PingFang SC", fontsize=9, color="#8E8E93", fontcolor="#6E6E73", arrowsize=0.7];
+
+  subgraph cluster_app {
+    label="BeecordStudio.app（SwiftUI）"; fontsize=13;
+    style="rounded,filled"; fillcolor="#FFF9EF"; color="#F5A623"; penwidth=1.5;
+
+    feat_device  [label="Device\n连接 / 同步", fillcolor="#F5F5F7"];
+    feat_library [label="Library\n播放 / 管理", fillcolor="#F5F5F7"];
+    feat_console [label="Console\n协议控制台（原始命令 / 帧日志）", fillcolor="#F5F5F7"];
+    feat_settings[label="Settings\n通用 / AI / 转写", fillcolor="#F5F5F7"];
+    svc_sync   [label="SyncEngine\n自动同步 / 断连恢复", fillcolor="#F5F5F7"];
+    svc_player [label="PlayerEngine\nOgg 解码 / m4a 转码\n播放 / 导出 / 波形", fillcolor="#F5F5F7"];
+    svc_ai     [label="AIService（P1）\nOpenAI 兼容流式", fillcolor="#F0F7FF"];
+    svc_asr    [label="TranscribeEngine（P1）\nwhisper.cpp", fillcolor="#F0F7FF"];
+
+    feat_device -> feat_library -> feat_console -> feat_settings [style=invis];
+    svc_sync -> svc_player -> svc_ai -> svc_asr [style=invis];
+    feat_device -> svc_sync;
+    feat_library -> svc_player;
+    feat_library -> svc_ai  [style=dashed];
+    feat_library -> svc_asr [style=dashed];
+    { rank=same; feat_device; feat_library; feat_console; feat_settings; }
+    { rank=same; svc_sync; svc_player; svc_ai; svc_asr; }
+  }
+
+  subgraph cluster_pkg {
+    label="Packages/BuzzLink（SwiftPM，无 UI 依赖）"; fontsize=13;
+    style="rounded,filled"; fillcolor="#F0F7FF"; color="#0A84FF"; penwidth=1.5;
+    bl     [label="BuzzLink（Central）\n扫描 / 连接 / 会话状态机 / 下载重组", fillcolor="#FFFFFF"];
+    blcore [label="BuzzLinkCore\n帧编解码 / CRC16 / 向量解析（纯算法，跨平台）", fillcolor="#FFFFFF"];
+    bl -> blcore;
+  }
+
+  subgraph cluster_sim {
+    label="BuzzLinkSim.app（虚拟设备）"; fontsize=13;
+    style="rounded,filled"; fillcolor="#F3FFF5"; color="#30D158"; penwidth=1.5;
+    sim [label="Peripheral 设备侧\n广播 / 应答 / 推流（内置样本）", fillcolor="#FFFFFF"];
+  }
+
+  sys_ble   [label="CoreBluetooth", fillcolor="#ECECF1"];
+  sys_store [label="UserDefaults / Keychain\n录音库目录", fillcolor="#ECECF1"];
+  ext_ai    [label="AI 端点（P1）\nKimi / DeepSeek / Qwen", fillcolor="#ECECF1"];
+
+  svc_sync   -> bl;
+  feat_console -> bl [style=dashed];
+  svc_player -> sys_store;
+  feat_settings -> sys_store;
+  svc_ai     -> ext_ai [style=dashed];
+  sim        -> blcore;
+  bl         -> sys_ble;
+  sim        -> sys_ble;
+}
