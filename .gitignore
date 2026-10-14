@@ -1,0 +1,22 @@
+# ESP-IDF
+build/
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+
+# macOS / Xcode
+.DS_Store
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 其他
+*.log
+Thumbs.db
