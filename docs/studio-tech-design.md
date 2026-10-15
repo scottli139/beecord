@@ -29,10 +29,12 @@ apps/mac/
 │   ├── Features/{Device,Library,Console,Settings}/
 │   ├── Services/{SyncEngine,PlayerEngine,ConsoleStore,AIService(P1),TranscribeEngine(P1)}/
 │   └── Resources/Assets.xcassets    # 图标取自 docs/brand
-├── BuzzLinkSim/                     # 虚拟设备 app target（开发/测试对端）
+├── BuzzLinkSim/                     # 虚拟设备 app target（macOS + iOS/iPadOS 双平台；BLE 外设
+│                                    #   + loopback TCP 127.0.0.1:40404 同机通道，见 TESTING.md §4）
 ├── Packages/BuzzLink/               # 本地 SwiftPM
 │   ├── Sources/BuzzLinkCore/        # 纯算法：帧/CRC/向量（无 CoreBluetooth 依赖）
-│   ├── Sources/BuzzLink/            # Central 封装
+│   ├── Sources/BuzzLinkSimCore/     # 设备侧协议引擎 SimEngine + 故障注入（纯逻辑，无 IO 依赖）
+│   ├── Sources/BuzzLink/            # Central 封装（T2）
 │   └── Tests/                       # XCTest + Fixtures（合成向量 JSON）
 └── BeecordStudioUITests/            # AX 驱动 P0 主流程
 ```
@@ -171,8 +173,8 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | T0 | 音频链 spike | ✅ 已完成 | — |
 | T0.5 | **BUZZLINK.md 补全**（帧字段/命令集/常量） | 0.5d | T1 前必须 |
 | T1 | BuzzLinkCore + XCTest | 1d | T0.5 |
-| T2 | BuzzLink Central（状态机/下载重组） | 2d | T1 |
-| T3 | BuzzLinkSim（含故障注入、内置合成样本） | 1d | T1 |
+| T2 | BuzzLink Central（状态机/下载重组；Transport 抽象：BLE + loopback TCP，见 TESTING.md §4） | 2d | T1 |
+| T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | ✅ 已完成 | T1 |
 | T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | 1d | — |
 | T5 | 设备页 + SyncEngine | 2d | T2、T4 |
 | T6 | 录音库 + 播放器 | 2d | T4 |
@@ -188,7 +190,7 @@ P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。
 | BLE 吞吐有限（经验值 10-30 KB/s，1h 录音约 20MB → 同步 10-30min） | 进度诚实展示 + 自动同步后台化；固件侧后续调 MTU/连接间隔/2M PHY |
 | whisper 模型体积（base ≈142MB） | 设置页显式下载 + 进度 + 校验；不内置 |
 | Personal Team 签名的用户信任门槛 | README 构建指引；后续若有付费开发者账号再公证 |
-| Sandbox 下 CBPeripheralManager（Sim） | Sim 单独 entitlement，P0 早期验证（T3 含冒烟） |
+| Sandbox 下 CBPeripheralManager（Sim） | ✅ T3 已验证：macOS 沙盒外设广播可用；新发现：**同机 Central 无法发现本机 Peripheral**（实测），对策 = loopback TCP 同机通道 + Sim 双平台跨机（TESTING.md §4） |
 | 超长录音内存占用 | 波形/导出分块流式，禁止整段 PCM 驻留 |
 
 ## 9. 开放问题

@@ -49,6 +49,12 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
    探索性场景可用 AppleScript / JXA（需授予辅助功能权限，脚本放 `apps/mac/Tests/ax/`）。
 3. **对端**：一律使用 BuzzLinkSim（虚拟设备），不依赖实体硬件；Sim 的故障注入开关
    覆盖异常路径（见 §5）。
+   - **传输通道**：同机联调/UITests 走 **loopback TCP**（`127.0.0.1:40404`，Sim 默认开启）——
+     平台限制：同一台 macOS 上 Central 无法发现本机 Peripheral 的 BLE 广播（半双工无线电
+     不收自身发射时隙，CoreBluetooth 无软件回环，2026-10-15 实测确认），因此 Sim 提供
+     与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
+   - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
+     作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
 4. **流程**：启动 Sim → 启动 Studio → 按 P0 流程脚本执行 → 断言 AXValue/静态文本/库目录产物。
 5. **缺口处理**：发现无法通过 AX 表达的操作 = 实现缺陷，先补 AX id 再测；
    发现的问题记录为 GitHub issue（附脚本与断言输出）。
@@ -86,6 +92,7 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
 
 ## 8. 测试数据纪律
 
-- 测试音频一律**合成样本**（脚本生成 16kHz 单声道 Ogg Opus，工具在 `tools/`）；
+- 测试音频一律**合成样本**（脚本生成 16kHz 单声道 Ogg Opus：`tools/make_sim_samples.sh`，
+  产物提交在 `apps/mac/BuzzLinkSim/Resources/Samples/`）；
   真实录音、个人数据不入库。
 - 向量中的文件名/设备名使用虚构值（如 `REC_20260101_120000`、`BCD-DEMO`）。
