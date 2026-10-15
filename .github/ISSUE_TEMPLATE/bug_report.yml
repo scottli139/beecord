@@ -1,0 +1,115 @@
+name: Bug Report
+description: Something doesn't work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! The project is in early
+        development (pre-M0) — please check existing issues first, and note
+        that many features are simply not implemented yet.
+
+        **Do not paste API keys, personal information, or real recording data
+        into this report.**
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear, concise summary of the bug.
+      placeholder: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include error messages verbatim.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that reliably trigger the bug.
+      placeholder: |
+        1. Start BuzzLinkSim and enable loopback
+        2. Open Beecord Studio and connect to the device
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the project does this affect?
+      options:
+        - Firmware (ESP32-S3)
+        - Beecord Studio (macOS app)
+        - BuzzLinkSim (virtual device)
+        - SDK (Python / Swift)
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: macos_version
+    attributes:
+      label: macOS version
+      description: Apple menu → About This Mac. Write "n/a" if not applicable.
+      placeholder: e.g. macOS 26.0
+  - type: input
+    id: xcode_version
+    attributes:
+      label: Xcode version
+      description: Run `xcodebuild -version`. Write "n/a" if not applicable.
+      placeholder: e.g. Xcode 26.0 (16A242d)
+  - type: input
+    id: commit
+    attributes:
+      label: Commit / version
+      description: Output of `git rev-parse --short HEAD`, for the affected component(s).
+      placeholder: e.g. abc1234 (apps/mac), def5678 (firmware)
+  - type: dropdown
+    id: device_under_test
+    attributes:
+      label: Device under test
+      description: What played the device role during reproduction?
+      options:
+        - BuzzLinkSim — loopback TCP (127.0.0.1:40404)
+        - BuzzLinkSim — BLE (second Mac / iPhone / iPad)
+        - Waveshare ESP32-S3-Touch-AMOLED-2.06 board
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: ios_version
+    attributes:
+      label: iOS / iPadOS version (optional)
+      description: Only if BuzzLinkSim ran on an iPhone/iPad.
+      placeholder: e.g. iOS 26.0
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / console output
+      description: |
+        Relevant log excerpts (Console.app / os.Logger output, Sim log pane,
+        serial monitor for firmware). **Redact API keys and personal data
+        before pasting.**
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have redacted API keys and personal data from the report
+          required: true
+        - label: I have searched existing issues to avoid a duplicate
+          required: true

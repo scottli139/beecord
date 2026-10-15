@@ -1,0 +1,63 @@
+name: Feature Request
+description: Suggest an idea or improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an idea! The project is in early development
+        (pre-M0), so many things are planned but not built yet — check
+        [README.md](../../README.md) and existing issues/PRs first.
+
+        Note the project scope: watch firmware + BuzzLink BLE sync + Beecord
+        Studio + SDKs. Features outside that scope are unlikely to be accepted.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What problem does this solve? What are you trying to do that currently doesn't work well?
+      placeholder: I'm trying to ... but ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you'd like. Mock-ups, protocol sketches, and prior art from other projects are all helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways to solve this you thought about, and why they fall short.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the project would this touch?
+      options:
+        - Firmware (ESP32-S3)
+        - Beecord Studio (macOS app)
+        - BuzzLinkSim (virtual device)
+        - BuzzLink protocol
+        - SDK (Python / Swift)
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — hardware notes, related issues, constraints.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to avoid a duplicate
+          required: true
+        - label: I am willing to help implement this (guidance available in CONTRIBUTING.md)
+          required: false
