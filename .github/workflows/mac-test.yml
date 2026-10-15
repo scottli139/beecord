@@ -1,0 +1,38 @@
+name: mac-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # Pin Xcode to the version used for local development. macos-26 images
+      # preinstall several 26.x releases; the default may drift, so select
+      # explicitly. Update the path when bumping the required version.
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          swift --version
+
+      - name: Run BuzzLink package tests
+        run: |
+          cd apps/mac/Packages/BuzzLink
+          swift test
+
+      - name: Run BeecordStudio unit tests
+        run: |
+          cd apps/mac
+          xcodebuild test -scheme BeecordStudio \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
