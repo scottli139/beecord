@@ -28,7 +28,11 @@ cd firmware/test_host && make test
 ```
 
 本地 SwiftPM 包的测试 target 不属于 xcodeproj scheme，故 L1 与 L2/L3 分两条命令；
-三个命令都必须在提交前本地通过；接入 CI 后作为合并门禁（GitHub Actions，排期待定）。
+三个命令都必须在提交前本地通过；CI 门禁工作流 `mac-test`（`.github/workflows/mac-test.yml`）
+执行前两条（固件宿主单测待 M0 后接入）。
+
+> 调试附记：`swift test` 输出重定向到文件/管道时 XCTest stdout 为块缓冲，
+> 不可流式观察（T2 调试期实测）；需要实时输出时直接前台跑。
 
 ## 3. 测试向量（协议行为的唯一事实来源）
 
@@ -55,6 +59,9 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
      与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
+   - **验证缺口（2026-10-15，T2 遗留）**：`BuzzLink.BLETransport` 目前仅编译验证，
+     扫描/连接/订阅/写入路径须在 T5 前做一次跨机实测（Central 在 Mac、Sim 在 iPhone/iPad，
+     跨机 BLE 全会话）；`LoopbackLiveSmokeTests` 只覆盖 loopback 通道。
 4. **流程**：启动 Sim → 启动 Studio → 按 P0 流程脚本执行 → 断言 AXValue/静态文本/库目录产物。
 5. **缺口处理**：发现无法通过 AX 表达的操作 = 实现缺陷，先补 AX id 再测；
    发现的问题记录为 GitHub issue（附脚本与断言输出）。

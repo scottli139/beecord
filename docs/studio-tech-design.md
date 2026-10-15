@@ -71,6 +71,11 @@ apps/mac/
   `endVerify(id:)` → CRC 比对结果；删除等写命令 P1 再评估；
 - **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准（块大小、
   通道号、命令字待规范补全后填入）。
+- **实现注记（T2，2026-10-15）**：T2 交付的 `BuzzLinkClient` 提供整文件
+  `download(fileID:progress:)`（内置 BEGIN/CHUNK/END 全流程与重试），未暴露
+  beginDownload/chunk 流/endVerify 细粒度 API——T7 控制台如需逐帧展示再扩展。
+  取消语义为 P0 简化版：取消下载任务不中断在飞命令，由超时（≤10s）兜底回收；
+  T5 SyncEngine 如需即时取消再补。验证矩阵见 TESTING.md §4 缺口条目。
 
 ### 4.3 可靠性策略（P0）
 
