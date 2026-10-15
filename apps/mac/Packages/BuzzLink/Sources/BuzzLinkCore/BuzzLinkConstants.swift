@@ -76,6 +76,13 @@ public enum BuzzLinkConstants {
     public static let eventNotifyUUIDString = "C22080F5-0E96-4823-8909-1DD2CE427D2D"
     /// 广播名前缀（`BCD-XXXX`）
     public static let deviceNamePrefix = "BCD-"
+
+    // MARK: - Loopback 传输（TESTING.md §4 同机开发通道；非空口协议常量）
+
+    /// BuzzLinkSim 的同机回环 TCP 监听端口（仅开发/测试用途）。
+    /// 背景：macOS 同机 Central 无法发现本机 Peripheral 广播，同机联调走此通道，
+    /// 字节流与空口完全同构（§3.3 字节流重组天然适配流式 socket）。
+    public static let loopbackPort: UInt16 = 40404
 }
 
 /// 帧类型（BUZZLINK.md §5.1）。
