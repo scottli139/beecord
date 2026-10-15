@@ -6,12 +6,17 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "BuzzLinkCore", targets: ["BuzzLinkCore"]),
-        .library(name: "BuzzLinkSimCore", targets: ["BuzzLinkSimCore"])
+        .library(name: "BuzzLinkSimCore", targets: ["BuzzLinkSimCore"]),
+        .library(name: "BuzzLink", targets: ["BuzzLink"])
     ],
     targets: [
         .target(name: "BuzzLinkCore"),
         .target(
             name: "BuzzLinkSimCore",
+            dependencies: ["BuzzLinkCore"]
+        ),
+        .target(
+            name: "BuzzLink",
             dependencies: ["BuzzLinkCore"]
         ),
         .testTarget(
@@ -22,6 +27,10 @@ let package = Package(
         .testTarget(
             name: "BuzzLinkSimCoreTests",
             dependencies: ["BuzzLinkSimCore", "BuzzLinkCore"]
+        ),
+        .testTarget(
+            name: "BuzzLinkTests",
+            dependencies: ["BuzzLink", "BuzzLinkCore", "BuzzLinkSimCore"]
         )
     ],
     swiftLanguageModes: [.v6]
