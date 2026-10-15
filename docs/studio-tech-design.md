@@ -191,7 +191,7 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | T1 | BuzzLinkCore + XCTest | ✅ 已完成 | T0.5 |
 | T2 | BuzzLink Central（BuzzLinkClient + BLE/loopback Transport；51 用例，含进程内 SimEngine 集成） | ✅ 已完成（2026-10-15） | T1 |
 | T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | ✅ 已完成 | T1 |
-| T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | 1d | — |
+| T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | ✅ 已完成（2026-10-15） | — |
 | T5 | 设备页 + SyncEngine | 2d | T2、T4 |
 | T6 | 录音库 + 播放器 | 2d | T4 |
 | T7 | 协议控制台 + 向量导出 | 1d | T2、T4 |
