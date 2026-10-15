@@ -52,9 +52,14 @@ final class LoopbackLiveSmokeTests: XCTestCase {
         try await client.connect()
         defer { Task { await client.disconnect() } }
 
-        // 连接建立后 Sim 主动推 INFO（§6.1，session=0x00）
-        try await Task.sleep(for: .milliseconds(200))
-        let pushed = await client.lastDeviceInfo
+        // 连接建立后 Sim 主动推 INFO（§6.1，session=0x00）；有界轮询替代固定 sleep
+        var pushed: BuzzLinkDeviceInfo?
+        for _ in 0..<200 where pushed == nil {
+            pushed = await client.lastDeviceInfo
+            if pushed == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
         XCTAssertEqual(pushed?.model, "beecord-sim", "应收到 Sim 的 INFO 推送")
 
         // INFO_GET 与推送同值

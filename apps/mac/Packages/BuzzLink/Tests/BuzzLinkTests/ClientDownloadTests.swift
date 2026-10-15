@@ -308,8 +308,8 @@ final class ClientDownloadTests: XCTestCase {
             XCTAssertEqual(device.beginCount, 2)
         }
 
-        // 第一趟正常完成
-        device.deliverChunks(session: device.lastBeginSession, transport: transport)
+        // 第一趟正常完成（用快照的 session：第二个 BEGIN 可能已改写 lastBeginSession）
+        device.deliverChunks(session: firstSession, transport: transport)
         let result = try await first.value
         XCTAssertEqual(result.data, data)
         await client.disconnect()

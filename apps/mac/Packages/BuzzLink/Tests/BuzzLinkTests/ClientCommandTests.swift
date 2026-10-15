@@ -373,10 +373,15 @@ final class ClientCommandTests: XCTestCase {
         } catch {
             XCTFail("意外错误类型：\(error)")
         }
-        // 迟到响应（session=1）落到 unmatched，不污染下一次匹配
+        // 迟到响应（session=1）落到 unmatched，不污染下一次匹配（有界轮询替代固定 sleep）
         transport.emitInbound(try TestResponseBytes.listResp(session: 1, total: 0, offset: 0, entries: []))
-        try await Task.sleep(for: .milliseconds(20))
-        let unmatched = await client.unmatchedFrameCount
+        var unmatched = 0
+        for _ in 0..<200 where unmatched == 0 {
+            unmatched = await client.unmatchedFrameCount
+            if unmatched == 0 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
         XCTAssertEqual(unmatched, 1)
 
         // 新命令使用新 session，正常完成

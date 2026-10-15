@@ -241,7 +241,7 @@ final class SimEngineIntegrationTests: XCTestCase {
         faults.silentMidDownload = true
         faults.silentDuration = 0.4
         let faultyEngine = SimEngine(files: [file], faults: faults)
-        let (client, transport) = try await makeClient(
+        let (client, _) = try await makeClient(
             engine: faultyEngine, commandTimeout: 0.25, chunkTimeout: 0.2
         )
         do {
@@ -249,8 +249,13 @@ final class SimEngineIntegrationTests: XCTestCase {
             XCTFail("静默持续触发时下载应耗尽重试")
         } catch BuzzLinkError.downloadRetryExhausted(_, let attempts, let lastError) {
             XCTAssertEqual(attempts, 3)
-            guard case BuzzLinkError.chunkTimeout = lastError else {
-                return XCTFail("末次错误应为 chunkTimeout，实际 \(lastError)")
+            // 静默期客户端挂在"等命令响应"还是"等块"取决于调度，两种超时皆为
+            // 合法的"静默导致失败"表现（CI 慢 runner 上尤甚）；语义核心是重试耗尽。
+            switch lastError {
+            case .chunkTimeout, .commandTimeout:
+                break
+            default:
+                XCTFail("末次错误应为 chunkTimeout 或 commandTimeout，实际 \(lastError)")
             }
         } catch {
             XCTFail("意外错误类型：\(error)")

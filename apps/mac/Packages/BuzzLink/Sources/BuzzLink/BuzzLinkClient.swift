@@ -60,6 +60,9 @@ public actor BuzzLinkClient {
     private var earlyChunks: [UInt8: [BuzzLinkFrame]] = [:]
     /// connect() 等待 `.ready` 的等待器（观察循环驱动状态，保证流内顺序）
     private var readyWaiter: ReadyWaiter?
+    /// disconnect() 已同步收敛；传输随后异步送达的 `.disconnected` 为陈旧事件，忽略一次
+    /// （否则可能毒化下一次 connect 的 ready 等待或重复 teardown）
+    private var isSuppressingDisconnectEvent = false
 
     // MARK: - 初始化
 
@@ -119,6 +122,8 @@ public actor BuzzLinkClient {
         do {
             try await transport.connect()
         } catch {
+            // 丢弃本次失败尝试后续异步送达的陈旧状态事件（.connecting/.ready/.disconnected）
+            isSuppressingDisconnectEvent = true
             handleTransportDisconnected()
             throw mapTransportError(error)
         }
@@ -132,8 +137,9 @@ public actor BuzzLinkClient {
 
     /// 断开连接（未完成命令与下载立即以 `.disconnected` 失败；返回时状态已收敛）。
     public func disconnect() {
+        isSuppressingDisconnectEvent = true
         transport.disconnect()
-        // 同步收敛：传输的 .disconnected 异步到达时由 handleTransportDisconnected 幂等去重
+        // 同步收敛：传输的 .disconnected 异步到达时由 observeTransportState 忽略一次
         handleTransportDisconnected()
     }
 
@@ -680,6 +686,11 @@ public actor BuzzLinkClient {
         case .ready:
             emitState(.ready)
         case .disconnected:
+            if isSuppressingDisconnectEvent {
+                // disconnect() 已同步收敛，本事件为其传输侧回声，忽略
+                isSuppressingDisconnectEvent = false
+                return
+            }
             handleTransportDisconnected()
         }
     }
