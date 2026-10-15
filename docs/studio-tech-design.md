@@ -1,12 +1,14 @@
 # Beecord Studio 技术设计（macOS）
 
-> 状态：**v1.0 定稿**（2026-10-14 评审通过：总体形态与 PlayerEngine 决策按本方案执行；
-> AI 预设 Kimi 默认模型改为 `kimi-k3`，见 §5.5）。
+> 状态：**v1.1**（2026-10-15：T0.5/T1/T2/T3 已落地，本文同步实施现状；下一步 T4/T5）。
+> v1.0 于 2026-10-14 评审通过：总体形态与 PlayerEngine 决策按本方案执行；
+> AI 预设 Kimi 默认模型改为 `kimi-k3`，见 §5.5。
 > 上游依据：[`ux-design.md`](ux-design.md)（交互定稿）、
 > [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)（令牌 + AX 规则 R1-R8）、[`BUZZLINK.md`](BUZZLINK.md)（协议规范）、
 > [`BRAND.md`](BRAND.md)（品牌资产）。实施约束：[`CODING_STANDARDS.md`](CODING_STANDARDS.md)、
 > [`TESTING.md`](TESTING.md)。
-> 已决工程参数：部署目标 **macOS 15**；原生 `.xcodeproj` 入库；Personal Team 签名；
+> 已决工程参数：部署目标 **macOS 15**；原生 `.xcodeproj` 入库；仓内签名为 Manual + ad-hoc
+> （CI 用 `CODE_SIGNING_ALLOWED=NO`；本地真机调试用命令行覆盖个人证书，签名信息不入库）；
 > Bundle ID `com.beeuc.beecord.studio`；Swift 6.3 / SwiftUI。
 
 ## 1. 目标与范围
@@ -34,8 +36,9 @@ apps/mac/
 ├── Packages/BuzzLink/               # 本地 SwiftPM
 │   ├── Sources/BuzzLinkCore/        # 纯算法：帧/CRC/向量（无 CoreBluetooth 依赖）
 │   ├── Sources/BuzzLinkSimCore/     # 设备侧协议引擎 SimEngine + 故障注入（纯逻辑，无 IO 依赖）
-│   ├── Sources/BuzzLink/            # Central 封装（T2）
-│   └── Tests/                       # XCTest + Fixtures（合成向量 JSON）
+│   ├── Sources/BuzzLink/            # ✅ T2 已交付：Central 封装（BuzzLinkClient actor
+│   │                                #   + BLE/loopback 双 Transport）
+│   └── Tests/                       # 三个 test target（Core/SimCore/Central 共 136 用例）+ Fixtures
 └── BeecordStudioUITests/            # AX 驱动 P0 主流程
 ```
 
@@ -43,13 +46,15 @@ apps/mac/
 - 并发模型：BLE 回调 → `AsyncStream`；UI 层 `@Observable`；下载/转写任务结构化并发。
 - Sandbox 开启：`com.apple.security.device.bluetooth`、`com.apple.security.network.client`、
   `files.user-selected.read-write`（导出/模型目录选择）。Sim 同样开 Sandbox。
-- 分发：GitHub 源码 + 用户自行构建；README 写清 Personal Team 构建步骤。
+- 分发：GitHub 源码 + 用户自行构建；README 写清构建步骤（ad-hoc 签名即可本地运行，
+  无需开发者账号；CI 亦按无证书构建）。
 
 ## 3. 总体架构
 
 ![架构图](images/studio-arch.png)
 
-依赖规则：**UI 不直接触碰 CoreBluetooth**；`BuzzLinkCore` 仅依赖 Foundation（可在 Linux 跑单测）；
+依赖规则：**UI 不直接触碰 CoreBluetooth**，设备交互只经 `BuzzLink`（Central 层，
+唯一含 CoreBluetooth/Network 依赖的 SDK target）；`BuzzLinkCore` 仅依赖 Foundation（可在 Linux 跑单测）；
 `BuzzLinkSim` 复用 `BuzzLinkCore` 帧层实现设备侧，与 Studio 互为对端——开发、联调、UITests 都不依赖硬件。
 
 ## 4. BuzzLink SDK
@@ -63,27 +68,33 @@ apps/mac/
 
 ### 4.2 BuzzLink（Central）
 
-- `CBCentralManager` 封装：扫描 → 连接 → 服务/特征发现 → MTU 协商 → ready；
-- notify → `AsyncThrowingStream<Frame>`；写通道 write-without-response + 应用层节流；
-- 会话状态机：`idle → scanning → connecting → ready → downloading(file) → verifying → ready`，
+✅ **T2 已交付**（2026-10-15）。实际形态：
+
+- `BuzzLinkClient`（actor）：`connect/disconnect`、`ping`、`getDeviceInfo`、
+  `listFiles(offset:limit:)`（分页）、`fileInfo(id:)`、整文件 `download(fileID:progress:)`
+  （内置 BEGIN/CHUNK/END 全流程与重试；默认命令超时 5s、块超时 10s、3 趟，均可注入）；
+  状态流 `stateUpdates`：`idle → scanning → connecting → ready → downloading → verifying → ready`，
   断连收敛到 `disconnected`（自动重连策略在 SyncEngine 层决定）；
-- 命令 API：`listFiles(offset:)`（分页）、`fileInfo(id:)`、`beginDownload(id:)` → chunk 流、
-  `endVerify(id:)` → CRC 比对结果；删除等写命令 P1 再评估；
-- **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准（块大小、
-  通道号、命令字待规范补全后填入）。
-- **实现注记（T2，2026-10-15）**：T2 交付的 `BuzzLinkClient` 提供整文件
-  `download(fileID:progress:)`（内置 BEGIN/CHUNK/END 全流程与重试），未暴露
-  beginDownload/chunk 流/endVerify 细粒度 API——T7 控制台如需逐帧展示再扩展。
-  取消语义为 P0 简化版：取消下载任务不中断在飞命令，由超时（≤10s）兜底回收；
-  T5 SyncEngine 如需即时取消再补。验证矩阵见 TESTING.md §4 缺口条目。
+- `BuzzLinkTransport` 抽象：`LoopbackTransport`（NWConnection → 127.0.0.1:40404，同机主通道）
+  + `BLETransport`（CBCentralManager 薄壳：扫描 → 连接 → 服务/特征发现 → MTU → ready，
+  write-without-response + 背压；**仅编译验证**，跨机实测见 TESTING.md §4 缺口条目）；
+- **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准。
+
+扩展点（未做，按需再补）：beginDownload/chunk 流/endVerify 细粒度 API（T7 控制台逐帧展示用）；
+即时取消（现取消不中断在飞命令，由超时 ≤10s 兜底回收，T5 需要再补）；删除等写命令 P1 评估。
 
 ### 4.3 可靠性策略（P0）
 
-设备推流 + 块序号 + 整文件 CRC16 验收，失败整文件重下（≤2 次）；块位图选择性重传留作协议演进点（P1+ 评估）。
+设备推流 + 块序号 + 整文件 CRC16 验收，失败整文件重下（T2 实现默认 3 趟，
+含块/命令超时后的 DL_ABORT 重试）；块位图选择性重传留作协议演进点（P1+ 评估）。
 
 ### 4.4 测试
 
-帧往返、CRC 向量、乱序/截断重组、状态机迁移——全部 XCTest，不依赖蓝牙硬件（帧层用 Loopback）。
+✅ 现状 136 用例：Core 帧/CRC/向量 + Sim 引擎（含故障注入矩阵）+ Central（命令/下载/状态机、
+乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本全量下载验收、
+`LoopbackLiveSmokeTests` 活体冒烟：Sim 未运行时自动 skip）。全部 XCTest、不依赖蓝牙硬件；
+CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 xcodebuild 两条命令，
+首跑已通过（2026-10-15）。
 
 ## 5. Studio app 服务层
 
@@ -176,9 +187,9 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | # | 任务 | 预估 | 依赖 |
 |---|---|---|---|
 | T0 | 音频链 spike | ✅ 已完成 | — |
-| T0.5 | **BUZZLINK.md 补全**（帧字段/命令集/常量） | 0.5d | T1 前必须 |
-| T1 | BuzzLinkCore + XCTest | 1d | T0.5 |
-| T2 | BuzzLink Central（状态机/下载重组；Transport 抽象：BLE + loopback TCP，见 TESTING.md §4） | 2d | T1 |
+| T0.5 | BUZZLINK.md 补全（帧字段/命令集/常量） | ✅ 已完成 | — |
+| T1 | BuzzLinkCore + XCTest | ✅ 已完成 | T0.5 |
+| T2 | BuzzLink Central（BuzzLinkClient + BLE/loopback Transport；51 用例，含进程内 SimEngine 集成） | ✅ 已完成（2026-10-15） | T1 |
 | T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | ✅ 已完成 | T1 |
 | T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | 1d | — |
 | T5 | 设备页 + SyncEngine | 2d | T2、T4 |
@@ -192,14 +203,14 @@ P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。
 
 | 风险 | 对策 |
 |---|---|
-| BLE 吞吐有限（经验值 10-30 KB/s，1h 录音约 20MB → 同步 10-30min） | 进度诚实展示 + 自动同步后台化；固件侧后续调 MTU/连接间隔/2M PHY |
+| BLE 吞吐有限（经验值 10-30 KB/s；T3 跨机实测 Mac↔iPhone Sim：MTU 515 下 568KB/24s ≈ **24 KB/s**；1h 录音约 20MB → 同步 10-30min） | 进度诚实展示 + 自动同步后台化；固件侧后续调 MTU/连接间隔/2M PHY |
 | whisper 模型体积（base ≈142MB） | 设置页显式下载 + 进度 + 校验；不内置 |
-| Personal Team 签名的用户信任门槛 | README 构建指引；后续若有付费开发者账号再公证 |
+| ad-hoc 分发的用户信任门槛（Gatekeeper 未签名提示） | README 构建指引；后续若有付费开发者账号再公证 |
 | Sandbox 下 CBPeripheralManager（Sim） | ✅ T3 已验证：macOS 沙盒外设广播可用；新发现：**同机 Central 无法发现本机 Peripheral**（实测），对策 = loopback TCP 同机通道 + Sim 双平台跨机（TESTING.md §4） |
 | 超长录音内存占用 | 波形/导出分块流式，禁止整段 PCM 驻留 |
 
 ## 9. 开放问题
 
-1. BUZZLINK.md 规范补全排期（建议紧随本文评审通过后进行，阻塞 T1）；
+1. ~~BUZZLINK.md 规范补全排期~~（已解决：T0.5 完成，T1/T2/T3 均按其落地）；
 2. 库目录自定义位置（P1+，默认容器内即可）；
 3. 英文界面排期（建议随 P1 一起，首版中文）。
