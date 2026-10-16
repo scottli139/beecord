@@ -1,6 +1,8 @@
 # Beecord Studio 技术设计（macOS）
 
-> 状态：**v1.1**（2026-10-15：T0.5/T1/T2/T3 已落地，本文同步实施现状；下一步 T4/T5）。
+> 状态：**v1.2**（2026-10-16：T5 已落地——BuzzLinkSync 包 target（LibraryStore/SyncEngine，24 用例）、
+> 设备页全量 UI + 设置（传输方式/安全书签）+ 设备流 UITest（UITestSimServer 进程内设备源，9 用例全绿）；
+> 下一步 T6/T7）。v1.1（2026-10-15）：T0.5/T1/T2/T3/T4 已落地。
 > v1.0 于 2026-10-14 评审通过：总体形态与 PlayerEngine 决策按本方案执行；
 > AI 预设 Kimi 默认模型改为 `kimi-k3`，见 §5.5。
 > 上游依据：[`ux-design.md`](ux-design.md)（交互定稿）、
@@ -27,9 +29,9 @@
 apps/mac/
 ├── BeecordStudio.xcodeproj          # 原生工程，入库
 ├── BeecordStudio/                   # App target（SwiftUI）
-│   ├── App/                         # 入口、NavigationSplitView、Settings 场景
+│   ├── App/                         # 入口、NavigationSplitView、Settings 场景、LaunchOptions
+│   ├── Common/                      # DesignTokens / Toast / EmptyState / KeychainStore / 安全书签
 │   ├── Features/{Device,Library,Console,Settings}/
-│   ├── Services/{SyncEngine,PlayerEngine,ConsoleStore,AIService(P1),TranscribeEngine(P1)}/
 │   └── Resources/Assets.xcassets    # 图标取自 docs/brand
 ├── BuzzLinkSim/                     # 虚拟设备 app target（macOS + iOS/iPadOS 双平台；BLE 外设
 │                                    #   + loopback TCP 127.0.0.1:40404 同机通道，见 TESTING.md §4）
@@ -37,9 +39,12 @@ apps/mac/
 │   ├── Sources/BuzzLinkCore/        # 纯算法：帧/CRC/向量（无 CoreBluetooth 依赖）
 │   ├── Sources/BuzzLinkSimCore/     # 设备侧协议引擎 SimEngine + 故障注入（纯逻辑，无 IO 依赖）
 │   ├── Sources/BuzzLink/            # ✅ T2 已交付：Central 封装（BuzzLinkClient actor
-│   │                                #   + BLE/loopback 双 Transport）
-│   └── Tests/                       # 三个 test target（Core/SimCore/Central 共 136 用例）+ Fixtures
-└── BeecordStudioUITests/            # AX 驱动 P0 主流程
+│   │                                #   + BLE/loopback 双 Transport）+ 合作式即时取消（T5 A 阶段）
+│   ├── Sources/BuzzLinkSync/        # ✅ T5 已交付：LibraryStore + SyncEngine（actor，状态机/
+│   │                                #   自动同步 diff/队列/进度聚合/取消/自动重连/保活；纯 Foundation）
+│   ├── Sources/BuzzLinkTestSupport/ # T5 A 阶段：测试支撑 target（SimEngineTransport 等，不进 products）
+│   └── Tests/                       # 四个 test target（Core/SimCore/Central/Sync，共 163 用例）+ Fixtures
+└── BeecordStudioUITests/            # AX 驱动 P0 主流程 + 设备流端到端（UITestSimServer 进程内设备源）
 ```
 
 - **零三方依赖（P0）**；P1 仅引入 whisper.cpp（官方 SwiftPM 源码集成）。
@@ -81,7 +86,12 @@ apps/mac/
 - **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准。
 
 扩展点（未做，按需再补）：beginDownload/chunk 流/endVerify 细粒度 API（T7 控制台逐帧展示用）；
-即时取消（现取消不中断在飞命令，由超时 ≤10s 兜底回收，T5 需要再补）；删除等写命令 P1 评估。
+删除等写命令 P1 评估。
+
+✅ **T5 A 阶段已补合作式即时取消**（2026-10-16）：`downloadWithRetries`/chunk 循环头与
+`runCommand` 返回后插 `Task.checkCancellation()`——取消即时中断在飞下载并走
+`DL_ABORT` 清理（不再依赖 ≤10s 超时兜底）；SyncEngine 侧 `.cancelling` 态有界收敛
+（默认 3s，超时兜底断开重连）。取消语义详见 BuzzLinkClient/SyncEngine 头注释。
 
 ### 4.3 可靠性策略（P0）
 
@@ -90,11 +100,12 @@ apps/mac/
 
 ### 4.4 测试
 
-✅ 现状 136 用例：Core 帧/CRC/向量 + Sim 引擎（含故障注入矩阵）+ Central（命令/下载/状态机、
-乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本全量下载验收、
-`LoopbackLiveSmokeTests` 活体冒烟：Sim 未运行时自动 skip）。全部 XCTest、不依赖蓝牙硬件；
-CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 xcodebuild 两条命令，
-首跑已通过（2026-10-15）。
+✅ 现状 163 用例（1 skip）：Core 帧/CRC/向量 + Sim 引擎（含故障注入矩阵）+ Central
+（命令/下载/状态机、乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本全量下载验收、
+`LoopbackLiveSmokeTests` 活体冒烟：Sim 未运行时自动 skip）+ **T5 A/B 阶段新增**：
+client 合作式即时取消 3 用例、BuzzLinkSync 24 用例（自动同步 diff/恢复/进度聚合/取消/
+重连/保活 + FileLibraryStore 单测）。全部 XCTest、不依赖蓝牙硬件；
+CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 xcodebuild 两条命令。
 
 ## 5. Studio app 服务层
 
@@ -123,10 +134,27 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
 
 ### 5.2 SyncEngine
 
-- 自动同步**默认开启**（ux 已决）：连接 ready → 拉取设备列表 → 与库 diff → 队列化下载
-  → CRC 校验 → 转码入库 → 清理 `.partial`；
-- 中断恢复：`.partial` 文件存在即未完成，重连后重下该文件；按设备文件 id 幂等，重复同步不产生副本；
-- 进度模型：`SyncProgress { current, total, fileFraction, bytesPerSecond, eta }` 供 UI/AX 断言。
+✅ **T5 已交付**（2026-10-16，`Packages/BuzzLink` 新 target `BuzzLinkSync`，纯 Foundation，
+不依赖 SwiftUI/Observation；状态以 `AsyncStream<SyncSnapshot>` + `AsyncStream<SyncEvent>`
+暴露，另提供 `snapshot` 只读当前值）。同步流程：
+
+- 自动同步**默认开启**（ux 已决）：连接 ready → `getDeviceInfo()`（存储告警判定）→
+  分页拉全设备列表 → 与库 diff → 队列化下载 → CRC 校验 → **入库（`audio.ogg` + `meta.json`）
+  → 清理 `.partial`**；**ogg→m4a 转码随 T6 播放器交付，T6 对库内无 m4a 的存量录音补转**；
+- 中断恢复：`.partial` 存在即未完成（启动 `purgeStalePartials()` 清理，P0 无断点续传，
+  整文件重下）；按设备文件 id 幂等（`meta.source.fileID`），重复同步不产生副本；
+- 状态机：`idle / connecting / ready / listing / syncing / cancelling / reconnecting / failed`；
+  自动重连仅"曾 ready 的会话"掉线触发（退避 `[1,2,4,8,10,10,10]`s，耗尽回 idle + 事件），
+  首连失败不自动重试；取消为合作式（client 即时取消 + DL_ABORT），有界收敛 3s；
+  epoch 代数丢弃迟到结果；空闲保活 15s PING（仅 `.ready` 态）；
+- 进度模型：`SyncProgress { completedFiles, totalFiles, currentFileID, fileFraction,
+  overallFraction, bytesPerSecond, etaSeconds }`——字节加权整体进度（= UI `device.downloadProgress`
+  的 AXValue），5s 滑动窗口速率，节流 100ms 发快照；
+- LibraryStore：`<root>/Library/<recording-id>/{audio.ogg, meta.json}`，同卷原子 move +
+  meta 原子写；`recording-id` = 设备文件 id 安全化（非法字符→`_`，截断 48，冲突加 `-2` 后缀）；
+  自定义库根经 security-scoped bookmark 持久化（stale 回退默认容器 + toast）；
+- 设备页 VM：`DeviceViewModel`（@MainActor @Observable）装配 transport 工厂
+  （loopback/BLE，按设置）+ client + engine，消费双流驱动 UI；蓝牙权限面罩仅 BLE 模式。
 
 ### 5.3 录音库模型
 
@@ -192,7 +220,7 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | T2 | BuzzLink Central（BuzzLinkClient + BLE/loopback Transport；51 用例，含进程内 SimEngine 集成） | ✅ 已完成（2026-10-15） | T1 |
 | T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | ✅ 已完成 | T1 |
 | T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | ✅ 已完成（2026-10-15） | — |
-| T5 | 设备页 + SyncEngine | 2d | T2、T4 |
+| T5 | 设备页 + SyncEngine | ✅ 已完成（2026-10-16，按全量 2.75d） | T2、T4 |
 | T6 | 录音库 + 播放器 | 2d | T4 |
 | T7 | 协议控制台 + 向量导出 | 1d | T2、T4 |
 | T8 | UITests 主流程 + Audit | 1d | T3、T5、T6 |
@@ -212,5 +240,8 @@ P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。
 ## 9. 开放问题
 
 1. ~~BUZZLINK.md 规范补全排期~~（已解决：T0.5 完成，T1/T2/T3 均按其落地）；
-2. 库目录自定义位置（P1+，默认容器内即可）；
-3. 英文界面排期（建议随 P1 一起，首版中文）。
+2. 库目录自定义位置（T5 已做安全书签最小版；跨启动对账/manifest 缓存随 T6）；
+3. 英文界面排期（建议随 P1 一起，首版中文）；
+4. **多设备卡片列表（名称/RSSI）**（T5 划出的 P0 边界）：`BLETransport` 现为"扫描到首个
+   匹配即停扫连接"的一次性连接，无发现结果流；需增加发现流 + `connect(to:)`，
+   跨机 BLE 实测后扩展（ux §3.1 P0 注）。

@@ -57,6 +57,7 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
      平台限制：同一台 macOS 上 Central 无法发现本机 Peripheral 的 BLE 广播（半双工无线电
      不收自身发射时隙，CoreBluetooth 无软件回环，2026-10-15 实测确认），因此 Sim 提供
      与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
+     设备流 UITest 由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
    - **验证缺口（2026-10-15，T2 遗留）**：`BuzzLink.BLETransport` 目前仅编译验证，
