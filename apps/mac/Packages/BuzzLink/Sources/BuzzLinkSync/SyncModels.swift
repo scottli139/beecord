@@ -42,6 +42,13 @@ public struct DeviceFileRow: Sendable, Equatable, Identifiable {
         /// 断连未完成：重连后可重新下载
         case incomplete
     }
+
+    public init(id: String, durationMs: UInt32, size: Int, status: Status) {
+        self.id = id
+        self.durationMs = durationMs
+        self.size = size
+        self.status = status
+    }
 }
 
 public extension DeviceFileRow.Status {
@@ -68,6 +75,24 @@ public struct SyncProgress: Sendable, Equatable {
     public var bytesPerSecond: Double
     /// 预计剩余秒数；速率≈0 时为 nil
     public var etaSeconds: TimeInterval?
+
+    public init(
+        completedFiles: Int,
+        totalFiles: Int,
+        currentFileID: String?,
+        fileFraction: Double,
+        overallFraction: Double,
+        bytesPerSecond: Double,
+        etaSeconds: TimeInterval?
+    ) {
+        self.completedFiles = completedFiles
+        self.totalFiles = totalFiles
+        self.currentFileID = currentFileID
+        self.fileFraction = fileFraction
+        self.overallFraction = overallFraction
+        self.bytesPerSecond = bytesPerSecond
+        self.etaSeconds = etaSeconds
+    }
 }
 
 /// 引擎快照（state/rows/progress/deviceInfo 聚合；去重后发射）。
@@ -79,6 +104,20 @@ public struct SyncSnapshot: Sendable, Equatable {
     public var deviceInfo: BuzzLinkDeviceInfo?
     /// 设备存储占用 >90%（同步前警告条，ux §4）
     public var isStorageNearlyFull: Bool
+
+    public init(
+        state: SyncState,
+        rows: [DeviceFileRow],
+        progress: SyncProgress?,
+        deviceInfo: BuzzLinkDeviceInfo?,
+        isStorageNearlyFull: Bool
+    ) {
+        self.state = state
+        self.rows = rows
+        self.progress = progress
+        self.deviceInfo = deviceInfo
+        self.isStorageNearlyFull = isStorageNearlyFull
+    }
 }
 
 /// 离散事件（toast 触发用；边沿语义，与快照流分离）。

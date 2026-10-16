@@ -90,6 +90,8 @@ public final class LoopbackTransport: BuzzLinkTransport, @unchecked Sendable {
         parameters.requiredInterfaceType = .loopback
         let connection = NWConnection(host: host, port: port, using: parameters)
         self.connection = connection
+        /// continuation 只许 resume 一次（NW 的 .waiting/.failed/.cancelled 可能先后到达）
+        let resumeBox = ResumeBox()
 
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
@@ -100,13 +102,31 @@ public final class LoopbackTransport: BuzzLinkTransport, @unchecked Sendable {
                 self.stateContinuation.yield(.connecting)
             case .ready:
                 self.stateContinuation.yield(.ready)
-                continuation.resume()
+                if !resumeBox.didResume {
+                    resumeBox.didResume = true
+                    continuation.resume()
+                }
                 self.receiveNext(on: connection)
-            case .failed(let error):
+            case .waiting(let error):
+                // 环回单发连接：NW 把"拒绝/无监听"报为可重试的 .waiting；
+                // 对 loopback 即终态（上层引擎负责重连策略），收敛断开并抛出
+                guard !resumeBox.didResume else { return }
+                resumeBox.didResume = true
                 self.stateContinuation.yield(.disconnected)
                 continuation.resume(throwing: BuzzLinkError.transport(error.localizedDescription))
+                connection.cancel()
+            case .failed(let error):
+                self.stateContinuation.yield(.disconnected)
+                if !resumeBox.didResume {
+                    resumeBox.didResume = true
+                    continuation.resume(throwing: BuzzLinkError.transport(error.localizedDescription))
+                }
             case .cancelled:
                 self.stateContinuation.yield(.disconnected)
+                if !resumeBox.didResume {
+                    resumeBox.didResume = true
+                    continuation.resume(throwing: BuzzLinkError.transport("连接已取消"))
+                }
             default:
                 break
             }
@@ -127,4 +147,10 @@ public final class LoopbackTransport: BuzzLinkTransport, @unchecked Sendable {
             self.receiveNext(on: connection)
         }
     }
+}
+
+/// resume 一次性标记盒：NW 状态回调为 @Sendable 并发闭包，捕获须为引用类型；
+/// 实际互斥由传输串行队列保证（本文件既有 @unchecked Sendable 模式）。
+private final class ResumeBox: @unchecked Sendable {
+    var didResume = false
 }

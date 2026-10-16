@@ -128,6 +128,14 @@ public final class BLETransport: NSObject {
     }
 }
 
+// MARK: - BuzzLinkTransport 遵从
+//
+// 类为 @MainActor 隔离，协议要求非隔离：以 @preconcurrency 声明遵从
+// （隔离跃迁在运行期受主队列保证——delegate 回调与公共入口均经主队列派发）。
+
+extension BLETransport: @preconcurrency BuzzLinkTransport {
+}
+
 // MARK: - CBCentralManagerDelegate（主队列回调，统一 hop 回 MainActor）
 //
 // delegate 方法必须为 nonisolated（@objc 协议要求）；本类 manager 以 queue: .main 创建，
