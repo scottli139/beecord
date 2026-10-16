@@ -8,7 +8,7 @@ struct MainWindow: View {
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(appModel: appModel, settingsModel: settingsModel)
+            SidebarView(appModel: appModel, settingsModel: settingsModel, deviceViewModel: deviceViewModel)
         } detail: {
             switch appModel.selectedPage {
             case .device:

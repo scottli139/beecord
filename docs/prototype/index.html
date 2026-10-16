@@ -31,6 +31,7 @@
   .titlebar .proto{margin-left:auto;font-size:11px;color:#fff;background:#8e8e93;border-radius:4px;padding:1px 7px}
   .proto-picker{display:flex;align-items:center;gap:6px;margin-left:10px;font-size:11px;color:var(--text2)}
   .proto-picker select{font:11px -apple-system,sans-serif;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text)}
+  .proto-note{margin-left:10px;font-size:11px;color:var(--warn)}
   .body{flex:1;display:flex;min-height:0;position:relative}
   /* ---------- 侧栏 ---------- */
   .sidebar{
@@ -55,6 +56,9 @@
   }
   .dev-status .sd{width:8px;height:8px;border-radius:50%;background:var(--text3)}
   .dev-status.on .sd{background:var(--ok)}
+  .dev-gear{margin-left:auto;border:none;background:transparent;cursor:pointer;font-size:13px;
+    color:var(--text2);padding:1px 5px;border-radius:5px;line-height:1.2}
+  .dev-gear:hover{background:rgba(0,0,0,.06)}
   /* ---------- 主区 ---------- */
   .main{flex:1;overflow-y:auto;padding:22px 26px;min-width:0}
   .main section{display:none}
@@ -79,6 +83,7 @@
   button.sm{padding:4px 10px;font-size:12px}
   /* 扫描/设备 */
   .scan-row{display:flex;align-items:center;gap:10px;color:var(--text2)}
+  .scan-sub{font-size:12px;color:var(--text2);margin-top:2px}
   .spinner{
     width:16px;height:16px;border:2px solid rgba(0,0,0,.15);border-top-color:var(--accent);
     border-radius:50%;animation:spin 1s linear infinite;flex:none;
@@ -209,6 +214,7 @@
         <option value="bluetooth-off">蓝牙不可用</option>
       </select>
     </label>
+    <span class="proto-note">发现设备列表为 P1（多设备）功能；P0 为连接即扫描一体</span>
   </div>
   <div class="body">
     <aside class="sidebar">
@@ -216,9 +222,8 @@
       <div class="nav-item active" data-view="device"><span class="ico">⌚</span>设备</div>
       <div class="nav-item" data-view="library"><span class="ico">🎙</span>录音库</div>
       <div class="nav-item" data-view="console" id="nav-console"><span class="ico">⌨</span>协议控制台</div>
-      <div class="nav-item" data-view="settings"><span class="ico">⚙</span>设置</div>
       <div class="spacer"></div>
-      <div class="dev-status" id="dev-status"><span class="sd"></span><span id="dev-status-text">未连接</span></div>
+      <div class="dev-status" id="dev-status"><span class="sd"></span><span id="dev-status-text">未连接</span><button class="dev-gear" id="btn-settings-gear" title="设置（实际实现为标准 Settings 窗口 ⌘,）">⚙</button></div>
     </aside>
 
     <main class="main">
@@ -228,7 +233,9 @@
         <div class="sub">连接 Beecord 录音设备，同步机内录音</div>
 
         <div class="card" id="scan-card">
-          <div class="scan-row"><div class="spinner"></div><span>正在扫描附近设备…（请在设备上三击电源键进入配对模式）</span></div>
+          <div class="scan-row"><div class="spinner"></div>
+            <div><div>正在连接设备…</div><div class="scan-sub">请确保设备已进入同步模式（三击电源键进入配对）。</div></div>
+          </div>
         </div>
 
         <div class="card empty-state" id="device-empty" style="display:none">
@@ -238,18 +245,6 @@
           <div class="state-title">未发现 Beecord 设备</div>
           <div class="state-copy">确认手表已开机并位于 Mac 附近，然后三击电源键进入配对模式。</div>
           <div class="state-actions"><button class="primary" id="btn-rescan">重新扫描</button></div>
-        </div>
-
-        <div class="card" id="found-card" style="display:none">
-          <h3>发现设备</h3>
-          <div class="dev-row">
-            <div class="dev-ico">⌚</div>
-            <div class="dev-meta">
-              <div class="dev-name">Beecord Watch · A1B2</div>
-              <div class="dev-sub">RSSI -52 dBm · BuzzLink · 固件 0.1.0</div>
-            </div>
-            <button class="primary" id="btn-connect">连接</button>
-          </div>
         </div>
 
         <div id="connected-area" style="display:none">
@@ -500,11 +495,13 @@ function showView(name){
   }
 }
 document.querySelectorAll(".nav-item").forEach(n=>{ n.onclick=()=>showView(n.dataset.view); });
+$("btn-settings-gear").onclick=()=>showView("settings");
 
 /* ================= 设备页 ================= */
+// P0 连接即扫描一体：扫描中（连接中）→ 直达已连接；发现设备列表为 P1（见标题栏注记）
 function showDeviceStage(stage){
-  const visible={scan:"scan-card",empty:"device-empty",found:"found-card"}[stage];
-  ["scan-card","device-empty","found-card"].forEach(id=>{ $(id).style.display=id===visible?"":"none"; });
+  const visible={scan:"scan-card",empty:"device-empty"}[stage];
+  ["scan-card","device-empty"].forEach(id=>{ $(id).style.display=id===visible?"":"none"; });
   $("connected-area").style.display=stage==="connected"?"":"none";
 }
 function setConnectedUI(on){
@@ -518,23 +515,22 @@ function startScan(){
   showDeviceStage("scan");
   S.scanTimer=setTimeout(()=>{
     S.scanned=true;
-    showDeviceStage(SCENARIO==="no-device"?"empty":"found");
-  },1600);
-}
-$("btn-rescan").onclick=()=>startScan();
-$("btn-connect").onclick = ()=>{
-  $("btn-connect").textContent="连接中…"; $("btn-connect").disabled=true;
-  setTimeout(()=>{
+    if(SCENARIO==="no-device"){
+      showDeviceStage("empty");
+      return;
+    }
+    // P0：扫描即连接，成功直达已连接
     setConnectedUI(true);
     showDeviceStage("connected");
     renderFiles();
     toast("已连接 · MTU 247 协商完成");
-  },900);
-};
+  },1600);
+}
+$("btn-rescan").onclick=()=>startScan();
 $("btn-disconnect").onclick = ()=>{
   setConnectedUI(false);
-  showDeviceStage(SCENARIO==="no-device"?"empty":"found");
-  $("btn-connect").textContent="连接"; $("btn-connect").disabled=false;
+  S.scanned=true;
+  showDeviceStage("empty");
 };
 function refreshFiles(){ renderFiles(); toast(S.files.length?"文件列表已刷新":"设备上仍没有录音"); }
 $("btn-refresh").onclick=refreshFiles;
@@ -584,7 +580,7 @@ $("btn-dl").onclick = async ()=>{
     const i=list[k], f=S.files[i], st=$("st-"+i);
     st.className="st dl"; st.innerHTML=`<span class="mini"><i style="width:0%"></i></span>0%`;
     for(let p=0;p<=100;p+=4){
-      if(S.dlCancel){ st.className="st"; st.textContent="未完成";
+      if(S.dlCancel){ st.className="st"; st.textContent="未下载";
         $("dl-footer").style.display="none"; $("ck-all").disabled=false; toast("已取消");
         return; }
       st.innerHTML=`<span class="mini"><i style="width:${p}%"></i></span>${p}%`;
@@ -716,7 +712,7 @@ const SUMMARY={
 };
 $("btn-summary").onclick=async ()=>{
   if(!S.aiConfigured){ toast("请先在 设置 → AI 服务 配置并测试端点");
-    document.querySelector('.nav-item[data-view="settings"]').click(); return; }
+    showView("settings"); return; }
   $("sum-empty").style.display="none";
   const body=$("sum-body"); body.style.display=""; body.innerHTML="";
   for(const [sec,items] of Object.entries(SUMMARY)){
