@@ -12,6 +12,8 @@
 		5EED00000000000000000172 /* BuzzLinkSimCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED00000000000000000182 /* BuzzLinkSimCore */; };
 		5EED00000000000000000173 /* BuzzLink in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED00000000000000000183 /* BuzzLink */; };
 		5EED000000000000000002C0 /* BuzzLinkSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002C1 /* BuzzLinkSync */; };
+		5EED000000000000000002D0 /* BuzzLinkSimCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002D1 /* BuzzLinkSimCore */; };
+		5EED000000000000000002D2 /* BuzzLinkCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002D3 /* BuzzLinkCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5EED000000000000000002D0 /* BuzzLinkSimCore in Frameworks */,
+				5EED000000000000000002D2 /* BuzzLinkCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -167,6 +171,10 @@
 				5EED00000000000000000112 /* BeecordStudioUITests */,
 			);
 			name = BeecordStudioUITests;
+			packageProductDependencies = (
+				5EED000000000000000002D1 /* BuzzLinkSimCore */,
+				5EED000000000000000002D3 /* BuzzLinkCore */,
+			);
 			productName = BeecordStudioUITests;
 			productReference = 5EED00000000000000000122 /* BeecordStudioUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -609,6 +617,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5EED00000000000000000190 /* XCLocalSwiftPackageReference "Packages/BuzzLink" */;
 			productName = BuzzLinkSync;
+		};
+		5EED000000000000000002D1 /* BuzzLinkSimCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EED00000000000000000190 /* XCLocalSwiftPackageReference "Packages/BuzzLink" */;
+			productName = BuzzLinkSimCore;
+		};
+		5EED000000000000000002D3 /* BuzzLinkCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EED00000000000000000190 /* XCLocalSwiftPackageReference "Packages/BuzzLink" */;
+			productName = BuzzLinkCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

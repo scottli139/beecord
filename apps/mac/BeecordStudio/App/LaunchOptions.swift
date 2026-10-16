@@ -10,6 +10,10 @@ enum LaunchOptions {
 
     static let resetSettings = arguments.contains("-resetSettings")
 
+    /// -autoSyncOff：重置后把 settings.autoSyncEnabled 置 false（设备流 UITest
+    /// 手动下载用例的注入点；须与 -resetSettings 同用，避免污染用户设置）。
+    static let autoSyncOff = arguments.contains("-autoSyncOff")
+
     static let libraryRoot: String? = value(for: "-libraryRoot")
 
     /// App 启动早期调用（须早于 SettingsModel 初始化）。
@@ -18,6 +22,9 @@ enum LaunchOptions {
         let defaults = UserDefaults.standard
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("settings.") {
             defaults.removeObject(forKey: key)
+        }
+        if autoSyncOff {
+            defaults.set(false, forKey: "settings.autoSyncEnabled")
         }
     }
 
