@@ -6,25 +6,30 @@ import os
 /// BLE 传输（Central 侧）：扫描 → 连接 → 服务/特征发现 → 订阅 Notify → write-without-response。
 ///
 /// 薄壳：仅做 GATT IO 与状态桥接；协议行为（session/超时/重组/CRC）全部在
-/// ``BuzzLinkClient``。delegate 回调在主队列，按项目惯例 `nonisolated` +
-/// `MainActor.assumeIsolated` hop 回主 actor。写出采用 `peripheralIsReady` 背压续传，
+/// ``BuzzLinkClient``。线程模型与 ``LoopbackTransport`` 同构：非隔离类 +
+/// 专用串行队列（`bleTransport`）。CBCentralManager 以该队列创建，delegate 回调
+/// 与公共入口均在同一条队列上执行/派发，全部可变状态限定于该队列，故声明
+/// `@unchecked Sendable`——从任意 executor（client actor、主队列等）调用
+/// connect/disconnect/send 均无隔离跃迁与 executor 断言。写出采用
+/// `canSendWriteWithoutResponse` 背压续传（队列满时等 peripheralIsReady 回调再推），
 /// 应用层节流策略由上层决定（studio-tech-design §4.2）。
 ///
-/// Apple 平台 ATT MTU 由系统协商，无法直接请求 247；本实现按
-/// `maximumWriteValueLength(for: .withoutResponse)` 观察实际可写长度。
-@MainActor
-public final class BLETransport: NSObject {
+/// Apple 平台 ATT MTU 由系统协商，无法直接请求 247；本实现按系统实际接受的
+/// write-without-response 推流，可写长度以 CoreBluetooth 背压信号为准。
+public final class BLETransport: NSObject, BuzzLinkTransport, @unchecked Sendable {
 
     public let stateStream: AsyncStream<BuzzLinkTransportState>
     public let inbound: AsyncStream<Data>
 
-    /// 扫描超时（找不到设备即失败，避免无限等待）
+    /// 扫描超时（找不到设备即失败，避免无限等待）；仅在 `connect()` 派发至串行队列后读取
     public var scanTimeout: TimeInterval = 10
 
+    private let queue = DispatchQueue(label: "com.beeuc.beecord.buzzlink.bleTransport")
     private let logger = Logger(subsystem: "com.beeuc.beecord.buzzlink", category: "transport")
     private let stateContinuation: AsyncStream<BuzzLinkTransportState>.Continuation
     private let inboundContinuation: AsyncStream<Data>.Continuation
 
+    /// 以下成员仅在串行队列上访问（delegate 回调与公共入口同队列，天然互斥）
     private var manager: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
@@ -44,39 +49,49 @@ public final class BLETransport: NSObject {
         self.inboundContinuation = inbound.continuation
     }
 
-    // MARK: - BuzzLinkTransport（同步隔离实现满足 async 协议要求）
+    // MARK: - BuzzLinkTransport
 
     public func connect() async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            self.connectContinuation = continuation
-            self.didDisconnect = false
-            if let manager {
-                beginScanOrThrow(manager: manager)
-            } else {
-                manager = CBCentralManager(delegate: self, queue: .main)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            queue.async {
+                self.connectContinuation = continuation
+                self.didDisconnect = false
+                if let manager = self.manager {
+                    self.beginScanOrThrow(manager: manager)
+                } else {
+                    self.manager = CBCentralManager(delegate: self, queue: self.queue)
+                }
+                self.armScanTimeout()
             }
-            self.armScanTimeout()
         }
     }
 
     public func disconnect() {
-        pendingWrites.removeAll()
-        if let peripheral {
-            manager?.cancelPeripheralConnection(peripheral)
+        queue.async {
+            self.pendingWrites.removeAll()
+            if let peripheral = self.peripheral {
+                self.manager?.cancelPeripheralConnection(peripheral)
+            }
+            self.manager?.stopScan()
+            self.emitDisconnectedIfNeeded(force: true)
         }
-        manager?.stopScan()
-        emitDisconnectedIfNeeded(force: true)
     }
 
-    public func send(_ bytes: Data) throws {
-        guard let peripheral, writeCharacteristic != nil else {
-            throw BuzzLinkError.notConnected
+    public func send(_ bytes: Data) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            queue.async {
+                guard let peripheral = self.peripheral, self.writeCharacteristic != nil else {
+                    continuation.resume(throwing: BuzzLinkError.notConnected)
+                    return
+                }
+                self.pendingWrites.append(bytes)
+                self.drainPendingWrites(peripheral: peripheral)
+                continuation.resume()
+            }
         }
-        pendingWrites.append(bytes)
-        drainPendingWrites(peripheral: peripheral)
     }
 
-    // MARK: - 私有：连接流程（主 actor）
+    // MARK: - 私有：连接流程（串行队列上下文）
 
     private func beginScanOrThrow(manager: CBCentralManager) {
         guard manager.state == .poweredOn else {
@@ -93,11 +108,10 @@ public final class BLETransport: NSObject {
     /// 扫描超时：无设备即失败（调用方决定是否重试/换通道）
     private func armScanTimeout() {
         let timeout = scanTimeout
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(max(1, Int(timeout * 1000))))
+        queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
             guard let self, self.connectContinuation != nil else { return }
             self.manager?.stopScan()
-            self.failConnect(BuzzLinkError.transport("扫描超时（\(timeout)s 内未发现设备）"))
+            self.failConnect(.transport("扫描超时（\(timeout)s 内未发现设备）"))
         }
     }
 
@@ -114,7 +128,7 @@ public final class BLETransport: NSObject {
         stateContinuation.yield(.disconnected)
     }
 
-    /// write-without-response 背压续传（GATT 队列满时 peripheralIsReady 再推）
+    /// write-without-response 背压续传（GATT 队列满时 peripheralIsReady 回调再推）
     private func drainPendingWrites(peripheral: CBPeripheral) {
         guard let writeCharacteristic else { return }
         while !pendingWrites.isEmpty {
@@ -128,171 +142,128 @@ public final class BLETransport: NSObject {
     }
 }
 
-// MARK: - BuzzLinkTransport 遵从
+// MARK: - CBCentralManagerDelegate
 //
-// 类为 @MainActor 隔离，协议要求非隔离：以 @preconcurrency 声明遵从
-// （隔离跃迁在运行期受主队列保证——delegate 回调与公共入口均经主队列派发）。
-
-extension BLETransport: @preconcurrency BuzzLinkTransport {
-}
-
-// MARK: - CBCentralManagerDelegate（主队列回调，统一 hop 回 MainActor）
-//
-// delegate 方法必须为 nonisolated（@objc 协议要求）；本类 manager 以 queue: .main 创建，
-// 回调必定已在主队列，assumeIsolated 语义合法。CB 对象非 Sendable、Swift 6 区域隔离
-// 无法证明其归属，经 ``MainActorBox`` 显式豁免转移。
+// manager 以串行队列创建，回调必定在该队列上派发，与公共入口同队列，
+// 直接访问可变状态（无需锁或 actor hop）。
 
 extension BLETransport: CBCentralManagerDelegate {
 
-    nonisolated public func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        let box = MainActorBox(value: (central, central.state))
-        MainActor.assumeIsolated {
-            let (central, state) = box.value
-            logger.info("蓝牙状态变化：\(state.rawValue)")
-            if state == .poweredOn, connectContinuation != nil {
-                beginScanOrThrow(manager: central)
-            } else if state != .poweredOn, connectContinuation != nil {
-                failConnect(.bluetoothUnavailable)
-            }
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        logger.info("蓝牙状态变化：\(central.state.rawValue)")
+        if central.state == .poweredOn, connectContinuation != nil {
+            beginScanOrThrow(manager: central)
+        } else if central.state != .poweredOn, connectContinuation != nil {
+            failConnect(.bluetoothUnavailable)
         }
     }
 
-    nonisolated public func centralManager(
+    public func centralManager(
         _ central: CBCentralManager,
         didDiscover peripheral: CBPeripheral,
         advertisementData: [String: Any],
         rssi RSSI: NSNumber
     ) {
-        let box = MainActorBox(value: (central, peripheral))
-        MainActor.assumeIsolated {
-            let (central, peripheral) = box.value
-            // 以 Service UUID 过滤为准（§2.2），名称仅作展示
-            central.stopScan()
-            self.peripheral = peripheral
-            peripheral.delegate = self
-            stateContinuation.yield(.connecting)
-            central.connect(peripheral, options: nil)
-        }
+        // 以 Service UUID 过滤为准（§2.2），名称仅作展示
+        central.stopScan()
+        self.peripheral = peripheral
+        peripheral.delegate = self
+        stateContinuation.yield(.connecting)
+        central.connect(peripheral, options: nil)
     }
 
-    nonisolated public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        let box = MainActorBox(value: peripheral)
-        MainActor.assumeIsolated {
-            box.value.discoverServices([CBUUID(string: BuzzLinkConstants.serviceUUIDString)])
-        }
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        peripheral.discoverServices([CBUUID(string: BuzzLinkConstants.serviceUUIDString)])
     }
 
-    nonisolated public func centralManager(
+    public func centralManager(
         _ central: CBCentralManager,
         didFailToConnect peripheral: CBPeripheral,
         error: (any Error)?
     ) {
         let message = error?.localizedDescription ?? "未知原因"
-        MainActor.assumeIsolated {
-            failConnect(.transport("连接失败：\(message)"))
-        }
+        failConnect(.transport("连接失败：\(message)"))
     }
 
-    nonisolated public func centralManager(
+    public func centralManager(
         _ central: CBCentralManager,
         didDisconnectPeripheral peripheral: CBPeripheral,
         error: (any Error)?
     ) {
-        MainActor.assumeIsolated {
-            self.peripheral = nil
-            writeCharacteristic = nil
-            notifyCharacteristic = nil
-            pendingWrites.removeAll()
-            // 若 connect 仍在等待（订阅前断连），按失败收尾
-            if let continuation = connectContinuation {
-                connectContinuation = nil
-                continuation.resume(throwing: BuzzLinkError.disconnected)
-            }
-            emitDisconnectedIfNeeded()
+        self.peripheral = nil
+        writeCharacteristic = nil
+        notifyCharacteristic = nil
+        pendingWrites.removeAll()
+        // 若 connect 仍在等待（订阅前断连），按失败收尾
+        if let continuation = connectContinuation {
+            connectContinuation = nil
+            continuation.resume(throwing: BuzzLinkError.disconnected)
         }
+        emitDisconnectedIfNeeded()
     }
 }
 
-// MARK: - CBPeripheralDelegate（主队列回调，统一 hop 回 MainActor）
+// MARK: - CBPeripheralDelegate
+//
+// 回调经 central.connect 派发到 manager 同一串行队列，线程模型同上。
 
 extension BLETransport: CBPeripheralDelegate {
 
-    nonisolated public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: (any Error)?) {
-        let message = error?.localizedDescription
-        let box = MainActorBox(value: peripheral)
-        MainActor.assumeIsolated {
-            let peripheral = box.value
-            guard message == nil,
-                  let service = peripheral.services?.first(
-                      where: { $0.uuid == CBUUID(string: BuzzLinkConstants.serviceUUIDString) }
-                  ) else {
-                failConnect(.transport("服务发现失败：\(message ?? "未找到 BuzzLink 服务")"))
-                return
-            }
-            peripheral.discoverCharacteristics(
-                [
-                    CBUUID(string: BuzzLinkConstants.cmdWriteUUIDString),
-                    CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString)
-                ],
-                for: service
-            )
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: (any Error)?) {
+        guard error == nil,
+              let service = peripheral.services?.first(
+                  where: { $0.uuid == CBUUID(string: BuzzLinkConstants.serviceUUIDString) }
+              ) else {
+            failConnect(.transport("服务发现失败：\(error?.localizedDescription ?? "未找到 BuzzLink 服务")"))
+            return
         }
+        peripheral.discoverCharacteristics(
+            [
+                CBUUID(string: BuzzLinkConstants.cmdWriteUUIDString),
+                CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString)
+            ],
+            for: service
+        )
     }
 
-    nonisolated public func peripheral(
+    public func peripheral(
         _ peripheral: CBPeripheral,
         didDiscoverCharacteristicsFor service: CBService,
         error: (any Error)?
     ) {
-        let message = error?.localizedDescription
-        let box = MainActorBox(value: (peripheral, service))
-        MainActor.assumeIsolated {
-            let (peripheral, service) = box.value
-            guard message == nil, let characteristics = service.characteristics else {
-                failConnect(.transport("特征发现失败：\(message ?? "无特征")"))
-                return
-            }
-            for characteristic in characteristics {
-                if characteristic.uuid == CBUUID(string: BuzzLinkConstants.cmdWriteUUIDString) {
-                    writeCharacteristic = characteristic
-                } else if characteristic.uuid == CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString) {
-                    notifyCharacteristic = characteristic
-                    peripheral.setNotifyValue(true, for: characteristic)
-                }
-            }
-            guard writeCharacteristic != nil, notifyCharacteristic != nil else {
-                failConnect(.transport("BuzzLink 特征不全"))
-                return
-            }
-            stateContinuation.yield(.ready)
-            let continuation = connectContinuation
-            connectContinuation = nil
-            continuation?.resume()
+        guard error == nil, let characteristics = service.characteristics else {
+            failConnect(.transport("特征发现失败：\(error?.localizedDescription ?? "无特征")"))
+            return
         }
+        for characteristic in characteristics {
+            if characteristic.uuid == CBUUID(string: BuzzLinkConstants.cmdWriteUUIDString) {
+                writeCharacteristic = characteristic
+            } else if characteristic.uuid == CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString) {
+                notifyCharacteristic = characteristic
+                peripheral.setNotifyValue(true, for: characteristic)
+            }
+        }
+        guard writeCharacteristic != nil, notifyCharacteristic != nil else {
+            failConnect(.transport("BuzzLink 特征不全"))
+            return
+        }
+        stateContinuation.yield(.ready)
+        let continuation = connectContinuation
+        connectContinuation = nil
+        continuation?.resume()
     }
 
-    nonisolated public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: (any Error)?) {
-        // Data 为 Sendable，直接捕获（与 SimPeripheral 同路）
-        let value = error == nil ? characteristic.value : nil
-        MainActor.assumeIsolated {
-            guard let value, !value.isEmpty else { return }
-            inboundContinuation.yield(value)
-        }
+    public func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateValueFor characteristic: CBCharacteristic,
+        error: (any Error)?
+    ) {
+        // Data 为 Sendable；按 notify 片段原样上抛，帧重组在客户端（§3.3）
+        guard error == nil, let value = characteristic.value, !value.isEmpty else { return }
+        inboundContinuation.yield(value)
     }
 
-    nonisolated public func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
-        let box = MainActorBox(value: peripheral)
-        MainActor.assumeIsolated {
-            drainPendingWrites(peripheral: box.value)
-        }
+    public func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        drainPendingWrites(peripheral: peripheral)
     }
-}
-
-// MARK: - 主队列 → MainActor 转移盒
-
-/// delegate 回调（已在主队列）向 MainActor 闭包转移非 Sendable 值的人工安全通道：
-/// 安全依据是 manager 以 `queue: .main` 创建、回调线程归属确定；
-/// Swift 6 区域隔离无法自动证明，故以 `@unchecked Sendable` 显式豁免。
-private struct MainActorBox<Value>: @unchecked Sendable {
-    let value: Value
 }
