@@ -1,9 +1,13 @@
 # Beecord Studio 技术设计（macOS）
 
-> 状态：**v1.2**（2026-10-16：T5 已落地——BuzzLinkSync 包 target（LibraryStore/SyncEngine，24 用例）、
-> 设备页全量 UI + 设置（传输方式/安全书签）+ 设备流 UITest（UITestSimServer 进程内设备源，9 用例全绿）；
-> 下一步 T6/T7）。v1.1（2026-10-15）：T0.5/T1/T2/T3/T4 已落地。
-> v1.0 于 2026-10-14 评审通过：总体形态与 PlayerEngine 决策按本方案执行；
+> 状态：**v1.3**（2026-10-16）：UI 对齐原型定稿——设备页空态布局、侧栏品牌头 + 连接状态脚标 +
+> 脚标设置入口（交互与令牌见 ux-design / DESIGN_SYSTEM §2.1，布局自检流程见 TESTING §4.5）；
+> 本文口径修正：包测试 164 用例（2 个活体冒烟 skip）、BLE 跨机实测 ≈39.8 KB/s（T5 闭环）、
+> §5.3 对账/manifest 缓存归属 T6。下一步 T6/T7。
+> v1.2（2026-10-16）：T5 已落地——BuzzLinkSync 包 target（LibraryStore/SyncEngine）、
+> 设备页全量 UI + 设置（传输方式/安全书签）+ 设备流 UITest（UITestSimServer 进程内设备源，9 用例全绿）。
+> v1.1（2026-10-15）：T0.5/T1/T2/T3/T4 已落地。
+> v1.0（2026-10-14）评审通过：总体形态与 PlayerEngine 决策按本方案执行；
 > AI 预设 Kimi 默认模型改为 `kimi-k3`，见 §5.5。
 > 上游依据：[`ux-design.md`](ux-design.md)（交互定稿）、
 > [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)（令牌 + AX 规则 R1-R8）、[`BUZZLINK.md`](BUZZLINK.md)（协议规范）、
@@ -38,12 +42,13 @@ apps/mac/
 ├── Packages/BuzzLink/               # 本地 SwiftPM
 │   ├── Sources/BuzzLinkCore/        # 纯算法：帧/CRC/向量（无 CoreBluetooth 依赖）
 │   ├── Sources/BuzzLinkSimCore/     # 设备侧协议引擎 SimEngine + 故障注入（纯逻辑，无 IO 依赖）
-│   ├── Sources/BuzzLink/            # ✅ T2 已交付：Central 封装（BuzzLinkClient actor
+│   ├── Sources/BuzzLink/            # Central 封装（T2 已交付：BuzzLinkClient actor
 │   │                                #   + BLE/loopback 双 Transport）+ 合作式即时取消（T5 A 阶段）
-│   ├── Sources/BuzzLinkSync/        # ✅ T5 已交付：LibraryStore + SyncEngine（actor，状态机/
+│   ├── Sources/BuzzLinkSync/        # LibraryStore + SyncEngine（T5 已交付：actor，状态机/
 │   │                                #   自动同步 diff/队列/进度聚合/取消/自动重连/保活；纯 Foundation）
-│   ├── Sources/BuzzLinkTestSupport/ # T5 A 阶段：测试支撑 target（SimEngineTransport 等，不进 products）
-│   └── Tests/                       # 四个 test target（Core/SimCore/Central/Sync，共 163 用例）+ Fixtures
+│   ├── Sources/BuzzLinkTestSupport/ # 测试支撑 target（T5 A 阶段：SimEngineTransport 等，不进 products）
+│   └── Tests/                       # 四个 test target（Core/SimCore/Central/Sync，共 164 用例）
+│                                    #   + Fixtures（在 BuzzLinkCoreTests 内）
 └── BeecordStudioUITests/            # AX 驱动 P0 主流程 + 设备流端到端（UITestSimServer 进程内设备源）
 ```
 
@@ -73,7 +78,7 @@ apps/mac/
 
 ### 4.2 BuzzLink（Central）
 
-✅ **T2 已交付**（2026-10-15）。实际形态：
+**T2 已交付**（2026-10-15）。实际形态：
 
 - `BuzzLinkClient`（actor）：`connect/disconnect`、`ping`、`getDeviceInfo`、
   `listFiles(offset:limit:)`（分页）、`fileInfo(id:)`、整文件 `download(fileID:progress:)`
@@ -82,13 +87,14 @@ apps/mac/
   断连收敛到 `disconnected`（自动重连策略在 SyncEngine 层决定）；
 - `BuzzLinkTransport` 抽象：`LoopbackTransport`（NWConnection → 127.0.0.1:40404，同机主通道）
   + `BLETransport`（CBCentralManager 薄壳：扫描 → 连接 → 服务/特征发现 → MTU → ready，
-  write-without-response + 背压；**仅编译验证**，跨机实测见 TESTING.md §4 缺口条目）；
+  write-without-response + 背压；**跨机实测已闭环**：2026-10-16 Mac Central ↔ iPhone Sim
+  ≈39.8 KB/s，实测中修复跨 actor 断言崩溃，见 TESTING.md §4）；
 - **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准。
 
 扩展点（未做，按需再补）：beginDownload/chunk 流/endVerify 细粒度 API（T7 控制台逐帧展示用）；
 删除等写命令 P1 评估。
 
-✅ **T5 A 阶段已补合作式即时取消**（2026-10-16）：`downloadWithRetries`/chunk 循环头与
+**T5 A 阶段已补合作式即时取消**（2026-10-16）：`downloadWithRetries`/chunk 循环头与
 `runCommand` 返回后插 `Task.checkCancellation()`——取消即时中断在飞下载并走
 `DL_ABORT` 清理（不再依赖 ≤10s 超时兜底）；SyncEngine 侧 `.cancelling` 态有界收敛
 （默认 3s，超时兜底断开重连）。取消语义详见 BuzzLinkClient/SyncEngine 头注释。
@@ -100,11 +106,12 @@ apps/mac/
 
 ### 4.4 测试
 
-✅ 现状 163 用例（1 skip）：Core 帧/CRC/向量 + Sim 引擎（含故障注入矩阵）+ Central
-（命令/下载/状态机、乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本全量下载验收、
-`LoopbackLiveSmokeTests` 活体冒烟：Sim 未运行时自动 skip）+ **T5 A/B 阶段新增**：
-client 合作式即时取消 3 用例、BuzzLinkSync 24 用例（自动同步 diff/恢复/进度聚合/取消/
-重连/保活 + FileLibraryStore 单测）。全部 XCTest、不依赖蓝牙硬件；
+现状 **164 用例、2 skip、0 失败**：Core 52（帧/CRC/向量）+ SimCore 33（引擎 + 故障注入矩阵）+
+Central 55（命令/下载/状态机、乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本
+全量下载验收、合作式即时取消）+ Sync 24（自动同步 diff/恢复/进度聚合/取消/重连/保活 +
+FileLibraryStore 单测）。2 个 skip 均为活体冒烟（缺环境自动跳过，不进 CI 统计）：
+`BLELiveSmokeTests` 需 `BLE_LIVE_SMOKE=1` + 对端设备前台广播，`LoopbackLiveSmokeTests`
+需 Sim 正在运行。全部 XCTest、不依赖蓝牙硬件；
 CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 xcodebuild 两条命令。
 
 ## 5. Studio app 服务层
@@ -115,11 +122,11 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
 
 | 验证项 | 结果 |
 |---|---|
-| Ogg 页解封装（纯 Swift） | ✅ 可行（约 40 行） |
-| CoreAudio **Opus 解码器**（16k/48kHz） | ✅ 存在；解码输出与 libopus 参考对齐 **93.4 dB SNR**，幅值一致 |
-| CoreAudio Opus **编码器** | ❌ 不存在（不需要：设备端已编码，导出用 AAC/LPCM） |
-| ffmpeg CAF muxer 写 opus | ❌ 不支持 |
-| 手写 CAF-opus（AudioFileWritePackets） | ❌ 第二包报 `'pty?'`（系统行为不稳定，放弃） |
+| Ogg 页解封装（纯 Swift） | 可行（约 40 行） |
+| CoreAudio **Opus 解码器**（16k/48kHz） | 存在；解码输出与 libopus 参考对齐 **93.4 dB SNR**，幅值一致 |
+| CoreAudio Opus **编码器** | 不存在（不需要：设备端已编码，导出用 AAC/LPCM） |
+| ffmpeg CAF muxer 写 opus | 不支持 |
+| 手写 CAF-opus（AudioFileWritePackets） | 失败：第二包报 `'pty?'`（系统行为不稳定，放弃） |
 
 **决策**：
 1. **导入时一次转码** `ogg → m4a（AAC 48kbps）` 存库；播放、波形、导出、分享全部走 m4a
@@ -134,7 +141,7 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
 
 ### 5.2 SyncEngine
 
-✅ **T5 已交付**（2026-10-16，`Packages/BuzzLink` 新 target `BuzzLinkSync`，纯 Foundation，
+**T5 已交付**（2026-10-16，`Packages/BuzzLink` 新 target `BuzzLinkSync`，纯 Foundation，
 不依赖 SwiftUI/Observation；状态以 `AsyncStream<SyncSnapshot>` + `AsyncStream<SyncEvent>`
 暴露，另提供 `snapshot` 只读当前值）。同步流程：
 
@@ -172,7 +179,8 @@ Application Support/Beecord/
 └── models/whisper/          # P1，ggml 模型
 ```
 
-`recording-id` = 设备文件 id（起录时间），冲突加短后缀。启动时目录扫描对账 + manifest 缓存加速。
+`recording-id` 安全化规则与 §5.2 LibraryStore 一致（设备文件 id，非法字符→`_`、截断 48、
+冲突加 `-2`）。启动时目录扫描对账 + manifest 缓存加速**随 T6 落地**（§9.2）。
 
 ### 5.4 ConsoleStore（协议控制台）
 
@@ -205,22 +213,23 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 - 每个视图提交前自检：可交互控件都有 `accessibilityIdentifier`？动态行用稳定业务 id？
   图标按钮有中文 label？进度/开关暴露 AXValue？（对应 R1-R4、R6）
 - 波形等自定义绘制包 `accessibilityElement`（R5）；快捷键表按 R7；Toast 走 `common.toast`（R8）；
-- **UITests target**：P0 主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放）脚本化，
+- **UITests target**：设备流端到端 9 用例已绿（UITestSimServer 进程内设备源，随 T4/T5 交付）；
+  P0 全主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放）补全归 T8，
   `xcodebuild test` 可跑，作为回归基线；
 - **BuzzLinkSim 支持故障注入**（丢块/限速/中途断连），异常路径同样可脚本化验证；
 - Accessibility Inspector Audit 无 error 级问题纳入 P0 验收。
 
 ## 7. 任务拆解（P0）
 
-| # | 任务 | 预估 | 依赖 |
+| # | 任务 | 状态/预估 | 依赖 |
 |---|---|---|---|
-| T0 | 音频链 spike | ✅ 已完成 | — |
-| T0.5 | BUZZLINK.md 补全（帧字段/命令集/常量） | ✅ 已完成 | — |
-| T1 | BuzzLinkCore + XCTest | ✅ 已完成 | T0.5 |
-| T2 | BuzzLink Central（BuzzLinkClient + BLE/loopback Transport；51 用例，含进程内 SimEngine 集成） | ✅ 已完成（2026-10-15） | T1 |
-| T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | ✅ 已完成 | T1 |
-| T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | ✅ 已完成（2026-10-15） | — |
-| T5 | 设备页 + SyncEngine | ✅ 已完成（2026-10-16，按全量 2.75d） | T2、T4 |
+| T0 | 音频链 spike | 已完成（2026-10-14） | — |
+| T0.5 | BUZZLINK.md 补全（帧字段/命令集/常量） | 已完成 | — |
+| T1 | BuzzLinkCore + XCTest | 已完成 | T0.5 |
+| T2 | BuzzLink Central（BuzzLinkClient + BLE/loopback Transport，含进程内 SimEngine 集成） | 已完成（2026-10-15） | T1 |
+| T3 | BuzzLinkSim（SimEngine 纯逻辑 + 故障注入 + 内置合成样本；macOS/iOS 双平台 BLE 外设 + loopback TCP） | 已完成（2026-10-15） | T1 |
+| T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | 已完成（2026-10-15） | — |
+| T5 | 设备页 + SyncEngine | 已完成（2026-10-16） | T2、T4 |
 | T6 | 录音库 + 播放器 | 2d | T4 |
 | T7 | 协议控制台 + 向量导出 | 1d | T2、T4 |
 | T8 | UITests 主流程 + Audit | 1d | T3、T5、T6 |
@@ -231,10 +240,10 @@ P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。
 
 | 风险 | 对策 |
 |---|---|
-| BLE 吞吐有限（经验值 10-30 KB/s；T3 跨机实测 Mac↔iPhone Sim：MTU 515 下 568KB/24s ≈ **24 KB/s**；1h 录音约 20MB → 同步 10-30min） | 进度诚实展示 + 自动同步后台化；固件侧后续调 MTU/连接间隔/2M PHY |
+| BLE 吞吐有限（经验值 10-30 KB/s；T5 跨机实测已闭环（2026-10-16）：Mac Central ↔ iPhone Sim ≈ **39.8 KB/s**，1h 录音约 20MB → 同步 ≈9 min） | 进度诚实展示 + 自动同步后台化；固件侧后续调 MTU/连接间隔/2M PHY |
 | whisper 模型体积（base ≈142MB） | 设置页显式下载 + 进度 + 校验；不内置 |
 | ad-hoc 分发的用户信任门槛（Gatekeeper 未签名提示） | README 构建指引；后续若有付费开发者账号再公证 |
-| Sandbox 下 CBPeripheralManager（Sim） | ✅ T3 已验证：macOS 沙盒外设广播可用；新发现：**同机 Central 无法发现本机 Peripheral**（实测），对策 = loopback TCP 同机通道 + Sim 双平台跨机（TESTING.md §4） |
+| Sandbox 下 CBPeripheralManager（Sim） | 已验证（T3）：macOS 沙盒外设广播可用；新发现：**同机 Central 无法发现本机 Peripheral**（实测），对策 = loopback TCP 同机通道 + Sim 双平台跨机（TESTING.md §4） |
 | 超长录音内存占用 | 波形/导出分块流式，禁止整段 PCM 驻留 |
 
 ## 9. 开放问题
