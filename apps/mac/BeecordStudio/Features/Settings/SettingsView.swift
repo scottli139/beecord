@@ -1,11 +1,15 @@
 import AppKit
 import BuzzLinkCore
+import Foundation
+import os
 import SwiftUI
 
 /// 设置窗口：通用 / AI 服务 / 转写（P1 占位，整组 disabled）/ 关于。
 /// 字段真实持久化：AppStorage（key 前缀 `settings.`）+ API Key 走 Keychain。
 struct SettingsView: View {
     @Bindable var settingsModel: SettingsModel
+
+    private let logger = Logger(subsystem: "com.beeuc.beecord.studio", category: "settings")
 
     // 转写组为 P1 占位（整组 disabled），暂用视图本地态。
     @State private var whisperModel = 0
@@ -26,6 +30,15 @@ struct SettingsView: View {
 
     private var generalSection: some View {
         Section("通用") {
+            Picker("连接方式", selection: Binding(
+                get: { TransportMode(rawValue: settingsModel.transportMode) ?? .loopback },
+                set: { settingsModel.setTransportMode($0) }
+            )) {
+                ForEach(TransportMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .accessibilityIdentifier("settings.transportPicker")
             LabeledContent("下载目录") {
                 HStack(spacing: DesignTokens.Space.s2) {
                     Text(settingsModel.downloadDir.isEmpty ? "未选择" : settingsModel.downloadDir)
@@ -195,6 +208,11 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.message = "选择录音下载目录"
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let bookmark = SecurityScopedBookmark.makeBookmark(for: url) else {
+            logger.error("下载目录安全书签生成失败：\(url.path)")
+            return
+        }
+        settingsModel.setDownloadDirBookmark(bookmark)
         settingsModel.setDownloadDir(url.path)
     }
 }

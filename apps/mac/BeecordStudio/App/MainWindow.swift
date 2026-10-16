@@ -4,12 +4,20 @@ import SwiftUI
 struct MainWindow: View {
     @Bindable var appModel: AppModel
     let settingsModel: SettingsModel
+    let deviceViewModel: DeviceViewModel
 
     var body: some View {
         NavigationSplitView {
             SidebarView(appModel: appModel, settingsModel: settingsModel)
         } detail: {
-            detailView
+            switch appModel.selectedPage {
+            case .device:
+                DeviceView(viewModel: deviceViewModel)
+            case .library:
+                LibraryView()
+            case .console:
+                ConsoleView()
+            }
         }
         .frame(
             minWidth: DesignTokens.Layout.windowMinWidth,
@@ -26,25 +34,25 @@ struct MainWindow: View {
         }
         .animation(.easeOut(duration: DesignTokens.Motion.fast), value: appModel.toast)
     }
-
-    @ViewBuilder
-    private var detailView: some View {
-        switch appModel.selectedPage {
-        case .device:
-            DeviceView()
-        case .library:
-            LibraryView()
-        case .console:
-            ConsoleView()
-        }
-    }
 }
 
 #Preview("浅色") {
-    MainWindow(appModel: AppModel(), settingsModel: SettingsModel())
+    previewMainWindow()
 }
 
 #Preview("深色") {
-    MainWindow(appModel: AppModel(), settingsModel: SettingsModel())
+    previewMainWindow()
         .preferredColorScheme(.dark)
+}
+
+/// 预览用主窗口（新建真实 VM，idle 态无害）。
+@MainActor
+private func previewMainWindow() -> some View {
+    let appModel = AppModel()
+    let settingsModel = SettingsModel()
+    return MainWindow(
+        appModel: appModel,
+        settingsModel: settingsModel,
+        deviceViewModel: DeviceViewModel(appModel: appModel, settings: settingsModel)
+    )
 }

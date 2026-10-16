@@ -114,6 +114,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 设置行 | 左标签右控件，行距 12 | `settings.aiProviderPicker` 等 |
 | 控制台行 | Menlo 12；方向符号 →（上行）←（下行）；行点击展开 hex | `console.logTable` |
 | 确认对话框 | NSAlert；主按钮写破坏性动词（"删除"）；**默认焦点=取消** | `common.confirmDialog` |
+| 权限面罩 | 全局面罩：图标 40 + 标题 15/600 + 说明 13 + 主按钮（跳系统设置）+ 次按钮（重试） | `common.permissionOverlay`（蓝牙实例 `device.bluetoothOverlay`） |
 
 ## 3. 手表组件规范（固件 / LVGL 9.5）
 

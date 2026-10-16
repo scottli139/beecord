@@ -76,18 +76,22 @@ private struct SidebarItem: View {
 }
 
 #Preview("默认") {
-    NavigationSplitView {
-        SidebarView(appModel: AppModel(), settingsModel: SettingsModel())
+    let appModel = AppModel()
+    let settingsModel = SettingsModel()
+    return NavigationSplitView {
+        SidebarView(appModel: appModel, settingsModel: settingsModel)
     } detail: {
-        DeviceView()
+        DeviceView(viewModel: DeviceViewModel(appModel: appModel, settings: settingsModel))
     }
 }
 
 #Preview("开发者模式 · 深色") {
-    NavigationSplitView {
-        SidebarView(appModel: AppModel(), settingsModel: previewSettings(developerMode: true))
+    let appModel = AppModel()
+    let settingsModel = previewSettings(developerMode: true)
+    return NavigationSplitView {
+        SidebarView(appModel: appModel, settingsModel: settingsModel)
     } detail: {
-        DeviceView()
+        DeviceView(viewModel: DeviceViewModel(appModel: appModel, settings: settingsModel))
     }
     .preferredColorScheme(.dark)
 }

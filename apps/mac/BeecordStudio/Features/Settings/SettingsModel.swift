@@ -10,8 +10,10 @@ final class SettingsModel {
     /// UserDefaults key 常量（前缀 `settings.`）。
     enum Keys {
         static let downloadDir = "settings.downloadDir"
+        static let downloadDirBookmark = "settings.downloadDir.bookmark"
         static let autoSyncEnabled = "settings.autoSyncEnabled"
         static let developerMode = "settings.developerMode"
+        static let transportMode = "settings.transportMode"
         static let aiProvider = "settings.aiProvider"
         static let aiBaseURL = "settings.aiBaseURL"
         static let aiModel = "settings.aiModel"
@@ -23,12 +25,16 @@ final class SettingsModel {
 
     // MARK: - 通用
 
-    /// 下载目录路径字符串（T4 仅存路径；安全书签 T5 再引入）。
+    /// 下载目录路径字符串（展示用；持久化授权走 downloadDirBookmark）。
     var downloadDir: String { didSet { Self.store(downloadDir, forKey: Keys.downloadDir) } }
+    /// 下载目录安全书签（settings.downloadDir.bookmark）；nil = 用默认容器。
+    var downloadDirBookmark: Data? { didSet { Self.store(downloadDirBookmark, forKey: Keys.downloadDirBookmark) } }
     /// 自动同步开关（默认开）。
     var autoSyncEnabled: Bool { didSet { Self.store(autoSyncEnabled, forKey: Keys.autoSyncEnabled) } }
     /// 开发者模式（默认关）：开启后侧栏显示协议控制台。
     var developerMode: Bool { didSet { Self.store(developerMode, forKey: Keys.developerMode) } }
+    /// 传输方式 raw（默认 loopback；实体设备到手后默认改 BLE）。
+    var transportMode: String { didSet { Self.store(transportMode, forKey: Keys.transportMode) } }
 
     // MARK: - AI 服务
 
@@ -51,8 +57,10 @@ final class SettingsModel {
     init() {
         let defaults = UserDefaults.standard
         downloadDir = defaults.string(forKey: Keys.downloadDir) ?? ""
+        downloadDirBookmark = defaults.data(forKey: Keys.downloadDirBookmark)
         autoSyncEnabled = defaults.object(forKey: Keys.autoSyncEnabled) as? Bool ?? true
         developerMode = defaults.object(forKey: Keys.developerMode) as? Bool ?? false
+        transportMode = defaults.string(forKey: Keys.transportMode) ?? TransportMode.loopback.rawValue
         aiProviderRaw = defaults.string(forKey: Keys.aiProvider) ?? AIProvider.kimi.rawValue
         aiBaseURL = defaults.string(forKey: Keys.aiBaseURL) ?? AIProvider.kimi.defaultBaseURL
         aiModel = defaults.string(forKey: Keys.aiModel) ?? AIProvider.kimi.defaultModel
@@ -76,8 +84,10 @@ final class SettingsModel {
     }
 
     func setDownloadDir(_ path: String) { downloadDir = path }
+    func setDownloadDirBookmark(_ data: Data?) { downloadDirBookmark = data }
     func setAutoSyncEnabled(_ value: Bool) { autoSyncEnabled = value }
     func setDeveloperMode(_ value: Bool) { developerMode = value }
+    func setTransportMode(_ mode: TransportMode) { transportMode = mode.rawValue }
     func setAIProvider(_ provider: AIProvider) { aiProvider = provider }
     func setAIBaseURL(_ value: String) { aiBaseURL = value }
     func setAIModel(_ value: String) { aiModel = value }
@@ -100,5 +110,22 @@ final class SettingsModel {
 
     private nonisolated static func store(_ value: Any?, forKey key: String) {
         UserDefaults.standard.set(value, forKey: key)
+    }
+}
+
+/// 设备连接传输方式（ux §3.1：P0 默认 loopback 本机调试；实体设备到手后默认改 BLE）。
+enum TransportMode: String, CaseIterable, Identifiable {
+    /// 本机回环（127.0.0.1:40404，TESTING.md §4）
+    case loopback
+    /// 蓝牙 BLE（实体设备链路）
+    case ble
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .loopback: "Loopback（本机调试）"
+        case .ble: "蓝牙（BLE）"
+        }
     }
 }
