@@ -8,10 +8,10 @@ import Foundation
 ///
 /// 与真实链路等价的点：客户端字节流经帧解析/分片重组后才喂引擎；引擎输出经编码
 /// （施加 corruptCRC 故障）后按小块切片回灌客户端入站，压测 §3.3 字节流重组。
-final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
+public final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
 
-    let stateStream: AsyncStream<BuzzLinkTransportState>
-    let inbound: AsyncStream<Data>
+    public let stateStream: AsyncStream<BuzzLinkTransportState>
+    public let inbound: AsyncStream<Data>
 
     /// 引擎与重组上下文的互斥访问锁（send 在客户端 actor、泵在后台任务）
     private let lock = NSLock()
@@ -31,7 +31,7 @@ final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
     /// 链路切片尺寸循环（模拟 notify/socket 任意切分）
     private static let splitPattern: [Int] = [251, 13, 1_024, 2]
 
-    init(
+    public init(
         engine: SimEngine,
         now: @Sendable @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         pumpIntervalMilliseconds: Int = 2,
@@ -51,7 +51,7 @@ final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
 
     // MARK: - BuzzLinkTransport
 
-    func connect() async throws {
+    public func connect() async throws {
         lock.withLock {
             parser = BuzzLinkFrameParser()
             reassembler = BuzzLinkMessageReassembler()
@@ -70,7 +70,7 @@ final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
         }
     }
 
-    func disconnect() {
+    public func disconnect() {
         pumpTask?.cancel()
         lock.withLock {
             isDisconnected = true
@@ -79,7 +79,7 @@ final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
         stateContinuation.yield(.disconnected)
     }
 
-    func send(_ bytes: Data) async throws {
+    public func send(_ bytes: Data) async throws {
         let result = lock.withLock { () -> (outputs: [SimOutboundFrame], disconnected: Bool) in
             guard !isDisconnected else { return ([], true) }
             parser.append(bytes)

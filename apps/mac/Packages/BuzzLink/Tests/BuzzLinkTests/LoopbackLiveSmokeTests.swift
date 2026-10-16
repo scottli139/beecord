@@ -1,5 +1,6 @@
 import BuzzLink
 import BuzzLinkCore
+import BuzzLinkTestSupport
 import Foundation
 import Network
 import XCTest

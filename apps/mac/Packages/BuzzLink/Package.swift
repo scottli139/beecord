@@ -19,6 +19,11 @@ let package = Package(
             name: "BuzzLink",
             dependencies: ["BuzzLinkCore"]
         ),
+        // 测试支撑（不进 products）：进程内 Sim 对端传输与进度收集器，供各测试 target 复用
+        .target(
+            name: "BuzzLinkTestSupport",
+            dependencies: ["BuzzLink", "BuzzLinkSimCore", "BuzzLinkCore"]
+        ),
         .testTarget(
             name: "BuzzLinkCoreTests",
             dependencies: ["BuzzLinkCore"],
@@ -30,7 +35,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BuzzLinkTests",
-            dependencies: ["BuzzLink", "BuzzLinkCore", "BuzzLinkSimCore"]
+            dependencies: ["BuzzLink", "BuzzLinkCore", "BuzzLinkSimCore", "BuzzLinkTestSupport"]
         )
     ],
     swiftLanguageModes: [.v6]

@@ -1,6 +1,7 @@
 import BuzzLink
 import BuzzLinkCore
 import BuzzLinkSimCore
+import BuzzLinkTestSupport
 import XCTest
 
 /// 进程内集成测试：真实 BuzzLinkClient 字节流经 SimEngineTransport 直接 pipe 进
@@ -328,19 +329,5 @@ final class SimEngineIntegrationTests: XCTestCase {
         var payload = Data([UInt8(id.utf8.count)])
         payload.append(Data(id.utf8))
         return payload
-    }
-}
-
-/// 进度记录器（跨并发回调线程安全）
-final class ClientProgressRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [BuzzLinkDownloadProgress] = []
-
-    var values: [BuzzLinkDownloadProgress] {
-        lock.withLock { storage }
-    }
-
-    func record(_ progress: BuzzLinkDownloadProgress) {
-        lock.withLock { storage.append(progress) }
     }
 }

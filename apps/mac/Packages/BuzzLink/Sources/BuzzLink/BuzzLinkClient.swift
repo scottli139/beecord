@@ -272,8 +272,10 @@ public actor BuzzLinkClient {
     /// 可靠性（§7）：CRC 不等/大小不符/块超时 → DL_ABORT 清理设备侧后整文件重下，
     /// 最多 `maxDownloadAttempts` 趟；趟数耗尽抛 ``BuzzLinkError/downloadRetryExhausted(fileID:attempts:lastError:)``。
     /// 下载进行中控制通道命令仍可并行（§3.4）；并发第二个下载会因状态守卫或设备 busy 失败。
-    /// 取消语义（P0）：取消调用方任务不会中断在飞命令；等待方由超时兜底回收（≤ 命令/块超时），
-    /// 设备侧状态由上层决定重试或断开。
+    /// 取消语义（合作式即时取消）：收块循环每块、每趟出发前、BEGIN 成立开工前检查任务取消；
+    /// 命中即中断本趟，尽力发 DL_ABORT 清理设备侧推流，状态收敛回 `.ready`，抛 `CancellationError`。
+    /// 在飞的单个命令等待不被打断（≤ 命令超时兜底回收）；末段 DL_END 握手期间到达的取消
+    /// 不再拦截（文件已验收完成，按成功返回）。
     ///
     /// - Parameters:
     ///   - fileID: 设备文件 ID（≤ 32 字节，§5.2）
@@ -306,6 +308,8 @@ public actor BuzzLinkClient {
         var lastError: BuzzLinkError = .internalFailure("未执行任何下载尝试")
         for attempt in 1...maxDownloadAttempts {
             do {
+                // 趟间合作式取消点：首趟/重试出发前即响应取消，不再发起新的一趟
+                try Task.checkCancellation()
                 return try await performDownloadAttempt(
                     fileID: fileID,
                     attempt: attempt,
@@ -365,6 +369,9 @@ public actor BuzzLinkClient {
         let begin = try parseBeginResponse(beginResponse.payload)
         let beginSession = beginResponse.session
 
+        // BEGIN 成立、推流即将开始：开工前最后取消点，避免为已放弃的下载建立推流
+        try Task.checkCancellation()
+
         emitState(.downloading(fileID: fileID))
 
         // 2. 收块：DL_CHUNK 经分发器进入块流；看门狗负责块间隔超时
@@ -390,8 +397,14 @@ public actor BuzzLinkClient {
 
         var iterator = ctx.chunkStream.makeAsyncIterator()
         while ctx.chunks.count < ctx.totalChunks {
+            // 收块循环合作式取消点：取消即中断本趟（DL_ABORT 由上层重试循环统一补发）
+            try Task.checkCancellation()
             guard let message = await iterator.next() else {
-                throw ctx.failure ?? BuzzLinkError.protocolViolation("块流意外结束")
+                // AsyncStream 对消费方任务取消以返回 nil 响应：已记录的失败原因优先抛出；
+                // 无失败原因且任务已取消 → 统一上报 CancellationError
+                if let failure = ctx.failure { throw failure }
+                try Task.checkCancellation()
+                throw BuzzLinkError.protocolViolation("块流意外结束")
             }
             recordChunk(message, in: ctx, attempt: attempt, progress: progress)
         }
