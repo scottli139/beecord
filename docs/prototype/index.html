@@ -133,9 +133,27 @@
   .lib-item.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
   .lib-item .t{font-weight:600;font-size:13px}
   .lib-item .m{font-size:11px;color:var(--text3);margin-top:2px;display:flex;justify-content:space-between}
-  .badge{font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.07);color:var(--text2)}
+  .badge{font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(0,0,0,.07);color:var(--text2);white-space:nowrap}
   .badge.tr{color:var(--accent);background:rgba(10,132,255,.12)}
   .badge.sum{color:#bf5af2;background:rgba(191,90,242,.12)}
+  /* P0-1 双行徽标：上行转码态（DESIGN_SYSTEM 状态色），下行转写态（P1 占位） */
+  .badges{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+  .badge.tc-pending{color:var(--text3);background:rgba(0,0,0,.06)}
+  .badge.tc-running{color:var(--accent);background:rgba(10,132,255,.12)}
+  .badge.tc-failed{color:var(--danger);background:rgba(255,69,58,.12)}
+  .badge.tc-ready{color:var(--ok);background:rgba(48,209,88,.14)}
+  /* P0-6 列表头：排序规则标注 */
+  .lib-head{font-size:11px;color:var(--text3);padding:0 2px 2px;display:flex;justify-content:space-between}
+  /* P0-2 播放器占位（转码未完成） */
+  .player-blocked{display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 0;color:var(--text2);font-size:13px}
+  .player-blocked .err{color:var(--danger)}
+  /* P0-3 删除确认（NSAlert 语义：取消默认聚焦） */
+  .alert-mask{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.16)}
+  .alert-box{width:380px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.28);padding:20px 22px}
+  .alert-box .at{font-size:14px;font-weight:600;margin-bottom:6px}
+  .alert-box .am{font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px}
+  .alert-btns{display:flex;justify-content:flex-end;gap:8px}
+  .alert-btns .focused{box-shadow:0 0 0 3px rgba(10,132,255,.35);border-color:var(--accent)}
   .lib-detail{flex:1;min-width:0}
   .lib-title{font-size:17px;font-weight:700;border:none;background:transparent;width:100%;outline:none;padding:2px 0}
   .player{display:flex;flex-direction:column;gap:10px}
@@ -203,7 +221,7 @@
   <div class="titlebar">
     <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
     <span>Beecord Studio</span>
-    <span class="proto">交互原型 v0.2 · 数据均为演示 mock</span>
+    <span class="proto">交互原型 v0.3（2026-10-16）· 数据均为演示 mock</span>
     <label class="proto-picker">评审场景
       <select id="prototype-scenario">
         <option value="normal">主流程</option>
@@ -306,11 +324,14 @@
             <path d="M5 20h3l3-10 5 20 5-16 5 12 3-6h6" stroke-linecap="round" stroke-linejoin="round"></path>
           </svg>
           <div class="state-title">录音库还是空的</div>
-          <div class="state-copy">连接 Beecord 设备并同步录音后，可在这里播放、转写和生成 AI 纪要。</div>
+          <div class="state-copy">连接 Beecord 设备并同步录音后，可在这里播放、转写和生成 AI 纪要。录音按录制时间新→旧排列。</div>
           <div class="state-actions"><button class="primary" id="btn-library-sync">前往设备同步</button></div>
         </div>
         <div class="lib-wrap" id="library-content">
-          <div class="lib-list" id="lib-list"></div>
+          <div class="lib-list">
+            <div class="lib-head"><span>录音 <span id="lib-count">0</span> 条</span><span>按录制时间 新→旧</span></div>
+            <div id="lib-items" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
           <div class="lib-detail">
             <div class="card empty-state" id="library-no-selection" style="display:none">
               <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -336,10 +357,13 @@
                   <div class="op-row">
                     <button class="sm">导出 m4a</button>
                     <button class="sm">导出 wav</button>
+                    <button class="sm" id="btn-export-ogg">导出 ogg（原始）</button>
                     <button class="sm" id="btn-finder">显示于 Finder</button>
                     <button class="sm danger" id="btn-del">删除</button>
                   </div>
                 </div>
+                <!-- P0-2 转码未完成占位：与列表徽标联动 -->
+                <div class="player-blocked" id="player-blocked" style="display:none"></div>
               </div>
               <div class="card" id="lib-tabs-card" style="display:none">
                 <div class="tabs">
@@ -347,21 +371,18 @@
                   <div data-tab="summary">AI 纪要</div>
                 </div>
                 <div id="tab-transcript">
-                  <div class="empty" id="tr-empty">
+                  <!-- P0-5 占位态终稿：转写为 P1（T9），按钮 disabled -->
+                  <div class="empty">
                     <div>尚未转写（本地 whisper，内容不出本机）</div>
-                    <button class="primary" id="btn-transcribe">开始转写</button>
+                    <button class="primary" disabled title="P1 可用（T9 本地转写）">开始转写</button>
                   </div>
-                  <div id="tr-progress" style="display:none;padding:18px 0">
-                    <div class="scan-row"><div class="spinner"></div><span id="tr-progress-text">whisper-small 加载中…</span></div>
-                  </div>
-                  <div id="tr-lines" style="display:none"></div>
                 </div>
                 <div id="tab-summary" style="display:none">
-                  <div class="empty" id="sum-empty">
-                    <div id="sum-empty-text">生成会议纪要需要已配置的 AI 端点与完成转写</div>
-                    <button class="primary" id="btn-summary">生成纪要</button>
+                  <!-- P0-5 占位态终稿：纪要为 P1（T10），按钮 disabled -->
+                  <div class="empty">
+                    <div>生成会议纪要需要已配置的 AI 端点与完成转写</div>
+                    <button class="primary" disabled title="P1 可用（T10 AI 纪要）">生成纪要</button>
                   </div>
-                  <div id="sum-body" style="display:none"></div>
                 </div>
               </div>
             </div>
@@ -434,6 +455,17 @@
         </div>
       </section>
     </main>
+    <!-- P0-3 删除确认（NSAlert 语义：主按钮"删除"红字，取消默认聚焦） -->
+    <div class="alert-mask" id="del-mask">
+      <div class="alert-box">
+        <div class="at">删除该录音？</div>
+        <div class="am">「<span id="del-name"></span>」将从录音库移除，未导出的原件将无法恢复。</div>
+        <div class="alert-btns">
+          <button class="danger" id="btn-del-confirm">删除</button>
+          <button class="focused" id="btn-del-cancel">取消</button>
+        </div>
+      </div>
+    </div>
     <div class="permission-overlay" id="bluetooth-overlay">
       <div class="empty-state">
         <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
@@ -453,7 +485,7 @@
 <script>
 /* ================= 状态 ================= */
 const S = {
-  connected:false, scanned:false, aiConfigured:false, devMode:true,
+  connected:false, scanned:false, devMode:true,
   files:[
     {name:"2026-10-13 16_50_55.ogg",dur:"34s",size:"188 KB",dl:false},
     {name:"2026-10-13 13_48_28.ogg",dur:"15s",size:"83 KB",dl:false},
@@ -464,9 +496,12 @@ const S = {
     {name:"2026-10-13 11_17_52.ogg",dur:"20s",size:"112 KB",dl:false},
   ],
   lib:[
-    {t:"周会同步 10-13", m:"10-13 16:50 · 34s", dur:34, badge:"已纪要", cls:"sum"},
-    {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, badge:"已转写", cls:"tr"},
-    {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, badge:"未转写", cls:""},
+    {t:"周会同步 10-13", m:"10-13 16:50 · 34s", dur:34, tc:"ready", tr:"summary"},
+    {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, tc:"ready", tr:"done"},
+    {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, tc:"ready", tr:"none"},
+    {t:"2026-10-14 09_20_00", m:"10-14 09:20 · 42s", dur:42, tc:"running", tr:"none", pct:37},
+    {t:"2026-10-14 08_05_12", m:"10-14 08:05 · 21s", dur:21, tc:"failed", tr:"none"},
+    {t:"2026-10-14 07_48_30", m:"10-14 07:48 · 12s", dur:12, tc:"pending", tr:"none"},
   ],
   curLib:null, playing:false, playT:0, speed:1, timer:null, dlCancel:false, scanTimer:null,
 };
@@ -606,13 +641,22 @@ function renderLibraryState(){
   $("library-no-selection").style.display=noSelection?"flex":"none";
   $("library-detail-content").style.display=noSelection?"none":"";
 }
+// P0-1 徽标语义：上行转码态（待转码/转码中/转码失败/已就绪），下行转写态（P1 占位演示）
+const TC_BADGE={pending:["待转码","tc-pending"],running:["转码中","tc-running"],failed:["转码失败","tc-failed"],ready:["已就绪","tc-ready"]};
+const TR_BADGE={none:["未转写",""],running:["转写中","tr"],done:["已转写","tr"],summary:["已纪要","sum"]};
+function tcBadge(i){
+  const r=S.lib[i], [txt,cls]=TC_BADGE[r.tc];
+  return `<span class="badge ${cls}" id="lib-tc-${i}">${r.tc==="running"?`转码中 ${r.pct??0}%`:txt}</span>`;
+}
 function renderLib(){
-  const el=$("lib-list"); el.innerHTML="";
+  const el=$("lib-items"); el.innerHTML="";
+  $("lib-count").textContent=S.lib.length;
   S.lib.forEach((r,i)=>{
     const d=document.createElement("div");
     d.className="lib-item"+(S.curLib===i?" active":"");
     d.innerHTML=`<div class="t">${r.t}</div>
-      <div class="m"><span>${r.m}</span><span class="badge ${r.cls}" id="lib-badge-${i}">${r.badge}</span></div>`;
+      <div class="m"><span>${r.m}</span>
+      <span class="badges">${tcBadge(i)}<span class="badge ${TR_BADGE[r.tr][1]}">${TR_BADGE[r.tr][0]}</span></span></div>`;
     d.onclick=()=>selectLib(i);
     el.appendChild(d);
   });
@@ -623,10 +667,23 @@ function selectLib(i){
   S.curLib=i; renderLib();
   const r=S.lib[i];
   $("lib-title").value=r.t;
-  $("player").style.display=""; $("lib-tabs-card").style.display="";
+  $("lib-tabs-card").style.display="";
+  const ready=r.tc==="ready";
+  $("player").style.display=ready?"":"none";
+  const blocked=$("player-blocked");
+  if(!ready){
+    blocked.style.display="";
+    if(r.tc==="running") blocked.innerHTML=`<div class="scan-row"><div class="spinner"></div><span>转码中，稍后即可播放…（${r.pct??0}%）</span></div>`;
+    else if(r.tc==="pending") blocked.innerHTML=`<div class="scan-row"><div class="spinner"></div><span>排队等待转码…</span></div>`;
+    else blocked.innerHTML=`<div><span class="err">转码失败</span>（原始 ogg 仍可导出）</div><button class="sm" id="pb-retry">重试</button>`;
+    if(r.tc==="failed") $("pb-retry").onclick=()=>{ r.tc="running"; r.pct=0; selectLib(i); };
+    return;
+  }
+  blocked.style.display="none";
   $("pc-time").textContent=`00:00 / ${fmtT(r.dur)}`;
   genWave(); setProgress(0);
 }
+// P0-7 已复核：跳设备页并触发连接（P0 连接即扫描一体）
 $("btn-library-sync").onclick=()=>{ showView("device"); if(!S.connected&&!S.scanned) startScan(); };
 $("btn-select-recent").onclick=()=>selectLib(0);
 function genWave(){
@@ -663,8 +720,37 @@ $("pc-prog").onclick=e=>{
   setProgress((e.clientX-r.left)/r.width*S.lib[S.curLib].dur);
 };
 $("btn-finder").onclick=()=>toast("原型演示：Finder 路径 ~/Documents/Beecord");
-$("btn-del").onclick=()=>toast("原型演示：删除需二次确认");
+$("btn-export-ogg").onclick=()=>toast("原型演示：导出原始 ogg（原件不受转码影响）");
+// P0-3 删除确认：取消默认聚焦（蓝环），确认后真实移除 mock 项
+$("btn-del").onclick=()=>{
+  if(S.curLib===null) return;
+  $("del-name").textContent=S.lib[S.curLib].t;
+  $("del-mask").style.display="flex";
+};
+$("btn-del-cancel").onclick=()=>{ $("del-mask").style.display="none"; };
+$("btn-del-confirm").onclick=()=>{
+  const name=S.lib[S.curLib].t;
+  S.lib.splice(S.curLib,1);
+  S.curLib=S.lib.length?null:null;
+  $("del-mask").style.display="none";
+  renderLib();
+  toast(`已删除「${name}」`);
+};
+$("del-mask").onclick=e=>{ if(e.target.id==="del-mask") $("del-mask").style.display="none"; };
 $("lib-title").onchange=e=>{ S.lib[S.curLib].t=e.target.value; renderLib(); };
+
+// P0-2 转码推进模拟：running 条目自动前进，完成即解锁播放器
+setInterval(()=>{
+  S.lib.forEach((r,i)=>{
+    if(r.tc!=="running") return;
+    r.pct=(r.pct??0)+2;
+    if(r.pct>=100){ r.pct=100; r.tc="ready"; toast(`「${r.t}」转码完成`); }
+    const b=$("lib-tc-"+i);
+    if(b){ const [txt,cls]=TC_BADGE[r.tc]; b.className="badge "+cls;
+      b.textContent=r.tc==="running"?`转码中 ${r.pct}%`:txt; }
+    if(S.curLib===i) selectLib(i);
+  });
+},400);
 
 /* tabs */
 document.querySelectorAll("#lib-tabs-card .tabs div").forEach(t=>{
@@ -676,57 +762,6 @@ document.querySelectorAll("#lib-tabs-card .tabs div").forEach(t=>{
   };
 });
 
-/* 转写 */
-const TRANSCRIPT=[
-  [0,"好，那我们开始今天的周会。"],[4,"首先是协议进展，BLE 文件同步已经全链路跑通。"],
-  [9,"下载速率稳定在 52KB/s，CRC 校验全部通过。"],[14,"下一步是开发板到货后的固件移植。"],
-  [19,"客户端这边先做 Mac 版，支持本地转写。"],[24,"AI 纪要走可选的云端端点，默认本地优先。"],
-  [29,"好，今天就这些，散会。"],
-];
-$("btn-transcribe").onclick=async ()=>{
-  $("tr-empty").style.display="none"; $("tr-progress").style.display="";
-  $("tr-progress-text").textContent="whisper-small 加载中…";
-  await new Promise(r=>setTimeout(r,900));
-  $("tr-progress-text").textContent="转写中… 00:12 / 00:34";
-  await new Promise(r=>setTimeout(r,900));
-  $("tr-progress-text").textContent="转写中… 00:27 / 00:34";
-  await new Promise(r=>setTimeout(r,800));
-  $("tr-progress").style.display="none";
-  const box=$("tr-lines"); box.style.display=""; box.innerHTML="";
-  TRANSCRIPT.forEach(([ts,tx])=>{
-    const d=document.createElement("div"); d.className="tr-line";
-    d.innerHTML=`<span class="ts">${fmtT(ts)}</span><span>${tx}</span>`;
-    d.onclick=()=>{ setProgress(ts); toast("已跳转到 "+fmtT(ts)); };
-    box.appendChild(d);
-  });
-  const b=$("lib-badge-"+S.curLib); b.textContent="已转写"; b.className="badge tr";
-  S.lib[S.curLib].badge="已转写"; S.lib[S.curLib].cls="tr";
-  toast("转写完成（本地 whisper-small）");
-};
-
-/* AI 纪要 */
-const SUMMARY={
-  "要点":["BLE 文件同步链路已跑通：52KB/s，CRC 校验全部通过","固件移植等待开发板到货","Mac 客户端优先实现本地转写能力"],
-  "决议":["客户端数据策略确定为本地优先","云端 AI 仅作为可选配置，由用户自行接入端点"],
-  "待办":["开发板到货后完成 M1 硬件自检","完成 Beecord Studio P0 交互评审并进入实现"],
-};
-$("btn-summary").onclick=async ()=>{
-  if(!S.aiConfigured){ toast("请先在 设置 → AI 服务 配置并测试端点");
-    showView("settings"); return; }
-  $("sum-empty").style.display="none";
-  const body=$("sum-body"); body.style.display=""; body.innerHTML="";
-  for(const [sec,items] of Object.entries(SUMMARY)){
-    const h=document.createElement("div"); h.className="sum-sec";
-    h.innerHTML=`<h4>${sec}</h4><ul></ul>`; body.appendChild(h);
-    const ul=h.querySelector("ul");
-    for(const it of items){
-      const li=document.createElement("li"); ul.appendChild(li);
-      for(let c=0;c<=it.length;c++){ li.textContent=it.slice(0,c); await new Promise(r=>setTimeout(r,14)); }
-    }
-  }
-  const b=$("lib-badge-"+S.curLib); b.textContent="已纪要"; b.className="badge sum";
-  S.lib[S.curLib].badge="已纪要"; S.lib[S.curLib].cls="sum";
-};
 
 /* ================= 协议控制台 ================= */
 let conT=0;
@@ -785,8 +820,6 @@ $("btn-ai-test").onclick=async ()=>{
   $("ai-test-result").innerHTML='<span class="spinner" style="display:inline-block;vertical-align:-3px"></span> 测试中…';
   await new Promise(r=>setTimeout(r,1200));
   $("ai-test-result").innerHTML='<span style="color:var(--ok)">● 连接成功</span>（'+$("ai-model").value+' · 200 OK）';
-  S.aiConfigured=true;
-  $("sum-empty-text").textContent="基于转写文本，由 "+$("ai-model").value+" 生成纪要";
 };
 
 /* ================= 启动 ================= */
