@@ -60,9 +60,11 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
      设备流 UITest 由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
-   - **验证缺口（2026-10-15，T2 遗留）**：`BuzzLink.BLETransport` 目前仅编译验证，
-     扫描/连接/订阅/写入路径须在 T5 前做一次跨机实测（Central 在 Mac、Sim 在 iPhone/iPad，
-     跨机 BLE 全会话）；`LoopbackLiveSmokeTests` 只覆盖 loopback 通道。
+   - **跨机实测（2026-10-16 已闭环，T5）**：`BLE_LIVE_SMOKE=1 swift test --filter
+     BLELiveSmokeTests` 跑 BLE 全会话（扫描/连接/INFO/LIST/全量下载/CRC 验收 + 吞吐日志），
+     Mac Central ↔ iPhone Sim 实测 ≈39.8 KB/s；该实测发现并修复了 BLETransport 的
+     跨 actor 断言崩溃（@preconcurrency 同步见证在非主队列调用 SIGTRAP）。
+     无环境变量时自动 skip，不进 CI；`LoopbackLiveSmokeTests` 只覆盖 loopback 通道。
 4. **流程**：启动 Sim → 启动 Studio → 按 P0 流程脚本执行 → 断言 AXValue/静态文本/库目录产物。
 5. **缺口处理**：发现无法通过 AX 表达的操作 = 实现缺陷，先补 AX id 再测；
    发现的问题记录为 GitHub issue（附脚本与断言输出）。
