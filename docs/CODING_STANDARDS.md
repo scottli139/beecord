@@ -31,6 +31,9 @@
 - **日志**：`os.Logger` 分级（`.debug/.info/.error`），禁止向仓库提交 `print`。
 - **SwiftUI 视图**：单一职责，单文件超 150 行考虑拆分；样式只取 `DesignTokens`，
   不内联颜色/字号/间距字面量。
+- **SwiftUI 布局**：复用组件内部禁 `.frame(maxWidth/maxHeight: .infinity)` 贪婪扩张
+  （扩张归调用点）；页面骨架与对齐规则见 DESIGN_SYSTEM §2.1；
+  布局/样式改动必做 TESTING §4.5 截图自检。
 - **AX 强制**：所有可交互控件必须 `.accessibilityIdentifier`，命名遵守
   DESIGN_SYSTEM §4 R1-R8；**没有 AX id 的交互控件视为未完成**。
 - **格式**：4 空格缩进（Xcode 默认）；文件头不写作者/日期注释块；`// MARK: -` 分区适度。

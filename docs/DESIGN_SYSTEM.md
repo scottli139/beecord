@@ -98,6 +98,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 组件 | 规格 | AX id 示例（见 §4） |
 |---|---|---|
 | 侧栏导航项 | h28，r6；active：accent 15% 底 + accent 字 | `sidebar.navItem.devices` / `.library` / `.console` |
+| 侧栏脚标行 | 状态点 8 + 12px 状态文字（截断）+ 右侧设置齿轮（13px，次色）；card2 底 r6；齿轮=打开标准 Settings 窗口 | `sidebar.deviceStatus`、`sidebar.settingsButton` |
 | 主按钮 | h28，r6，accent 填充白字；disabled 透明度 45% | `device.downloadButton` |
 | 次按钮 | h28，r6，1px 边框白底 | `device.refreshButton` |
 | 危险按钮 | 红字；确认对话框内才允许红填充 | `library.deleteButton` |
@@ -115,6 +116,31 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 控制台行 | Menlo 12；方向符号 →（上行）←（下行）；行点击展开 hex | `console.logTable` |
 | 确认对话框 | NSAlert；主按钮写破坏性动词（"删除"）；**默认焦点=取消** | `common.confirmDialog` |
 | 权限面罩 | 全局面罩：图标 40 + 标题 15/600 + 说明 13 + 主按钮（跳系统设置）+ 次按钮（重试） | `common.permissionOverlay`（蓝牙实例 `device.bluetoothOverlay`） |
+
+### 2.1 页面骨架与布局规则（Mac / SwiftUI）
+
+**页面骨架**（主区所有页面统一，自上而下）：
+
+1. 页头：标题（`pageTitle`）+ 副标题（`body` / `textSecondary`），**左对齐**，padding 取 `Layout.mainPadding*`；
+2. 内容区：**顶对齐**卡片流（`cardStyle()`，卡间距 16）；
+3. 底部条：可选（如设备页整体进度条）。
+
+**对齐规则**：
+
+- 主内容一律**顶对齐**；**垂直+水平双居中仅限"满屏状态"**：扫描中、权限面罩。
+- 空态卡片：顶对齐贴页头（卡片不随窗口纵向拉伸，下方留白），min-height 400
+  （`Layout.emptyCardMinHeight`），卡内"图标+标题+说明+主按钮"聚簇居中。
+- Web 原型默认文档流自顶向下，SwiftUI 容器默认居中——从原型落地时对齐方式必须**显式声明**，
+  依赖默认值必然跑偏。
+
+**SwiftUI 落地陷阱**（2026-10-16 设备页三个布局 bug 实录，均发生在 AX 全绿的代码上）：
+
+1. 复用组件内部**禁止** `.frame(maxWidth/maxHeight: .infinity)` 贪婪扩张——组件一旦与兄弟
+   视图组合，内部贪婪框架会吃掉全部剩余空间（空态按钮被挤到底部的根因）。**扩张归调用点**。
+2. `VStack(alignment: .leading)` 只对齐子视图，不决定容器自身在父级中的位置；容器要靠
+   `.frame(maxWidth: .infinity, alignment: .leading)` 或 Spacer 定位（页头被居中的根因）。
+3. 单卡片放入带 `maxHeight: .infinity` 的容器时默认垂直居中，需 `Spacer(minLength: 0)`
+   顶对齐（卡片悬空、距页头过远的根因）。
 
 ## 3. 手表组件规范（固件 / LVGL 9.5）
 
@@ -189,6 +215,10 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 8. 破坏性操作必须二次确认，确认文案=动词+后果（"删除该录音？未同步副本无法恢复"）。
 9. Mac 新组件必须带 §4 的 AX id；没有 id 的交互控件视为未完成。
 10. 新增/修改组件：先更新本文与 §7 图版，再写实现代码。
+11. 页面骨架与对齐遵守 §2.1：内容区顶对齐，仅满屏态（扫描中/权限面罩）可双居中；
+    从原型落地时显式声明对齐，不靠默认值。
+12. 布局/样式改动必须做 TESTING §4.5 截图自检并汇报对比结论；
+    编译通过、AX 全绿均不代表布局正确。
 
 ## 7. 图版（实现对照用）
 

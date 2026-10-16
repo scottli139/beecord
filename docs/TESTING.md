@@ -45,7 +45,8 @@ cd firmware/test_host && make test
 
 ## 4. AI 手工测试规范（一线手段）
 
-UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（脆弱且不可评审）。
+UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐标点击与截图比对（脆弱且不可评审）。
+布局/样式改动的一次性人工验收除外——必须做截图自检，见 §4.5。
 
 1. **入口**：DESIGN_SYSTEM §4 R1-R8。可交互控件必有稳定 `accessibilityIdentifier`；
    进度/开关暴露 `AXValue`；状态徽标为可读文本（可断言）；Toast 走 `common.toast`。
@@ -75,6 +76,25 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
 
 **P0 流程必须 100% AX 可驱动**（DESIGN_SYSTEM §4.2 验收项）：扫描 → 连接 → 列表 →
 勾选/全选下载 → 进度 → CRC 校验通过 → 库内出现 → 播放 → 暂停 → 导出 → 设置读写。
+
+## 4.5 布局视觉自检（截图自检，布局/样式改动必做）
+
+自动化回归禁止截图比对；但任何布局/样式改动（frame/padding/对齐/卡片结构）的一次性验收
+**必须**实拍截图人工对比——AX 断言验证元素**存在**，验证不了元素**位置**
+（2026-10-16 设备页空态按钮沉底 / 页头被居中 / 卡片悬空三例，全部发生在 UITest 9/9 全绿的
+代码上）。方法（AI 执行，约 1 分钟）：
+
+1. **环境清场**（跑 UITest 前同样必做）：`pkill -f MacOS/BeecordStudio`（进程名**无空格**）、
+   `killall BuzzLinkSim`、`lsof -nP -iTCP:40404 -sTCP:LISTEN` 应为空。
+   残留 app 实例会抢 AX 归属，导致用例随机失败（实录 2 例）。
+2. `open -a <DerivedData 下的 BeecordStudio.app>` → 等目标状态稳定
+   （空态需等自动连接失败回落，约 15s）→ AppleScript 取窗口框
+   （AX 里进程名**有空格**）：
+   `osascript -e 'tell application "System Events" to tell process "Beecord Studio" to get {position, size} of window 1'`
+   → `screencapture -Rx,y,w,h -o /tmp/shot.png` → ReadMediaFile 检查。
+3. 原型对照：headless Chrome 截同场景（场景值见原型页面右上角场景选择器）：
+   `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --screenshot=/tmp/proto.png --window-size=1280,800 "file://$PWD/docs/prototype/index.html?state=<场景>"`
+4. 对比结论连同门禁结果一并汇报；用户要求时展示截图。
 
 ## 5. 故障注入矩阵（Sim 必须支持）
 
