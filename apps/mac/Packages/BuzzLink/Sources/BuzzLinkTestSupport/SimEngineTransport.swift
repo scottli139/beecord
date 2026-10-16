@@ -27,6 +27,8 @@ public final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
     private let pumpIntervalMilliseconds: Int
     /// 推流限速（字节/秒；nil = 不限），模拟真实链路节奏
     private let throttleBytesPerSecond: Int?
+    /// 入站消息帧按 type 的计数（锁内维护，测试断言用）
+    private var frameTypeCounts: [UInt8: Int] = [:]
 
     /// 链路切片尺寸循环（模拟 notify/socket 任意切分）
     private static let splitPattern: [Int] = [251, 13, 1_024, 2]
@@ -47,6 +49,18 @@ public final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
         let inbound = AsyncStream<Data>.makeStream()
         self.inbound = inbound.stream
         self.inboundContinuation = inbound.continuation
+    }
+
+    // MARK: - 测试观测与编排
+
+    /// 入站消息帧按 type 的计数（锁内快照；区分帧类型的时序无关断言用）
+    public var receivedFrameTypeCounts: [UInt8: Int] {
+        lock.withLock { frameTypeCounts }
+    }
+
+    /// 运行时更新故障注入配置（测试编排用）
+    public func updateFaults(_ mutate: (inout SimFaults) -> Void) {
+        lock.withLock { mutate(&engine.faults) }
     }
 
     // MARK: - BuzzLinkTransport
@@ -86,6 +100,7 @@ public final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
             var collected: [SimOutboundFrame] = []
             while let frame = parser.nextFrame() {
                 guard let message = try? reassembler.accept(frame) else { continue }
+                frameTypeCounts[message.type, default: 0] += 1
                 collected.append(contentsOf: engine.handle(message, now: now()))
             }
             return (collected, false)
