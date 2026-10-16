@@ -95,6 +95,12 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
 3. 原型对照：headless Chrome 截同场景（场景值见原型页面右上角场景选择器）：
    `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --screenshot=/tmp/proto.png --window-size=1280,800 "file://$PWD/docs/prototype/index.html?state=<场景>"`
 4. 对比结论连同门禁结果一并汇报；用户要求时展示截图。
+5. **动态态（hover）验证**：静态截图覆盖不了指针悬停态。方法——同一命令链内
+   `open -a` 置前目标 app（screencapture 抓的是坐标处**顶层窗口**，命令间隙终端可能被
+   重新置前导致误拍，2026-10-16 实录一例）→ 合成事件触发 hover
+   （`CGWarpMouseCursorPosition` 不产生追踪区域事件，必须用
+   `CGEventCreateMouseEvent(kCGEventMouseMoved)` + `CGEventPost`）→ 截图 + 像素采样比对
+   （`fill.hover` 仅 5% 透明度，肉眼不可靠，用采样数值断言）。
 
 ## 5. 故障注入矩阵（Sim 必须支持）
 

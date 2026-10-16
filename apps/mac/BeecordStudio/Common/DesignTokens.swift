@@ -59,6 +59,8 @@ enum DesignTokens {
         static let surfaceCard2 = Color(light: 0xF5F5F7, dark: 0x2C2C2E)
         /// scrim.overlay：Light rgba(0,0,0,.35) / Dark rgba(0,0,0,.45)
         static let scrim = Color(light: 0x000000, dark: 0x000000, lightOpacity: 0.35, darkOpacity: 0.45)
+        /// fill.hover：自绘控件 hover 底（§1.1：labelColor 5%，深浅色自适应）
+        static let fillHover = Color.primary.opacity(0.05)
         /// brand.primary #F5A623（仅品牌点；琥珀底上的文字用墨黑 #101014）
         static let brandPrimary = Color(.sRGB, red: 0xF5 / 255, green: 0xA6 / 255, blue: 0x23 / 255, opacity: 1)
         /// 墨黑：琥珀底上的文字专用

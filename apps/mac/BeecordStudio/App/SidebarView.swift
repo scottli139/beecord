@@ -75,18 +75,7 @@ struct SidebarView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer()
-            Button {
-                openSettings()
-            } label: {
-                Image(systemName: "gear")
-                    .font(.system(size: 13))
-                    .foregroundStyle(DesignTokens.ColorToken.textSecondary)
-                    .frame(width: 22, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("sidebar.settingsButton")
-            .accessibilityLabel("设置")
+            SettingsGearButton { openSettings() }
         }
         .padding(.horizontal, DesignTokens.Space.s2)
         .padding(.vertical, DesignTokens.Space.s2)
@@ -116,13 +105,14 @@ struct SidebarView: View {
     }
 }
 
-/// 单个侧栏导航项。
+/// 单个侧栏导航项。自绘控件（.plain），hover 态按 DESIGN_SYSTEM §2.2 自补 fill.hover 底。
 private struct SidebarItem: View {
     let icon: String
     let title: String
     let page: AppModel.Page
     let accessibilityID: String
     @Bindable var appModel: AppModel
+    @State private var isHovering = false
 
     private var isActive: Bool { appModel.selectedPage == page }
 
@@ -143,9 +133,37 @@ private struct SidebarItem: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(isActive ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+        .background(
+            isActive ? Color.accentColor.opacity(0.15) : (isHovering ? DesignTokens.ColorToken.fillHover : .clear),
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+        )
         .foregroundStyle(isActive ? Color.accentColor : DesignTokens.ColorToken.textPrimary)
+        .onHover { isHovering = $0 }
         .accessibilityIdentifier(accessibilityID)
+    }
+}
+
+/// 脚标设置齿轮：自绘控件（.plain），hover 态按 DESIGN_SYSTEM §2.2 自补 fill.hover 底。
+private struct SettingsGearButton: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "gear")
+                .font(.system(size: 13))
+                .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+                .frame(width: 22, height: 20)
+                .background(
+                    isHovering ? DesignTokens.ColorToken.fillHover : .clear,
+                    in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityIdentifier("sidebar.settingsButton")
+        .accessibilityLabel("设置")
     }
 }
 

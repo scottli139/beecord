@@ -136,6 +136,7 @@ struct DeviceView: View {
             Button(viewModel.downloadButtonTitle) {
                 viewModel.downloadSelectedTapped()
             }
+            .buttonStyle(.borderedProminent)
             .disabled(viewModel.selectedIDs.isEmpty)
             .accessibilityIdentifier("device.downloadButton")
             Toggle("自动同步", isOn: Binding(

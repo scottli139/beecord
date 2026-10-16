@@ -37,7 +37,7 @@ struct FileTableView: View {
     }
 }
 
-/// 单行：checkbox（真按钮，R6）+ 文件名 + 时长 + 大小 + 状态徽标（R4 可读文本）。
+/// 单行：原生 checkbox（R6 真控件）+ 文件名 + 时长 + 大小 + 状态徽标（R4 可读文本）。
 private struct FileRowView: View {
     let row: DeviceFileRow
     let isSelected: Bool
@@ -46,13 +46,14 @@ private struct FileRowView: View {
 
     var body: some View {
         HStack(spacing: DesignTokens.Space.s2) {
-            Button(action: onToggle) {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 14))
-                    .frame(width: 20, height: 20)
+            Toggle(isOn: Binding(
+                get: { isSelected },
+                set: { _ in onToggle() }
+            )) {
+                EmptyView()
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(isSelected ? Color.accentColor : DesignTokens.ColorToken.textSecondary)
+            .labelsHidden()
+            .toggleStyle(.checkbox)
             .accessibilityLabel("选择 \(row.id)")
             .accessibilityIdentifier("device.fileTable.row.\(row.id).checkbox")
             Text(row.id)

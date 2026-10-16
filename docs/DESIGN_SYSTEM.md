@@ -1,6 +1,8 @@
 # Beecord UX 设计系统（Design System）v1.0
 
-> 状态：**v1.0 定稿**（2026-10-14）。适用范围：**Beecord Studio（macOS）** 与 **手表固件 UI（LVGL）**。
+> 状态：**v1.1**（2026-10-16：新增 §2.1 页面骨架与布局规则、§2.2 交互状态与 `fill.hover` 令牌；
+> 主按钮 disabled 由"透明度 45%"修订为系统灰化）。v1.0 定稿于 2026-10-14。
+> 适用范围：**Beecord Studio（macOS）** 与 **手表固件 UI（LVGL）**。
 > 本文是 UI 实现的唯一依据；实现与本文冲突时，先改文档再写代码。
 > 关系：[`BRAND.md`](BRAND.md)（品牌：为什么长这样）→ **本文**（令牌+组件：长什么样）
 > → [`ux-design.md`](ux-design.md) / [`ux-device.md`](ux-device.md)（流程：怎么用）。
@@ -28,6 +30,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | `text.secondary` | secondaryLabel | secondaryLabel | #9A9AA2 | 辅助 |
 | `text.tertiary` | tertiaryLabel | tertiaryLabel | #6E6E73 | 弱提示 |
 | `scrim.overlay` | rgba(0,0,0,.35) | rgba(0,0,0,.45) | rgba(0,0,0,.66) | 浮层遮罩 |
+| `fill.hover` | labelColor 5% | labelColor 5% | —（无 hover） | 自绘控件 hover 底（§2.2） |
 
 对比度底线：正文文字与背景 ≥ 4.5:1（琥珀底上的文字一律用墨黑 #101014，不用白）。
 
@@ -97,10 +100,10 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 
 | 组件 | 规格 | AX id 示例（见 §4） |
 |---|---|---|
-| 侧栏导航项 | h28，r6；active：accent 15% 底 + accent 字 | `sidebar.navItem.devices` / `.library` / `.console` |
-| 侧栏脚标行 | 状态点 8 + 12px 状态文字（截断）+ 右侧设置齿轮（13px，次色）；card2 底 r6；齿轮=打开标准 Settings 窗口 | `sidebar.deviceStatus`、`sidebar.settingsButton` |
-| 主按钮 | h28，r6，accent 填充白字；disabled 透明度 45% | `device.downloadButton` |
-| 次按钮 | h28，r6，1px 边框白底 | `device.refreshButton` |
+| 侧栏导航项 | h28，r6；active：accent 15% 底 + accent 字；hover：`fill.hover` 底（active 优先） | `sidebar.navItem.devices` / `.library` / `.console` |
+| 侧栏脚标行 | 状态点 8 + 12px 状态文字（截断）+ 右侧设置齿轮（13px，次色，hover `fill.hover` 底 r6）；card2 底 r6；齿轮=打开标准 Settings 窗口 | `sidebar.deviceStatus`、`sidebar.settingsButton` |
+| 主按钮 | h28，r6，accent 填充白字（`.borderedProminent`）；disabled 系统灰化（§2.2） | `device.downloadButton` |
+| 次按钮 | h28，r6，1px 边框白底（`.bordered`）；disabled 系统灰化（§2.2） | `device.refreshButton` |
 | 危险按钮 | 红字；确认对话框内才允许红填充 | `library.deleteButton` |
 | 小按钮 | h24，12px 字 | `library.exportButton` |
 | 开关 / 复选 | 系统控件，不改样式 | `settings.autoSyncToggle`、`device.selectAllCheckbox` |
@@ -141,6 +144,23 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
    `.frame(maxWidth: .infinity, alignment: .leading)` 或 Spacer 定位（页头被居中的根因）。
 3. 单卡片放入带 `maxHeight: .infinity` 的容器时默认垂直居中，需 `Spacer(minLength: 0)`
    顶对齐（卡片悬空、距页头过远的根因）。
+
+### 2.2 交互状态（Mac）
+
+原则：**原生控件的交互状态全部委托 macOS 系统行为**——`.borderedProminent` / `.bordered` /
+开关 / 复选 / 分段 / 菜单自带按压反馈、禁用灰化与 focus ring，HIG 下按钮无 hover 背景变化；
+**自绘控件**（`.plain` 实现的侧栏导航项、脚标齿轮等）系统不提供任何状态反馈，必须按下表
+自补 hover。
+
+| 组件 | hover | pressed | disabled | focus |
+|---|---|---|---|---|
+| 主/次/危险/小按钮（原生样式） | 系统（无变化） | 系统按压反馈 | 系统灰化 | 系统 focus ring |
+| 侧栏导航项（自绘） | `fill.hover` 底（active 优先，互斥） | 不规定 | — | 系统 focus ring |
+| 脚标设置齿轮（自绘） | `fill.hover` 底 r6 | 不规定 | — | 系统 focus ring |
+
+- `fill.hover` = labelColor 5%（深浅色自适应，§1.1）；hover 瞬时生效，不加动画。
+- web 原型按钮的 hover/disabled 表现（#f2f2f5、primary hover #0066d6、disabled 45% 透明度）
+  是 web 平台惯例，**Mac 端不复刻**；原型中自绘控件的 hover（侧栏项、齿轮）则必须复刻。
 
 ## 3. 手表组件规范（固件 / LVGL 9.5）
 
