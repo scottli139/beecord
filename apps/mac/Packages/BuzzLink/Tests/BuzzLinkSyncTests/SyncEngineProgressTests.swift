@@ -38,6 +38,12 @@ final class SyncEngineProgressTests: XCTestCase {
         }
         XCTAssertTrue(done)
 
+        // 快照流经消费任务异步投递：actor 侧 ready 不保证记录器已 append 末帧
+        // （终态快照 = state .ready + 满格进度）；有界轮询等收敛再读，防 CI 慢 runner 抢跑
+        let drained = await pollUntil(timeout: 5) {
+            snapshots.values.last?.state == .ready
+        }
+        XCTAssertTrue(drained, "快照记录应收敛到终态")
         let progresses = snapshots.values.compactMap(\.progress)
         XCTAssertFalse(progresses.isEmpty, "同步期应有进度快照")
         // 速率与 ETA 曾有效

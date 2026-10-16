@@ -198,6 +198,11 @@ final class ClientDownloadTests: XCTestCase {
         XCTAssertEqual(device.endCount, 1)
         XCTAssertEqual(device.abortCount, 0)
 
+        // 状态流经观察循环异步投递：await download 返回只保证 actor 侧已 yield 末态，
+        // 不保证消费任务已 append；有界轮询等记录器收敛到终态 .ready 再断言全序列
+        // （CI 慢 runner 上消费任务滞后导致序列缺尾，run 38854220197 抖动根因）
+        let converged = await pollUntil(timeout: 5) { states.values.last == .ready }
+        XCTAssertTrue(converged, "状态记录应收敛到终态 .ready")
         collecting.cancel()
         XCTAssertEqual(
             states.values,

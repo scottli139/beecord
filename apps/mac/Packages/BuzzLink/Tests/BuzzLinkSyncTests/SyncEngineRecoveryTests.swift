@@ -129,8 +129,12 @@ final class SyncEngineRecoveryTests: XCTestCase {
             return snapshot.state == .ready && snapshot.rows.first?.status == .verified
         }
         XCTAssertTrue(reconnected, "断连后应自动重连并重下完成")
-        XCTAssertTrue(snapshots.states.contains(.reconnecting), "应出现过 reconnecting 态")
-        XCTAssertTrue(events.values.contains(.disconnected), "应发断连事件")
+        // 快照/事件流经消费任务异步投递：actor 侧确认 ready 不保证记录器已 append
+        // 重连流程早期 yield 的 reconnecting 态与断连事件；有界轮询等收敛再断言
+        let recorded = await pollUntil(timeout: 5) {
+            snapshots.states.contains(.reconnecting) && events.values.contains(.disconnected)
+        }
+        XCTAssertTrue(recorded, "应出现过 reconnecting 态并发断连事件")
         let audio = try Data(contentsOf: fixture.store.libraryURL
             .appendingPathComponent(file.id).appendingPathComponent("audio.ogg"))
         XCTAssertEqual(audio, file.data)

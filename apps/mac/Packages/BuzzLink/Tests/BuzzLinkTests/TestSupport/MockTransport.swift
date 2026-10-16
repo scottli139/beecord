@@ -35,6 +35,18 @@ func withTaskResult<Success>(_ task: Task<Success, any Error>) async -> Result<S
     }
 }
 
+/// 有界轮询直到条件成立或超时（时序纪律：禁固定 sleep）。
+/// 用于"await 操作返回后等异步流消费任务收敛到期望记录"的竞态防御：
+/// actor 侧完成只保证 yield 已发生，不保证消费任务已 append。
+func pollUntil(timeout: TimeInterval, _ predicate: @escaping () async -> Bool) async -> Bool {
+    let deadline = ProcessInfo.processInfo.systemUptime + timeout
+    while ProcessInfo.processInfo.systemUptime < deadline {
+        if await predicate() { return true }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return await predicate()
+}
+
 
 /// 可脚本化 mock 传输：把客户端字节流交给 `onSend` 闭包，由测试自行决定
 /// 回包内容/时机（同步回包、延迟回包、不回包模拟超时、发断连状态等）。
