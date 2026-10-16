@@ -98,8 +98,14 @@ final class SyncEngineRecoveryTests: XCTestCase {
 
     func testDisconnectMidDownloadReconnectsAndResumes() async throws {
         let file = SyncTestSupport.makeFile(id: "REC_20260101_120000", size: 100 * 224, seed: 9)
-        // 限速 ~2.8s 下完，留出断连窗口
-        let fixture = makeSyncFixture(files: [file], throttleBytesPerSecond: 8_000)
+        // 限速 ~2.8s 下完，留出断连窗口；看门狗放大：慢 runner 上块间隔会被调度拉长，
+        // 0.3s 的默认 chunkTimeout 会把调度停顿误判为链路静默，触发无谓的整文件重试
+        let fixture = makeSyncFixture(
+            files: [file],
+            throttleBytesPerSecond: 8_000,
+            commandTimeout: 3,
+            chunkTimeout: 5
+        )
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let snapshots = SnapshotCollector()
         let events = SyncEventCollector()
@@ -116,7 +122,9 @@ final class SyncEngineRecoveryTests: XCTestCase {
         // 真断连（等价退出 Sim app 路径）
         fixture.transport.disconnect()
 
-        let reconnected = await pollUntil(timeout: 10) {
+        // 重下单文件名义 ~2.8s；慢 runner/高负载下节流拉伸可数倍于此（本机 7 路 CPU 抢占
+        // 实测 >3.5x），轮询上限放宽到 30s（有界轮询，非固定 sleep）
+        let reconnected = await pollUntil(timeout: 30) {
             let snapshot = await fixture.engine.snapshot
             return snapshot.state == .ready && snapshot.rows.first?.status == .verified
         }
@@ -137,7 +145,14 @@ final class SyncEngineRecoveryTests: XCTestCase {
             SyncTestSupport.makeFile(id: "REC_20260101_120000", size: 100 * 224, seed: 21),
             SyncTestSupport.makeFile(id: "REC_20260102_093000", size: 100 * 224, seed: 22)
         ]
-        let fixture = makeSyncFixture(files: files, throttleBytesPerSecond: 8_000)
+        // 限速 ~2.8s/文件，取消发生在第一文件下载中；看门狗放大同用例 4：
+        // 慢 runner 调度停顿 >0.3s 会误触发整文件重试，把 ~6s 的重下拖过轮询窗口
+        let fixture = makeSyncFixture(
+            files: files,
+            throttleBytesPerSecond: 8_000,
+            commandTimeout: 3,
+            chunkTimeout: 5
+        )
         defer { try? FileManager.default.removeItem(at: fixture.root) }
 
         await fixture.engine.connect()
@@ -160,7 +175,10 @@ final class SyncEngineRecoveryTests: XCTestCase {
 
         // 取消不毒化后续：手动下载两个文件成功
         await fixture.engine.downloadSelected(files.map(\.id))
-        let redownloaded = await pollUntil(timeout: 10) {
+        // 名义 ~5.9s（2 × 100 块 × ~30ms）；慢 runner 上 Thread.sleep 节流只保下限，
+        // 调度拉伸 + 慢机编译器/测试进程抢占可使实际耗时数倍于此（CI 实测 10s 窗口被击穿），
+        // 轮询上限放宽到 30s 保有语义强度（仍为有界轮询，非固定 sleep）
+        let redownloaded = await pollUntil(timeout: 30) {
             await fixture.engine.snapshot.rows.allSatisfy { $0.status == .verified }
         }
         XCTAssertTrue(redownloaded, "取消后应可重新下载")

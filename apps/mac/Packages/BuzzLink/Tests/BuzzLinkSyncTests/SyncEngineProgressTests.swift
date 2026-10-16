@@ -16,15 +16,21 @@ final class SyncEngineProgressTests: XCTestCase {
             SyncTestSupport.makeFile(id: "REC_20260101_120000", size: 50 * 224, seed: 31),
             SyncTestSupport.makeFile(id: "REC_20260102_093000", size: 50 * 224, seed: 32)
         ]
-        // 限速 ~0.7s/文件，产生足够进度采样点
-        let fixture = makeSyncFixture(files: files, throttleBytesPerSecond: 16_000)
+        // 限速 ~0.7s/文件，产生足够进度采样点；看门狗放大：慢 runner 调度停顿会误触发整文件重试
+        let fixture = makeSyncFixture(
+            files: files,
+            throttleBytesPerSecond: 16_000,
+            commandTimeout: 3,
+            chunkTimeout: 5
+        )
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let snapshots = SnapshotCollector()
         let collecting = collectSnapshots(of: fixture.engine, into: snapshots)
         defer { collecting.cancel() }
 
         await fixture.engine.connect()
-        let done = await pollUntil(timeout: 10) {
+        // 名义 ~1.4s（16KB/s × 2 文件）；慢 runner 拉伸下 10s 余量不足（同套件修复记录），放宽到 30s
+        let done = await pollUntil(timeout: 30) {
             let snapshot = await fixture.engine.snapshot
             return snapshot.state == .ready
                 && snapshot.rows.count == 2
@@ -156,7 +162,14 @@ final class SyncEngineProgressTests: XCTestCase {
         var config = SyncConfig.testDefault
         config.autoSyncEnabled = false
         config.keepaliveInterval = 0.1
-        let fixture = makeSyncFixture(files: [file], config: config, throttleBytesPerSecond: 8_000)
+        // 看门狗放大：慢 runner 上 8KB/s 节流块的 ~30ms 间隔会被调度拉长，0.3s 默认值会误判静默
+        let fixture = makeSyncFixture(
+            files: [file],
+            config: config,
+            throttleBytesPerSecond: 8_000,
+            commandTimeout: 3,
+            chunkTimeout: 5
+        )
         defer { try? FileManager.default.removeItem(at: fixture.root) }
 
         await fixture.engine.connect()
@@ -178,7 +191,8 @@ final class SyncEngineProgressTests: XCTestCase {
         // （边界容忍 1：转入 syncing 前恰有一拍在飞 PING 属合法时序）
         await fixture.engine.downloadSelected([file.id])
         let pingAtStart = fixture.transport.receivedFrameTypeCounts[pingType] ?? 0
-        let downloaded = await pollUntil(timeout: 10) {
+        // 名义 ~2.8s（8KB/s 单文件）；慢 runner 拉伸可数倍于此，轮询上限放宽到 30s
+        let downloaded = await pollUntil(timeout: 30) {
             await fixture.engine.snapshot.rows.first?.status == .verified
         }
         XCTAssertTrue(downloaded)

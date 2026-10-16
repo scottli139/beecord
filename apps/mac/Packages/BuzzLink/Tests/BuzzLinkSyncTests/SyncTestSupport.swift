@@ -92,16 +92,23 @@ struct SyncFixture {
     let root: URL
 }
 
+/// - Parameters:
+///   - commandTimeout/chunkTimeout: 注入客户端超时。默认短值保持非节流用例的失败路径
+///     快速收敛；节流用例在慢 runner 上块间隔会被调度拉长（8KB/s 名义 ~30ms/块），
+///     看门狗必须显著大于该间隔，否则调度停顿误触发整文件重试（CI 抖动根因，见
+///     SyncEngineRecoveryTests.testCancelSyncStopsQueue 修复记录）。
 func makeSyncFixture(
     files: [SimFile],
     faults: SimFaults = SimFaults(),
     randomSeed: UInt64 = 0xBEEC_0DE1,
     config: SyncConfig = .testDefault,
-    throttleBytesPerSecond: Int? = nil
+    throttleBytesPerSecond: Int? = nil,
+    commandTimeout: TimeInterval = 0.5,
+    chunkTimeout: TimeInterval = 0.3
 ) -> SyncFixture {
     let simEngine = SimEngine(files: files, faults: faults, randomSeed: randomSeed)
     let transport = SimEngineTransport(engine: simEngine, throttleBytesPerSecond: throttleBytesPerSecond)
-    let client = BuzzLinkClient(transport: transport, commandTimeout: 0.5, chunkTimeout: 0.3)
+    let client = BuzzLinkClient(transport: transport, commandTimeout: commandTimeout, chunkTimeout: chunkTimeout)
     let root = SyncTestSupport.makeTempRoot()
     let store = FileLibraryStore(rootURL: root)
     let engine = SyncEngine(client: client, store: store, config: config)
