@@ -43,33 +43,63 @@ final class UITestSimServer: @unchecked Sendable {
         stop()
     }
 
-    /// 启动监听（幂等）；端口占用等失败抛 ``ServerError/bindFailed``。
+    /// 启动监听（幂等）；等待 NWListener 进入 `.ready` 才返回——bind 失败（端口占用等）
+    /// 经状态回调异步到达，此处收敛为 ``ServerError/bindFailed`` 抛出，由用例 XCTSkip。
+    /// 调用方线程有界等待；状态回调跑在内部串行队列上，无死锁。
     func start() throws {
-        try queue.sync {
-            guard listener == nil else { return }
+        let pending = try queue.sync { () throws -> PendingReady? in
+            guard listener == nil else { return nil }
             let parameters = NWParameters.tcp
             parameters.requiredInterfaceType = .loopback
             guard let port = NWEndpoint.Port(rawValue: BuzzLinkConstants.loopbackPort) else {
                 throw ServerError.bindFailed("端口非法：\(BuzzLinkConstants.loopbackPort)")
             }
+            let newListener: NWListener
             do {
-                let listener = try NWListener(using: parameters, on: port)
-                self.listener = listener
-                listener.newConnectionHandler = { [weak self] connection in
-                    self?.accept(connection)
-                }
-                listener.stateUpdateHandler = { [weak self] state in
-                    if case .failed(let error) = state {
-                        self?.logger.error("loopback 监听失败：\(error.localizedDescription)")
-                    }
-                }
-                listener.start(queue: queue)
+                newListener = try NWListener(using: parameters, on: port)
             } catch {
-                listener = nil
                 throw ServerError.bindFailed(error.localizedDescription)
             }
+            let pending = PendingReady()
+            newListener.newConnectionHandler = { [weak self] connection in
+                self?.accept(connection)
+            }
+            newListener.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    pending.resolve(result: .success(()))
+                case .failed(let error):
+                    // ready 后才失败的为运行期故障：仅记录（启动路径已返回）
+                    if !pending.resolve(result: .failure(error)) {
+                        self?.logger.error("loopback 监听运行期失败：\(error.localizedDescription)")
+                    }
+                default:
+                    break
+                }
+            }
+            listener = newListener
             isRunning = true
             startPumpIfNeeded()
+            newListener.start(queue: queue)
+            return pending
+        }
+        guard let pending else { return }
+        if case .timedOut = pending.semaphore.wait(timeout: .now() + 3) {
+            abandonPendingListener()
+            throw ServerError.bindFailed("等待监听就绪超时")
+        }
+        if case .failure(let error) = pending.result {
+            abandonPendingListener()
+            throw ServerError.bindFailed(error.localizedDescription)
+        }
+    }
+
+    /// 启动失败回收：清引用并取消（回调经串行队列，与 start 互斥）
+    private func abandonPendingListener() {
+        queue.sync {
+            listener?.cancel()
+            listener = nil
+            isRunning = false
         }
     }
 
@@ -198,5 +228,21 @@ final class UITestSimServer: @unchecked Sendable {
 
     private static func now() -> TimeInterval {
         ProcessInfo.processInfo.systemUptime
+    }
+
+    /// start() 的就绪等待盒：状态回调（串行队列）resolve 一次并 signal；
+    /// 调用方线程 wait 后读 result（semaphore 提供 happens-before）。
+    private final class PendingReady: @unchecked Sendable {
+        let semaphore = DispatchSemaphore(value: 0)
+        private(set) var result: Result<Void, NWError>?
+
+        /// - Returns: 是否本次 resolve 生效（false = 已 resolve 过，属运行期故障）
+        @discardableResult
+        func resolve(result: Result<Void, NWError>) -> Bool {
+            guard self.result == nil else { return false }
+            self.result = result
+            semaphore.signal()
+            return true
+        }
     }
 }

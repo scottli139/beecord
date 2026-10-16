@@ -71,6 +71,21 @@ final class DeviceSyncUITests: XCTestCase {
         waitForElement(identifier, predicate: NSPredicate(format: "exists == true"), timeout: timeout)
     }
 
+    /// 设备卡等待；失败时探测页面关键元素写进失败信息（CI 日志无 xcresult 时的现场快照）
+    private func requireDeviceCard(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+        if waitForExistence("device.deviceCard", timeout: timeout) { return }
+        let probes = [
+            "device.emptyState", "device.connectButton", "device.bluetoothOverlay",
+            "sidebar.navItem.devices", "sidebar.navItem.library", "common.toast"
+        ]
+        let present = probes.filter { element($0).exists }
+        XCTFail(
+            "设备信息卡 \(Int(timeout))s 内未出现；在场元素：\(present.isEmpty ? "（均无）" : present.joined(separator: ", "))",
+            file: file,
+            line: line
+        )
+    }
+
     /// 元素消失等待
     @discardableResult
     private func waitForDisappearance(_ identifier: String, timeout: TimeInterval = 30) -> Bool {
@@ -160,7 +175,7 @@ final class DeviceSyncUITests: XCTestCase {
     func testConnectShowsDeviceCardAndFileList() throws {
         try startServerOrSkip()
         try launchApp(autoSyncOff: true)
-        XCTAssertTrue(waitForExistence("device.deviceCard", timeout: 30), "设备信息卡出现")
+        requireDeviceCard()
         XCTAssertTrue(waitForExistence("device.infoCard.battery", timeout: 10))
         XCTAssertTrue(waitForExistence("device.infoCard.storage", timeout: 10))
         for id in Self.sampleIDs {
@@ -181,7 +196,7 @@ final class DeviceSyncUITests: XCTestCase {
         try startServerOrSkip()
         try launchApp(autoSyncOff: true)
         let target = Self.sampleIDs[2]  // 最小文件
-        XCTAssertTrue(waitForExistence("device.deviceCard", timeout: 30))
+        requireDeviceCard()
         XCTAssertTrue(waitForExistence("device.fileTable.row.\(target).status", timeout: 10))
 
         element("device.fileTable.row.\(target).checkbox").click()
@@ -219,7 +234,7 @@ final class DeviceSyncUITests: XCTestCase {
         faults.throttleBytesPerSecond = 100_000
         try startServerOrSkip(faults: faults)
         try launchApp()
-        XCTAssertTrue(waitForExistence("device.deviceCard", timeout: 30))
+        requireDeviceCard()
         // 进度条仅在同步期存在（完成即收敛 nil）：先确认出现并推进到近满，
         // 再确认其随完成消失（终态 1 的快照同 runloop 收敛，AX 不可稳定捕捉等值）
         // AXValue 实测为 NSNumber 0-1；XCTNSPredicateExpectation 对 value 谓词不可靠，
@@ -259,6 +274,7 @@ final class DeviceSyncUITests: XCTestCase {
         try startServerOrSkip(faults: faults)
         try launchApp()
 
+        requireDeviceCard()
         let firstRow = Self.sampleIDs[0]  // 最新文件最大（660KB @4KB/s，下载可持续数十秒）
         XCTAssertTrue(
             waitForStatusPrefix(firstRow, "下载中"),
@@ -293,7 +309,7 @@ final class DeviceSyncUITests: XCTestCase {
         faults.emptyFileList = true
         try startServerOrSkip(faults: faults)
         try launchApp()
-        XCTAssertTrue(waitForExistence("device.deviceCard", timeout: 30))
+        requireDeviceCard()
         XCTAssertTrue(
             waitForExistence("device.fileTable.emptyState", timeout: 10),
             "空文件列表显示 fileTable 空态"

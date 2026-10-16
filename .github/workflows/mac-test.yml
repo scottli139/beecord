@@ -33,6 +33,18 @@ jobs:
       - name: Run BeecordStudio unit tests
         run: |
           cd apps/mac
+          # UITestSimServer 依赖 40404 回环端口；先记录占用者便于失败时归因
+          lsof -nP -iTCP:40404 -sTCP:LISTEN || true
           xcodebuild test -scheme BeecordStudio \
             -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      # 失败时上传 xcresult（含截图/AX 树/完整日志），UI 测试现场的唯一可靠来源
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-test-results
+          path: apps/mac/TestResults.xcresult
+          retention-days: 7
