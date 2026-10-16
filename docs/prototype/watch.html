@@ -276,6 +276,8 @@
       <div class="pbtns">
         <button class="pbtn" id="b-mac">Mac 连接</button>
         <button class="pbtn" id="b-sync" disabled>Mac 发起同步</button>
+        <button class="pbtn" id="b-files-empty">录音列表空态</button>
+        <button class="pbtn" id="b-files-demo">恢复演示录音</button>
       </div>
     </div>
     <div class="p-card">
@@ -319,6 +321,7 @@ const S={
   set:{bright:80, timeout:10, quality:"标准 44kbps", beep:true, raise:true},
   batt:68, store:62,
 };
+const DEMO_FILES=S.files.map(f=>({...f}));
 const MAINS=["home","list","sync"];
 const PNAMES={home:"表盘主页",rec:"录音页",list:"录音列表",play:"播放页",sync:"同步页",settings:"设置"};
 let lastAct=Date.now();
@@ -492,6 +495,16 @@ $("list-rows").addEventListener("click",e=>{
   const r=e.target.closest(".row"); if(!r) return;
   openPlay(+r.dataset.i);
 });
+function setReviewFiles(files){
+  if(!S.power){ toast("设备已关机"); return; }
+  if(S.rec){ toast("请先停止录音"); return; }
+  if(syncTimer){ clearInterval(syncTimer); syncTimer=null; }
+  S.ble.syncing=false; S.playing=null;
+  S.files=files.map(f=>({...f}));
+  setOff(false); showPage("list"); renderHome(); renderSync();
+}
+$("b-files-empty").onclick=()=>setReviewFiles([]);
+$("b-files-demo").onclick=()=>setReviewFiles(DEMO_FILES);
 
 /* ---------- 播放 ---------- */
 function openPlay(i){
@@ -692,6 +705,7 @@ setInterval(()=>{
 
 /* ---------- 启动 ---------- */
 renderHome(); renderList(); renderSync(); renderSettings(); updStatus();
+if(new URLSearchParams(location.search).get("state")==="empty") setReviewFiles([]);
 </script>
 </body>
 </html>

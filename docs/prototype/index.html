@@ -29,7 +29,9 @@
   .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
   .titlebar span{margin-left:8px;font-size:13px;color:var(--text2)}
   .titlebar .proto{margin-left:auto;font-size:11px;color:#fff;background:#8e8e93;border-radius:4px;padding:1px 7px}
-  .body{flex:1;display:flex;min-height:0}
+  .proto-picker{display:flex;align-items:center;gap:6px;margin-left:10px;font-size:11px;color:var(--text2)}
+  .proto-picker select{font:11px -apple-system,sans-serif;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text)}
+  .body{flex:1;display:flex;min-height:0;position:relative}
   /* ---------- 侧栏 ---------- */
   .sidebar{
     width:224px;flex:none;background:var(--sidebar);border-right:1px solid var(--border);
@@ -148,6 +150,15 @@
   .tr-line:hover{background:rgba(10,132,255,.05)}
   .tr-line .ts{color:var(--accent);font-variant-numeric:tabular-nums;flex:none;font-size:12px;padding-top:1px}
   .empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 0;color:var(--text2);font-size:13px}
+  .empty-state{min-height:400px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+  .state-icon{width:40px;height:40px;color:var(--text3);margin-bottom:4px}
+  .state-title{font-size:15px;line-height:1.4;font-weight:600;color:var(--text)}
+  .state-copy{max-width:380px;line-height:1.6;color:var(--text2)}
+  .state-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px}
+  #files-empty{min-height:250px;justify-content:center}
+  #files-empty .state-copy{max-width:330px}
+  .permission-overlay{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(245,245,247,.97)}
+  .permission-overlay .empty-state{width:480px;min-height:0;background:transparent;border:none;box-shadow:none}
   .sum-sec{margin-bottom:14px}
   .sum-sec h4{font-size:13px;color:var(--accent);margin-bottom:6px}
   .sum-sec li{font-size:13px;margin-left:18px;margin-bottom:4px}
@@ -187,7 +198,17 @@
   <div class="titlebar">
     <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
     <span>Beecord Studio</span>
-    <span class="proto">交互原型 v0.1 · 数据均为演示 mock</span>
+    <span class="proto">交互原型 v0.2 · 数据均为演示 mock</span>
+    <label class="proto-picker">评审场景
+      <select id="prototype-scenario">
+        <option value="normal">主流程</option>
+        <option value="no-device">未发现设备</option>
+        <option value="device-empty">已连接 · 设备无录音</option>
+        <option value="library-empty">录音库为空</option>
+        <option value="library-no-selection">录音库未选择</option>
+        <option value="bluetooth-off">蓝牙不可用</option>
+      </select>
+    </label>
   </div>
   <div class="body">
     <aside class="sidebar">
@@ -208,6 +229,15 @@
 
         <div class="card" id="scan-card">
           <div class="scan-row"><div class="spinner"></div><span>正在扫描附近设备…（请在设备上三击电源键进入配对模式）</span></div>
+        </div>
+
+        <div class="card empty-state" id="device-empty" style="display:none">
+          <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="12" y="8" width="16" height="24" rx="5"></rect><path d="M16 4h8M16 36h8M17 14h6M17 18h6"></path>
+          </svg>
+          <div class="state-title">未发现 Beecord 设备</div>
+          <div class="state-copy">确认手表已开机并位于 Mac 附近，然后三击电源键进入配对模式。</div>
+          <div class="state-actions"><button class="primary" id="btn-rescan">重新扫描</button></div>
         </div>
 
         <div class="card" id="found-card" style="display:none">
@@ -251,7 +281,15 @@
               <button class="primary" id="btn-dl" disabled>下载所选(0)</button>
               <button class="sm" id="btn-refresh">刷新</button>
             </div>
-            <table>
+            <div class="empty" id="files-empty" style="display:none">
+              <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path d="M5 20h3l3-10 5 20 5-16 5 12 3-6h6" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              <div class="state-title">设备上还没有录音</div>
+              <div class="state-copy">在手表上按功能键开始录音。保存后回到这里刷新，即可同步到录音库。</div>
+              <div class="state-actions"><button class="primary" id="btn-empty-refresh">刷新文件列表</button></div>
+            </div>
+            <table id="file-table">
               <thead><tr><th style="width:26px"></th><th>文件名</th><th style="width:70px">时长</th><th style="width:80px">大小</th><th style="width:130px">状态</th></tr></thead>
               <tbody id="file-tbody"></tbody>
             </table>
@@ -268,50 +306,68 @@
       <section id="view-library">
         <h1>录音库</h1>
         <div class="sub">已同步录音的播放、转写与 AI 纪要（全部本地保存）</div>
-        <div class="lib-wrap">
+        <div class="card empty-state" id="library-empty" style="display:none">
+          <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M5 20h3l3-10 5 20 5-16 5 12 3-6h6" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <div class="state-title">录音库还是空的</div>
+          <div class="state-copy">连接 Beecord 设备并同步录音后，可在这里播放、转写和生成 AI 纪要。</div>
+          <div class="state-actions"><button class="primary" id="btn-library-sync">前往设备同步</button></div>
+        </div>
+        <div class="lib-wrap" id="library-content">
           <div class="lib-list" id="lib-list"></div>
           <div class="lib-detail">
-            <div class="card">
-              <input class="lib-title" id="lib-title" value="选择左侧录音查看详情">
-              <div class="player" id="player" style="display:none;margin-top:10px">
-                <div class="wave" id="wave"></div>
-                <div class="pc">
-                  <button class="sm" id="btn-back15">−15s</button>
-                  <button class="primary" id="btn-play" style="width:64px">播放</button>
-                  <button class="sm" id="btn-fwd15">+15s</button>
-                  <button class="sm" id="btn-speed">1.0×</button>
-                  <div class="prog" id="pc-prog"><i id="pc-bar"></i></div>
-                  <span class="time" id="pc-time">00:00 / 00:34</span>
-                </div>
-                <div class="op-row">
-                  <button class="sm">导出 m4a</button>
-                  <button class="sm">导出 wav</button>
-                  <button class="sm" id="btn-finder">显示于 Finder</button>
-                  <button class="sm danger" id="btn-del">删除</button>
-                </div>
-              </div>
+            <div class="card empty-state" id="library-no-selection" style="display:none">
+              <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path d="M8 11h24M8 20h24M8 29h15" stroke-linecap="round"></path>
+              </svg>
+              <div class="state-title">未选择录音</div>
+              <div class="state-copy">从左侧选择一条录音，查看播放器、转写和 AI 纪要。</div>
+              <div class="state-actions"><button class="primary" id="btn-select-recent">选择最近录音</button></div>
             </div>
-            <div class="card" id="lib-tabs-card" style="display:none">
-              <div class="tabs">
-                <div class="active" data-tab="transcript">转写</div>
-                <div data-tab="summary">AI 纪要</div>
+            <div id="library-detail-content">
+              <div class="card">
+                <input class="lib-title" id="lib-title" value="选择左侧录音查看详情">
+                <div class="player" id="player" style="display:none;margin-top:10px">
+                  <div class="wave" id="wave"></div>
+                  <div class="pc">
+                    <button class="sm" id="btn-back15">−15s</button>
+                    <button class="primary" id="btn-play" style="width:64px">播放</button>
+                    <button class="sm" id="btn-fwd15">+15s</button>
+                    <button class="sm" id="btn-speed">1.0×</button>
+                    <div class="prog" id="pc-prog"><i id="pc-bar"></i></div>
+                    <span class="time" id="pc-time">00:00 / 00:34</span>
+                  </div>
+                  <div class="op-row">
+                    <button class="sm">导出 m4a</button>
+                    <button class="sm">导出 wav</button>
+                    <button class="sm" id="btn-finder">显示于 Finder</button>
+                    <button class="sm danger" id="btn-del">删除</button>
+                  </div>
+                </div>
               </div>
-              <div id="tab-transcript">
-                <div class="empty" id="tr-empty">
-                  <div>尚未转写（本地 whisper，内容不出本机）</div>
-                  <button class="primary" id="btn-transcribe">开始转写</button>
+              <div class="card" id="lib-tabs-card" style="display:none">
+                <div class="tabs">
+                  <div class="active" data-tab="transcript">转写</div>
+                  <div data-tab="summary">AI 纪要</div>
                 </div>
-                <div id="tr-progress" style="display:none;padding:18px 0">
-                  <div class="scan-row"><div class="spinner"></div><span id="tr-progress-text">whisper-small 加载中…</span></div>
+                <div id="tab-transcript">
+                  <div class="empty" id="tr-empty">
+                    <div>尚未转写（本地 whisper，内容不出本机）</div>
+                    <button class="primary" id="btn-transcribe">开始转写</button>
+                  </div>
+                  <div id="tr-progress" style="display:none;padding:18px 0">
+                    <div class="scan-row"><div class="spinner"></div><span id="tr-progress-text">whisper-small 加载中…</span></div>
+                  </div>
+                  <div id="tr-lines" style="display:none"></div>
                 </div>
-                <div id="tr-lines" style="display:none"></div>
-              </div>
-              <div id="tab-summary" style="display:none">
-                <div class="empty" id="sum-empty">
-                  <div id="sum-empty-text">生成会议纪要需要已配置的 AI 端点与完成转写</div>
-                  <button class="primary" id="btn-summary">生成纪要</button>
+                <div id="tab-summary" style="display:none">
+                  <div class="empty" id="sum-empty">
+                    <div id="sum-empty-text">生成会议纪要需要已配置的 AI 端点与完成转写</div>
+                    <button class="primary" id="btn-summary">生成纪要</button>
+                  </div>
+                  <div id="sum-body" style="display:none"></div>
                 </div>
-                <div id="sum-body" style="display:none"></div>
               </div>
             </div>
           </div>
@@ -383,6 +439,19 @@
         </div>
       </section>
     </main>
+    <div class="permission-overlay" id="bluetooth-overlay">
+      <div class="empty-state">
+        <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M20 35V5l9 7-9 7 9 7-9 9M11 12l18 14M11 26l18-14" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <div class="state-title">蓝牙不可用</div>
+        <div class="state-copy">请在 macOS 中打开蓝牙，并允许 Beecord Studio 使用蓝牙后再试。</div>
+        <div class="state-actions">
+          <button class="primary" id="btn-open-bluetooth">打开系统设置</button>
+          <button id="btn-bluetooth-retry">重试</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -404,55 +473,83 @@ const S = {
     {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, badge:"已转写", cls:"tr"},
     {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, badge:"未转写", cls:""},
   ],
-  curLib:null, playing:false, playT:0, speed:1, timer:null, dlCancel:false,
+  curLib:null, playing:false, playT:0, speed:1, timer:null, dlCancel:false, scanTimer:null,
 };
 const $ = id => document.getElementById(id);
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
 const fmtT = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","bluetooth-off"]);
+const requestedScenario=new URLSearchParams(location.search).get("state")||"normal";
+const SCENARIO=SCENARIOS.has(requestedScenario)?requestedScenario:"normal";
+$("prototype-scenario").value=SCENARIO;
+$("prototype-scenario").onchange=e=>{
+  const url=new URL(location.href);
+  if(e.target.value==="normal") url.searchParams.delete("state");
+  else url.searchParams.set("state",e.target.value);
+  location.href=url.href;
+};
 
 /* ================= 视图路由 ================= */
-document.querySelectorAll(".nav-item").forEach(n=>{
-  n.onclick = ()=>{
-    document.querySelectorAll(".nav-item").forEach(x=>x.classList.remove("active"));
-    n.classList.add("active");
-    document.querySelectorAll(".main section").forEach(s=>s.classList.remove("active"));
-    $("view-"+n.dataset.view).classList.add("active");
-    if(n.dataset.view==="library" && !S.curLib) selectLib(0);
-  };
-});
+function showView(name){
+  document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.view===name));
+  document.querySelectorAll(".main section").forEach(s=>s.classList.toggle("active",s.id==="view-"+name));
+  if(name==="library"){
+    if(S.curLib===null&&S.lib.length&&SCENARIO!=="library-no-selection") selectLib(0);
+    else renderLibraryState();
+  }
+}
+document.querySelectorAll(".nav-item").forEach(n=>{ n.onclick=()=>showView(n.dataset.view); });
 
 /* ================= 设备页 ================= */
-function startScan(){
-  if(S.connected||S.scanned) return;
-  $("scan-card").style.display="";
-  setTimeout(()=>{ $("scan-card").style.display="none"; $("found-card").style.display=""; S.scanned=true; },1600);
+function showDeviceStage(stage){
+  const visible={scan:"scan-card",empty:"device-empty",found:"found-card"}[stage];
+  ["scan-card","device-empty","found-card"].forEach(id=>{ $(id).style.display=id===visible?"":"none"; });
+  $("connected-area").style.display=stage==="connected"?"":"none";
 }
+function setConnectedUI(on){
+  S.connected=on;
+  $("dev-status").classList.toggle("on",on);
+  $("dev-status-text").textContent=on?"Beecord Watch · A1B2 已连接":"未连接";
+}
+function startScan(){
+  if(S.connected) return;
+  clearTimeout(S.scanTimer);
+  showDeviceStage("scan");
+  S.scanTimer=setTimeout(()=>{
+    S.scanned=true;
+    showDeviceStage(SCENARIO==="no-device"?"empty":"found");
+  },1600);
+}
+$("btn-rescan").onclick=()=>startScan();
 $("btn-connect").onclick = ()=>{
   $("btn-connect").textContent="连接中…"; $("btn-connect").disabled=true;
   setTimeout(()=>{
-    S.connected=true;
-    $("found-card").style.display="none";
-    $("connected-area").style.display="";
-    $("dev-status").classList.add("on");
-    $("dev-status-text").textContent="Beecord Watch · A1B2 已连接";
+    setConnectedUI(true);
+    showDeviceStage("connected");
     renderFiles();
     toast("已连接 · MTU 247 协商完成");
   },900);
 };
 $("btn-disconnect").onclick = ()=>{
-  S.connected=false;
-  $("connected-area").style.display="none";
-  $("found-card").style.display="";
+  setConnectedUI(false);
+  showDeviceStage(SCENARIO==="no-device"?"empty":"found");
   $("btn-connect").textContent="连接"; $("btn-connect").disabled=false;
-  $("dev-status").classList.remove("on");
-  $("dev-status-text").textContent="未连接";
 };
-$("btn-refresh").onclick = ()=>{ renderFiles(); toast("文件列表已刷新"); };
+function refreshFiles(){ renderFiles(); toast(S.files.length?"文件列表已刷新":"设备上仍没有录音"); }
+$("btn-refresh").onclick=refreshFiles;
+$("btn-empty-refresh").onclick=refreshFiles;
+$("btn-open-bluetooth").onclick=()=>toast("原型演示：将打开 macOS 蓝牙设置");
+$("btn-bluetooth-retry").onclick=()=>toast("蓝牙仍不可用（当前评审场景）");
 
 function renderFiles(){
   const tb=$("file-tbody"); tb.innerHTML="";
+  const hasFiles=S.files.length>0;
   $("file-total").textContent=S.files.length;
+  $("file-table").style.display=hasFiles?"":"none";
+  $("files-empty").style.display=hasFiles?"none":"flex";
+  $("ck-all").disabled=!hasFiles;
+  if(!hasFiles) $("ck-all").checked=false;
   S.files.forEach((f,i)=>{
     const tr=document.createElement("tr");
     tr.innerHTML=`<td><input type="checkbox" data-i="${i}" ${f.dl?"disabled":""}></td>
@@ -505,6 +602,14 @@ $("btn-dl").onclick = async ()=>{
 };
 
 /* ================= 录音库 ================= */
+function renderLibraryState(){
+  const empty=S.lib.length===0;
+  $("library-empty").style.display=empty?"flex":"none";
+  $("library-content").style.display=empty?"none":"";
+  const noSelection=!empty&&S.curLib===null;
+  $("library-no-selection").style.display=noSelection?"flex":"none";
+  $("library-detail-content").style.display=noSelection?"none":"";
+}
 function renderLib(){
   const el=$("lib-list"); el.innerHTML="";
   S.lib.forEach((r,i)=>{
@@ -515,8 +620,10 @@ function renderLib(){
     d.onclick=()=>selectLib(i);
     el.appendChild(d);
   });
+  renderLibraryState();
 }
 function selectLib(i){
+  if(!S.lib[i]){ S.curLib=null; renderLib(); return; }
   S.curLib=i; renderLib();
   const r=S.lib[i];
   $("lib-title").value=r.t;
@@ -524,6 +631,8 @@ function selectLib(i){
   $("pc-time").textContent=`00:00 / ${fmtT(r.dur)}`;
   genWave(); setProgress(0);
 }
+$("btn-library-sync").onclick=()=>{ showView("device"); if(!S.connected&&!S.scanned) startScan(); };
+$("btn-select-recent").onclick=()=>selectLib(0);
 function genWave(){
   const w=$("wave"); w.innerHTML="";
   for(let i=0;i<72;i++){
@@ -685,10 +794,27 @@ $("btn-ai-test").onclick=async ()=>{
 };
 
 /* ================= 启动 ================= */
+function applyScenario(){
+  if(SCENARIO==="no-device"){
+    S.scanned=true; showView("device"); showDeviceStage("empty");
+  }else if(SCENARIO==="device-empty"){
+    S.files=[]; setConnectedUI(true); showView("device"); showDeviceStage("connected"); renderFiles();
+  }else if(SCENARIO==="library-empty"){
+    S.lib=[]; S.curLib=null; renderLib(); showView("library"); startScan();
+  }else if(SCENARIO==="library-no-selection"){
+    S.curLib=null; renderLib(); showView("library"); startScan();
+  }else if(SCENARIO==="bluetooth-off"){
+    showView("device"); showDeviceStage("none");
+    $("bluetooth-overlay").style.display="flex";
+    $("dev-status-text").textContent="蓝牙不可用";
+  }else{
+    showView("device"); startScan();
+  }
+}
 renderLib();
-startScan();
 conLog("dn","be ec 03 40 07 ff","<b>{\"sn\":\"A1B2\",\"fw\":\"0.1.0\",\"batt\":68}</b> 9c 01");
 conLog("up","be ec 04 40 07 ff","（回执 echo）9c 01");
+applyScenario();
 </script>
 </body>
 </html>
