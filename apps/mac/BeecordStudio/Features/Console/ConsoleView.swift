@@ -15,6 +15,7 @@ struct ConsoleView: View {
                 message: "连接设备后，此处将展示 BuzzLink 帧日志与向量导出（T7 上线）。",
                 accessibilityID: "console.emptyState"
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

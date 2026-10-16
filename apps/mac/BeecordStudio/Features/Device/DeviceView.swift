@@ -29,11 +29,14 @@ struct DeviceView: View {
     // MARK: - 头部
 
     private var pageHeader: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: DesignTokens.Space.s1) {
             Text("设备")
                 .font(DesignTokens.FontToken.pageTitle)
-            Spacer()
+            Text("连接 Beecord 录音设备，同步机内录音")
+                .font(DesignTokens.FontToken.body)
+                .foregroundStyle(DesignTokens.ColorToken.textSecondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, DesignTokens.Layout.mainPaddingHorizontal)
         .padding(.vertical, DesignTokens.Layout.mainPaddingVertical)
     }
@@ -53,26 +56,29 @@ struct DeviceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// 未连接空态（原型 `device-empty`：卡片容器 + 内容聚簇居中，主按钮【重新扫描】；卡片顶对齐贴页头，下方留白）。
     private var disconnectedEmptyState: some View {
-        VStack(spacing: DesignTokens.Space.s4) {
-            EmptyStateView(
-                systemImage: "applewatch",
-                title: "尚未连接设备",
-                message: "将 Beecord 设备置于同步模式后连接；长时间未发现请确认设备已进入配对模式（三击电源键）。",
-                accessibilityID: "device.emptyState"
-            )
-            HStack(spacing: DesignTokens.Space.s3) {
-                Button("连接") {
-                    viewModel.connectTapped()
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("device.connectButton")
+        VStack(spacing: 0) {
+            VStack(spacing: DesignTokens.Space.s3) {
+                EmptyStateView(
+                    systemImage: "applewatch",
+                    title: "未发现 Beecord 设备",
+                    message: "确认手表已开机并位于 Mac 附近，然后三击电源键进入配对模式。",
+                    accessibilityID: "device.emptyState",
+                    contentPadding: 0
+                )
                 Button("重新扫描") {
                     viewModel.connectTapped()
                 }
+                .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("device.scanButton")
             }
+            .padding(DesignTokens.Space.s8)
+            .frame(maxWidth: .infinity, minHeight: DesignTokens.Layout.emptyCardMinHeight)
+            .cardStyle()
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, DesignTokens.Layout.mainPaddingHorizontal)
     }
 
     // MARK: - 已连接
@@ -96,6 +102,7 @@ struct DeviceView: View {
                     message: "在设备上完成录音后，回到这里同步。",
                     accessibilityID: "device.fileTable.emptyState"
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 FileTableView(
                     rows: viewModel.snapshot.rows,

@@ -15,6 +15,7 @@ struct LibraryView: View {
                 message: "连接设备并完成同步后，录音将出现在这里（T6 上线）。",
                 accessibilityID: "library.emptyState"
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

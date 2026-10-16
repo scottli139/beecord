@@ -47,6 +47,8 @@ enum DesignTokens {
         static let windowMinHeight: CGFloat = 600
         static let windowIdealWidth: CGFloat = 1060
         static let windowIdealHeight: CGFloat = 720
+        /// 空态卡片最小高度（原型 v0.2 `.card.empty-state` min-height 400）。
+        static let emptyCardMinHeight: CGFloat = 400
     }
 
     /// 语义色（§1.1）。surface.card/card2 与 scrim 为双外观显式值，其余用系统语义色。
@@ -124,5 +126,18 @@ extension Color {
                 alpha: opacity
             )
         })
+    }
+}
+
+extension View {
+    /// 设计系统卡片容器（DESIGN_SYSTEM §2：r10、1px 边框、surface.card 底色、padding 16）。
+    /// 扩张/最小高度由调用点自行声明（组件不贪婪填充）。
+    func cardStyle() -> some View {
+        padding(DesignTokens.Space.s4)
+            .background(DesignTokens.ColorToken.surfaceCard, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                    .strokeBorder(.separator, lineWidth: 1)
+            )
     }
 }

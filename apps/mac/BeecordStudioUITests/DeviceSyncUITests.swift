@@ -75,7 +75,7 @@ final class DeviceSyncUITests: XCTestCase {
     private func requireDeviceCard(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         if waitForExistence("device.deviceCard", timeout: timeout) { return }
         let probes = [
-            "device.emptyState", "device.connectButton", "device.bluetoothOverlay",
+            "device.emptyState", "device.scanButton", "device.bluetoothOverlay",
             "sidebar.navItem.devices", "sidebar.navItem.library", "common.toast"
         ]
         let present = probes.filter { element($0).exists }
