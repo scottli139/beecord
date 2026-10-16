@@ -76,6 +76,7 @@ final class DeviceViewModel {
         self.consumption = consumption
         consumption.add(makeSnapshotTask(engine: engine))
         consumption.add(makeEventTask(engine: engine))
+        LaunchTrace.mark("deviceVM.init")
     }
 
     deinit {
@@ -141,6 +142,7 @@ final class DeviceViewModel {
 
     /// 首次出现自动连接一次；失败停留空态（首连失败不自动重试，避免空态抖动）。
     func onAppear() {
+        LaunchTrace.mark("deviceView.onAppear didAutoConnect=\(didAutoConnect)")
         guard !didAutoConnect else { return }
         didAutoConnect = true
         isAutoConnectAttempt = true
@@ -162,6 +164,7 @@ final class DeviceViewModel {
         }
         Task { [engine] in
             await engine.connect()
+            LaunchTrace.mark("engine.connect returned")
         }
     }
 

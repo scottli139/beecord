@@ -10,6 +10,7 @@ struct BeecordStudioApp: App {
     init() {
         // 启动参数须早于 SettingsModel 初始化（-resetSettings 清 settings.*）
         LaunchOptions.applyIfNeeded()
+        LaunchTrace.mark("app.init")
         let appModel = AppModel()
         let settingsModel = SettingsModel()
         self._appModel = State(wrappedValue: appModel)

@@ -71,7 +71,7 @@ final class DeviceSyncUITests: XCTestCase {
         waitForElement(identifier, predicate: NSPredicate(format: "exists == true"), timeout: timeout)
     }
 
-    /// 设备卡等待；失败时探测页面关键元素写进失败信息（CI 日志无 xcresult 时的现场快照）
+    /// 设备卡等待；失败时探测页面关键元素 + 启动探针写进失败信息（CI 无 xcresult 时的现场快照）
     private func requireDeviceCard(timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         if waitForExistence("device.deviceCard", timeout: timeout) { return }
         let probes = [
@@ -79,11 +79,11 @@ final class DeviceSyncUITests: XCTestCase {
             "sidebar.navItem.devices", "sidebar.navItem.library", "common.toast"
         ]
         let present = probes.filter { element($0).exists }
-        XCTFail(
-            "设备信息卡 \(Int(timeout))s 内未出现；在场元素：\(present.isEmpty ? "（均无）" : present.joined(separator: ", "))",
-            file: file,
-            line: line
-        )
+        var message = "设备信息卡 \(Int(timeout))s 内未出现；在场元素：\(present.isEmpty ? "（均无）" : present.joined(separator: ", "))"
+        if let trace = launchTraceTail() {
+            message += "\n启动探针：\n\(trace)"
+        }
+        XCTFail(message, file: file, line: line)
     }
 
     /// 元素消失等待
@@ -106,6 +106,20 @@ final class DeviceSyncUITests: XCTestCase {
         app.launchArguments = arguments
         app.launch()
         self.app = app
+        // 兜底：主窗口未随启动出现（WindowGroup 恢复态异常等）时，激活 + ⌘N 强制新建主窗口
+        if !waitForExistence("sidebar.navItem.devices", timeout: 15) {
+            app.activate()
+            app.typeKey("n", modifierFlags: .command)
+            _ = waitForExistence("sidebar.navItem.devices", timeout: 5)
+        }
+    }
+
+    /// 启动探针尾段（app 侧 LaunchTrace 写入库根；失败信息现场的一部分）
+    private func launchTraceTail() -> String? {
+        guard let root = state.libraryRoot else { return nil }
+        let url = root.appendingPathComponent("uitest-launch-trace.log")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return String(text.suffix(600))
     }
 
     /// 启动进程内 Sim server；端口占用（本机 Sim app 在跑）→ 重试后 XCTSkip

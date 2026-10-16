@@ -58,6 +58,10 @@ UI 的验收以 **AX 树驱动** 为准，禁止坐标点击与截图比对（�
      不收自身发射时隙，CoreBluetooth 无软件回环，2026-10-15 实测确认），因此 Sim 提供
      与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
      设备流 UITest 由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）。
+     **CI 现场取证**（2026-10-16，教训：CI 失败 5/5 无窗口）：app 侧 `LaunchTrace`
+     仅在 `-libraryRoot` 注入时写 `<libraryRoot>/uitest-launch-trace.log`，用例失败时
+     回读进失败信息；工作流失败时自动上传 xcresult（截图/AX 树/屏幕录像）为 artifact。
+     启动后若主窗口未随启动出现，用例兜底 `activate + ⌘N` 强制新建主窗口。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
    - **跨机实测（2026-10-16 已闭环，T5）**：`BLE_LIVE_SMOKE=1 swift test --filter
