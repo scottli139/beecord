@@ -433,6 +433,69 @@ final class DeviceSyncUITests: XCTestCase {
         )
     }
 
+    // MARK: - 7. 库流：删除确认对话框（取消保留 / 确认移除）
+
+    func testDeleteConfirmsAndRemoves() throws {
+        try prepareLibraryWithReadyRows()
+        let first = Self.sampleIDs[0]
+        element("library.recordingTable.row.\(first)").click()
+        XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15), "详情就绪")
+
+        // 删除 → 自绘确认对话框出现 → 取消：行与库目录均保留
+        element("library.deleteButton").click()
+        XCTAssertTrue(waitForExistence("common.confirmDialog", timeout: 10), "删除确认对话框出现")
+        element("library.deleteCancelButton").click()
+        XCTAssertTrue(waitForDisappearance("common.confirmDialog", timeout: 10), "取消后对话框消失")
+        XCTAssertTrue(element("library.recordingTable.row.\(first)").exists, "取消后行保留")
+        XCTAssertTrue(libraryContainsRecording(first), "取消后库目录保留")
+
+        // 再删 → 确认：行消失 + 库目录移除 + 回到未选中态
+        element("library.deleteButton").click()
+        XCTAssertTrue(waitForExistence("common.confirmDialog", timeout: 10), "再次删除确认对话框出现")
+        element("library.deleteConfirmButton").click()
+        XCTAssertTrue(
+            waitForDisappearance("library.recordingTable.row.\(first)", timeout: 10),
+            "确认后行消失"
+        )
+        XCTAssertFalse(libraryContainsRecording(first), "确认后库目录无该 recording")
+        XCTAssertEqual(libraryRecordingCount(), 2, "库内剩 2 个录音目录")
+        XCTAssertTrue(waitForExistence("library.noSelection", timeout: 10), "删除选中项后回未选中态")
+        XCTAssertTrue(pollElementExists("common.toast", timeout: 15), "已删除 toast 出现")
+    }
+
+    // MARK: - 8. 库流：空库空态 + 无选中态联动
+
+    func testLibraryEmptyAndNoSelectionStates() throws {
+        try startServerOrSkip()
+        try launchApp(autoSyncOff: true)
+        ensureSidebarVisible()
+
+        // 空库：整页空态 + 按钮跳转设备页
+        element("sidebar.navItem.library").click()
+        XCTAssertTrue(waitForExistence("library.emptyState", timeout: 10), "空库显示空态")
+        element("library.goToDeviceButton").click()
+        XCTAssertTrue(
+            waitForExistence("device.fileTable.row.\(Self.sampleIDs[0])", timeout: 15),
+            "空态按钮跳转设备页"
+        )
+
+        // 手动下载 1 个文件（自动同步已关），转码就绪后切库页
+        let target = Self.sampleIDs[0]
+        element("device.fileTable.row.\(target).checkbox").click()
+        XCTAssertTrue(waitForExistence("device.downloadButton", timeout: 5))
+        element("device.downloadButton").click()
+        XCTAssertTrue(waitForStatus(target, equal: "✓ 已校验", timeout: 30), "手动下载完成")
+        let m4aURL = state.libraryRoot!.appendingPathComponent("Library/\(target)/audio.m4a")
+        XCTAssertTrue(pollFileExists(m4aURL, timeout: 60), "转码完成（audio.m4a 产物出现）")
+
+        // 有行未选中 → noSelection；选择最近录音 → 详情播放器出现
+        element("sidebar.navItem.library").click()
+        XCTAssertTrue(waitForExistence("library.recordingTable.row.\(target)", timeout: 15), "库列表行出现")
+        XCTAssertTrue(waitForExistence("library.noSelection", timeout: 10), "未选中显示 noSelection")
+        element("library.selectRecentButton").click()
+        XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15), "选择最近录音后详情出现")
+    }
+
     // MARK: - 5. 空文件列表：fileTable 空态
 
     func testEmptyListShowsEmptyState() throws {

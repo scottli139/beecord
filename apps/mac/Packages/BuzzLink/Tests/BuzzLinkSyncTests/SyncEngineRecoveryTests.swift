@@ -123,8 +123,9 @@ final class SyncEngineRecoveryTests: XCTestCase {
         fixture.transport.disconnect()
 
         // 重下单文件名义 ~2.8s；慢 runner/高负载下节流拉伸可数倍于此（本机 7 路 CPU 抢占
-        // 实测 >3.5x），轮询上限放宽到 30s（有界轮询，非固定 sleep）
-        let reconnected = await pollUntil(timeout: 30) {
+        // 实测 >3.5x；CI flake 实录：30s 窗口被慢速拉伸击穿后 rerun 自过），轮询上限放宽
+        // 到 60s ≈ 名义 8.5x 裕量（仍为有界轮询，非固定 sleep；断言语义不变）
+        let reconnected = await pollUntil(timeout: 60) {
             let snapshot = await fixture.engine.snapshot
             return snapshot.state == .ready && snapshot.rows.first?.status == .verified
         }
