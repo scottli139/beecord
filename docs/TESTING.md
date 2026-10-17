@@ -58,11 +58,26 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
      平台限制：同一台 macOS 上 Central 无法发现本机 Peripheral 的 BLE 广播（半双工无线电
      不收自身发射时隙，CoreBluetooth 无软件回环，2026-10-15 实测确认），因此 Sim 提供
      与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
-     设备流 UITest 由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）。
+     设备流与库流 UITest 均由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）；
+     库流设备源为**进程内合成 Ogg 静音流**（SyntheticOgg，零文件依赖——UITest runner 沙箱
+     读仓库 Fixtures 会被 TCC 拒绝，120s 仅 18KB，转码链全路径可消费）。
      **CI 现场取证**（2026-10-16，教训：CI 失败 5/5 无窗口）：app 侧 `LaunchTrace`
      仅在 `-libraryRoot` 注入时写 `<libraryRoot>/uitest-launch-trace.log`，用例失败时
      回读进失败信息；工作流失败时自动上传 xcresult（截图/AX 树/屏幕录像）为 artifact。
      启动后若主窗口未随启动出现，用例兜底 `activate + ⌘N` 强制新建主窗口。
+     **CI 环境三条认知**（2026-10-17 固化，排障先核对）：
+     1. CI runner 屏幕恒 **1024×768**、可视区约 **1024×674**（菜单栏 + Dock 占用）——
+        任何"窗口大于可视区导致控件被推出屏外/侧栏被折叠"的表象先查这一条
+        （`-uiTestWindow` 小窗档即为此设：min 900×560 / ideal 1080×680）；
+     2. **WindowGroup 在 CI 不自动建主窗**（恢复态无窗口可还原时静默跳过建窗，
+        本机手动 `open -a` 亦可复现）——每个用例启动后须探测侧栏/窗口，缺失则
+        `activate + ⌘N` 兜底；
+     3. 该恢复模式**骨架类与库页类 UITest 都需要**（`BeecordStudioUITests` 与
+        `DeviceSyncUITests` 的 launch helper 均已内置；新增用例类照抄同款）。
+     **慢 runner 时序加固**（2026-10-17）：`SyncEngineRecoveryTests.
+     testDisconnectMidDownloadReconnectsAndResumes` 曾因 30s 轮询窗口被节流拉伸击穿
+     flake 一次（rerun 自过）——重连+整文件重下轮询上限放宽至 60s（≈名义 8.5x 裕量，
+     仍有界轮询非固定 sleep，断言语义不变）；同类先例见 `testCancelSyncStopsQueue`。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
    - **跨机实测（2026-10-16 已闭环，T5）**：`BLE_LIVE_SMOKE=1 swift test --filter
@@ -87,6 +102,10 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
 1. **环境清场**（跑 UITest 前同样必做）：`pkill -f MacOS/BeecordStudio`（进程名**无空格**）、
    `killall BuzzLinkSim`、`lsof -nP -iTCP:40404 -sTCP:LISTEN` 应为空。
    残留 app 实例会抢 AX 归属，导致用例随机失败（实录 2 例）。
+   手工验收注记（2026-10-17 实录）：CLI 构建产物若被签名（含 app-sandbox entitlement，
+   如 UITest 探测后），`-libraryRoot` 指向的任意目录写入会被 kernel deny（`/tmp`、
+   `$TMPDIR` 均不豁免）——手动验证需重签去掉 sandbox（`codesign --force --sign -
+   --entitlements <无 sandbox 的 plist>`）或以未签名产物直接运行可执行文件。
 2. `open -a <DerivedData 下的 BeecordStudio.app>` → 等目标状态稳定
    （空态需等自动连接失败回落，约 15s）→ AppleScript 取窗口框
    （AX 里进程名**有空格**）：
