@@ -24,6 +24,7 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .onAppear { viewModel.refresh() }
+        .onChange(of: appModel.syncGeneration) { viewModel.refresh() }
         .overlay {
             if let target = deleteTarget {
                 deleteDialog(target)
@@ -139,39 +140,82 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - 详情占位（Phase C 接入点：播放器/波形/Tab 替换 playerPlaceholder 区域）
+    // MARK: - 详情（Phase C：已就绪=真实播放器区；未就绪保持占位）
 
     private func detailCard(_ item: LibraryViewModel.Item) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Space.s3) {
-            RenameField(
-                initial: item.meta.title,
-                onCommit: { viewModel.rename(id: item.id, title: $0) },
-                onCancel: {}
-            )
-            metaRows(item)
+        VStack(alignment: .leading, spacing: DesignTokens.Space.s4) {
+            VStack(alignment: .leading, spacing: DesignTokens.Space.s3) {
+                RenameField(
+                    initial: item.meta.title,
+                    onCommit: { viewModel.rename(id: item.id, title: $0) },
+                    onCancel: {}
+                )
+                metaRows(item)
 
-            // Phase C 接入点：转码 ready 时在此渲染 PlayerBarView + WaveformView + library.detailTabs
-            playerPlaceholder(item)
+                switch item.transcode {
+                case .ready:
+                    playerSection(item)
+                default:
+                    playerPlaceholder(item)
+                }
 
-            HStack(spacing: DesignTokens.Space.s2) {
-                Button("导出…") {}
-                    .disabled(true)
-                    .help("随播放器（T6 Phase C）交付")
-                Button("显示于 Finder") {
-                    viewModel.revealInFinder(id: item.id)
+                DetailActionsView(
+                    itemID: item.id,
+                    directoryURL: viewModel.libraryRoot
+                        .appendingPathComponent("Library")
+                        .appendingPathComponent(item.id, isDirectory: true),
+                    onDelete: { deleteTarget = item },
+                    onReveal: { viewModel.revealInFinder(id: item.id) },
+                    onExported: { result in
+                        switch result {
+                        case .success:
+                            appModel.showToast(ToastMessage(kind: .info, text: "已导出"))
+                        case .failure(let error):
+                            appModel.showToast(ToastMessage(kind: .error, text: "导出失败：\(error.localizedDescription)"))
+                        }
+                    }
+                )
+            }
+            .padding(DesignTokens.Space.s4)
+            .cardStyle()
+
+            if item.transcode == .ready {
+                VStack(alignment: .leading, spacing: 0) {
+                    DetailTabsView()
+                        .padding(DesignTokens.Space.s4)
                 }
-                .accessibilityIdentifier("library.revealInFinderButton")
-                Spacer()
-                Button("删除") {
-                    deleteTarget = item
-                }
-                .foregroundStyle(DesignTokens.ColorToken.stateDanger)
-                .accessibilityIdentifier("library.deleteButton")
+                .cardStyle()
             }
         }
-        .padding(DesignTokens.Space.s4)
-        .cardStyle()
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// 播放器区（仅转码就绪：波形 + 走带）
+    private func playerSection(_ item: LibraryViewModel.Item) -> some View {
+        VStack(spacing: DesignTokens.Space.s3) {
+            WaveformView(
+                columns: viewModel.waveform,
+                progress: viewModel.playerProgress.fraction,
+                durationText: FileTableView.durationText(item.meta.durationMs),
+                onSeek: { fraction in
+                    Task { await viewModel.seek(fraction: fraction) }
+                }
+            )
+            PlayerBarView(
+                isPlaying: viewModel.playerProgress.isPlaying,
+                fraction: viewModel.playerProgress.fraction,
+                positionText: Self.timeText(viewModel.playerProgress.position),
+                durationText: Self.timeText(viewModel.playerProgress.duration),
+                rate: viewModel.playerRate,
+                onTogglePlay: { Task { await viewModel.togglePlay() } },
+                onSkipBack: { Task { await viewModel.skip(by: -15) } },
+                onSkipForward: { Task { await viewModel.skip(by: 15) } },
+                onCycleRate: { Task { await viewModel.cycleRate() } },
+                onSeek: { fraction in
+                    Task { await viewModel.seek(fraction: fraction) }
+                }
+            )
+        }
     }
 
     private func metaRows(_ item: LibraryViewModel.Item) -> some View {
@@ -263,6 +307,11 @@ struct LibraryView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("common.confirmDialog")
         }
+    }
+
+    private static func timeText(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private static func dateText(_ date: Date) -> String {

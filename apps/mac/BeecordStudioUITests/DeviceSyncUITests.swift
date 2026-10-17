@@ -65,6 +65,26 @@ final class DeviceSyncUITests: XCTestCase {
         )
     }
 
+    /// 元素出现有界轮询（0.2s 步进；短驻留 toast 用）
+    private func pollElementExists(_ identifier: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element(identifier).exists { return true }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return element(identifier).exists
+    }
+
+    /// 文件出现有界轮询（1s 步进）
+    private func pollFileExists(_ url: URL, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: url.path) { return true }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
     /// 元素存在性等待
     @discardableResult
     private func waitForExistence(_ identifier: String, timeout: TimeInterval = 30) -> Bool {
@@ -140,15 +160,13 @@ final class DeviceSyncUITests: XCTestCase {
         }
     }
 
+    /// 合成 ogg 样本：进程内生成真实 Ogg/Opus 静音流（WebRTC 静音帧 0xF8FFFE/20ms，
+    /// 零文件依赖——UITest runner 有沙箱继承，读仓库 Fixtures 会被 TCC 拒绝）。
     private static func makeSampleFiles() -> [SimFile] {
-        var rng = SplitMix64(seed: 0x5EED_FA11_BAC0)
-        func bytes(_ count: Int) -> Data {
-            Data((0..<count).map { _ in UInt8(truncatingIfNeeded: rng.next()) })
-        }
-        return [
-            SimFile(id: "REC_20260101_120000", durationMs: 5_006, data: bytes(28_000)),
-            SimFile(id: "REC_20260102_093000", durationMs: 30_006, data: bytes(165_000)),
-            SimFile(id: "REC_20260103_074500", durationMs: 120_006, data: bytes(660_000))
+        [
+            SimFile(id: "REC_20260101_120000", durationMs: 5_000, data: SyntheticOgg.silence(durationSeconds: 5)),
+            SimFile(id: "REC_20260102_093000", durationMs: 30_000, data: SyntheticOgg.silence(durationSeconds: 30)),
+            SimFile(id: "REC_20260103_074500", durationMs: 120_000, data: SyntheticOgg.silence(durationSeconds: 120))
         ]
     }
 
@@ -169,7 +187,8 @@ final class DeviceSyncUITests: XCTestCase {
               ) else {
             return 0
         }
-        return entries.filter { $0.lastPathComponent != ".partial" }.count
+        // 排除 .partial 与 catalog manifest（.catalog.json）等隐藏文件
+        return entries.filter { !$0.lastPathComponent.hasPrefix(".") }.count
     }
 
     /// .partial 残留文件数
@@ -218,22 +237,14 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertTrue(waitForExistence("device.downloadButton", timeout: 5))
         let title = downloadButton.label
         XCTAssertTrue(title.contains("下载所选") && title.contains("1"), "按钮标题含选中数，实际：\(title)")
-        // toast 只驻留 2s：点击前先布置等待，避免错过窗口
-        let toastExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == true"),
-            object: element("common.toast")
-        )
         downloadButton.click()
 
         XCTAssertTrue(
             waitForStatus(target, equal: "✓ 已校验"),
             "行状态变为 ✓ 已校验"
         )
-        XCTAssertEqual(
-            XCTWaiter().wait(for: [toastExpectation], timeout: 10),
-            .completed,
-            "同步完成 toast 出现"
-        )
+        // toast 驻留 2s：0.2s 步进轮询，避免 XCTWaiter 1s 轮询错过窗口
+        XCTAssertTrue(pollElementExists("common.toast", timeout: 15), "同步完成 toast 出现")
         XCTAssertTrue(libraryContainsRecording(target), "库目录出现 audio.ogg + meta.json")
         XCTAssertEqual(libraryRecordingCount(), 1, "仅所选文件入库")
     }
@@ -244,8 +255,9 @@ final class DeviceSyncUITests: XCTestCase {
         // 中度限速：853KB 总量 @100KB/s ≈ 8.5s 进度可见窗口，50ms 轮询稳定采到 ≥0.9 峰值
         // （全速 loopback 下窗口仅数百毫秒，0.9 阈值本质是采样抖动；提前 break 避开
         // 元素消失瞬间的 .value 竞态——该竞态 XCUITest 记为失败且不可捕获）
+        // 静音 ogg 总量仅 ~24KB：4KB/s 限速 ≈ 6s 进度窗口（100KB/s 会亚秒完成无窗口）
         var faults = SimFaults()
-        faults.throttleBytesPerSecond = 100_000
+        faults.throttleBytesPerSecond = 4_096
         try startServerOrSkip(faults: faults)
         try launchApp()
         requireDeviceCard()
@@ -316,6 +328,84 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertEqual(libraryRecordingCount(), 0, "取消后无入库目录")
     }
 
+    // MARK: - 6. 库流：同步入列 + 选择出现播放器（Phase C）
+
+    /// 库流前置：供源 + 启动 + 切库页 + 首行转码完成（有界等待）
+    private func prepareLibraryWithReadyRows() throws {
+        try startServerOrSkip()
+        try launchApp()
+        element("sidebar.navItem.library").click()
+        let first = Self.sampleIDs[0]
+        XCTAssertTrue(
+            waitForExistence("library.recordingTable.row.\(first)", timeout: 60),
+            "同步后库列表行出现"
+        )
+        // 就绪以 test 侧 m4a 产物为准（自建 tmp 目录 runner 可读；避免徽标值轮询的 AX 时序脆性）
+        let m4aURL = state.libraryRoot!.appendingPathComponent("Library/\(first)/audio.m4a")
+        XCTAssertTrue(
+            pollFileExists(m4aURL, timeout: 60),
+            "首行转码完成（audio.m4a 产物出现）"
+        )
+    }
+
+    func testSyncPopulatesLibraryAndSelects() throws {
+        try prepareLibraryWithReadyRows()
+        let first = Self.sampleIDs[0]
+        element("library.recordingTable.row.\(first)").click()
+        XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15), "详情播放器出现")
+        XCTAssertTrue(waitForExistence("library.waveform", timeout: 15), "波形出现")
+        XCTAssertTrue(waitForExistence("library.exportButton.m4a", timeout: 5))
+        XCTAssertTrue(waitForExistence("library.exportButton.wav", timeout: 5))
+        XCTAssertTrue(waitForExistence("library.exportButton.ogg", timeout: 5))
+        XCTAssertTrue(waitForExistence("library.detailTabs", timeout: 5), "Tab 分段出现")
+    }
+
+    func testPlayPauseSeekAndSpeed() throws {
+        try prepareLibraryWithReadyRows()
+        let first = Self.sampleIDs[0]
+        element("library.recordingTable.row.\(first)").click()
+        XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15))
+
+        element("library.player.playButton").click()
+        XCTAssertTrue(
+            waitForElement(
+                "library.player.playButton",
+                predicate: NSPredicate(format: "label == %@", "暂停"),
+                timeout: 10
+            ),
+            "播放中按钮变「暂停」"
+        )
+        XCTAssertTrue(
+            waitForElement(
+                "library.player.progressSlider",
+                predicate: NSPredicate(format: "value.doubleValue >= 0.02"),
+                timeout: 30
+            ),
+            "进度增长"
+        )
+        element("library.player.fwd15Button").click()
+        let seekOK = waitForElement(
+            "library.player.timeLabel",
+            predicate: NSPredicate(format: "value BEGINSWITH %@", "0:1"),
+            timeout: 10
+        )
+        if !seekOK {
+            let actual = element("library.player.timeLabel").exists
+                ? (element("library.player.timeLabel").value ?? "nil")
+                : "<timeLabel 不存在>"
+            XCTFail("+15s 后时间进入 0:15~，实际 label=\(actual)")
+        }
+        element("library.player.speedButton").click()
+        XCTAssertTrue(
+            waitForElement(
+                "library.player.speedButton",
+                predicate: NSPredicate(format: "label == %@", "1.5×"),
+                timeout: 5
+            ),
+            "倍速循环到 1.5×"
+        )
+    }
+
     // MARK: - 5. 空文件列表：fileTable 空态
 
     func testEmptyListShowsEmptyState() throws {
@@ -329,5 +419,106 @@ final class DeviceSyncUITests: XCTestCase {
             "空文件列表显示 fileTable 空态"
         )
         XCTAssertTrue(waitForDisappearance("device.fileTable", timeout: 5), "无文件表")
+    }
+}
+
+/// 进程内 Ogg/Opus 静音流生成（测试设备源；真实封装 + WebRTC 静音帧，
+/// 转码链（demux→AVAudioConverter）全路径可消费）。
+enum SyntheticOgg {
+    /// 静音帧：TOC 0xF8 + 0xFF 0xFE（48kHz 单声道 20ms，Opus 解码器广泛接受）
+    private static let silencePacket: [UInt8] = [0xF8, 0xFF, 0xFE]
+
+    static func silence(durationSeconds: Int) -> Data {
+        var id = Data([0x4F, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64]) // "OpusHead"
+        id.append(1)                       // version
+        id.append(1)                       // channels
+        appendLE16(&id, 312)               // pre-skip
+        appendLE32(&id, 48_000)            // input rate
+        appendLE16(&id, 0)                 // output gain
+        id.append(0)                       // mapping
+        var tags = Data([0x4F, 0x70, 0x75, 0x73, 0x54, 0x61, 0x67, 0x73]) // "OpusTags"
+        appendLE32(&tags, 0)               // vendor len 0
+        appendLE32(&tags, 0)               // user comment list len 0
+
+        let packetsPerSecond = 50
+        let audioPackets = (0..<(durationSeconds * packetsPerSecond)).map { _ in Data(silencePacket) }
+
+        var out = Data()
+        out.append(page(serial: 1, sequence: 0, headerType: 0x02, segments: [id]))
+        out.append(page(serial: 1, sequence: 1, headerType: 0, segments: [tags]))
+        var sequence: UInt32 = 2
+        var offset = 0
+        while offset < audioPackets.count {
+            let end = Swift.min(offset + 50, audioPackets.count)
+            let isLast = end == audioPackets.count
+            out.append(page(serial: 1, sequence: sequence, headerType: isLast ? 0x04 : 0, segments: Array(audioPackets[offset..<end])))
+            sequence += 1
+            offset = end
+        }
+        return out
+    }
+
+    private static func page(serial: UInt32, sequence: UInt32, headerType: UInt8, segments: [Data]) -> Data {
+        var segTable: [UInt8] = []
+        var payload = Data()
+        for segment in segments {
+            precondition(segment.count <= 255)
+            segTable.append(UInt8(segment.count))
+            payload.append(segment)
+        }
+        var page = Data()
+        page.append(contentsOf: [0x4F, 0x67, 0x67, 0x53])
+        page.append(0)
+        page.append(headerType)
+        appendLE64(&page, 0)
+        appendLE32(&page, serial)
+        appendLE32(&page, sequence)
+        page.append(contentsOf: [0, 0, 0, 0])
+        page.append(UInt8(segTable.count))
+        page.append(contentsOf: segTable)
+        page.append(payload)
+        let crc = oggCRC(page)
+        page[22] = UInt8(crc & 0xFF)
+        page[23] = UInt8((crc >> 8) & 0xFF)
+        page[24] = UInt8((crc >> 16) & 0xFF)
+        page[25] = UInt8((crc >> 24) & 0xFF)
+        return page
+    }
+
+    private static func appendLE16(_ data: inout Data, _ value: UInt16) {
+        data.append(UInt8(value & 0xFF)); data.append(UInt8((value >> 8) & 0xFF))
+    }
+
+    private static func appendLE32(_ data: inout Data, _ value: UInt32) {
+        for shift in [0, 8, 16, 24] { data.append(UInt8((value >> shift) & 0xFF)) }
+    }
+
+    private static func appendLE64(_ data: inout Data, _ value: UInt64) {
+        for shift in [0, 8, 16, 24, 32, 40, 48, 56] { data.append(UInt8((value >> shift) & 0xFF)) }
+    }
+
+    private static func oggCRC(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0
+        for (index, byte) in data.enumerated() {
+            let value: UInt8 = (index >= 22 && index <= 25) ? 0 : byte
+            crc = (crc << 8) ^ table[Int(UInt8((crc >> 24) ^ UInt32(value)))]
+        }
+        return crc
+    }
+
+    private static let table: [UInt32] = {
+        (0..<256).map { index in
+            var crc = UInt32(index) << 24
+            for _ in 0..<8 {
+                crc = (crc & 0x8000_0000) != 0 ? (crc << 1) ^ 0x04C1_1DB7 : crc << 1
+            }
+            return crc
+        }
+    }()
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
     }
 }

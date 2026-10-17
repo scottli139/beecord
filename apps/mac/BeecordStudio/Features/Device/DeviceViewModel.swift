@@ -246,6 +246,7 @@ final class DeviceViewModel {
         switch event {
         case .syncCompleted(let newFiles):
             isAutoConnectAttempt = false
+            appModel.markSyncCompleted()
             appModel.showToast(ToastMessage(kind: .info, text: "同步完成，新增 \(newFiles) 个录音"))
         case .syncFailed(let message):
             // BLE 模式授权就绪却连不上 → 推断蓝牙未开启/不支持，出面罩（不弹 toast）

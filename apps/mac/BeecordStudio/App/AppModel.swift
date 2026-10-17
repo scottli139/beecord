@@ -18,6 +18,8 @@ final class AppModel {
     private(set) var selectedPage: Page = .device
     /// 当前 Toast；nil = 不展示。
     private(set) var toast: ToastMessage?
+    /// 同步完成代数（LibraryViewModel 据此刷新 catalog；0 = 从未同步）
+    private(set) var syncGeneration = 0
 
     private var toastTask: Task<Void, Never>?
 
@@ -37,6 +39,11 @@ final class AppModel {
             guard let self, !Task.isCancelled else { return }
             self.toast = nil
         }
+    }
+
+    /// 标记一轮同步完成（设备页 VM 在 syncCompleted 事件时调用）。
+    func markSyncCompleted() {
+        syncGeneration &+= 1
     }
 
     func dismissToast() {

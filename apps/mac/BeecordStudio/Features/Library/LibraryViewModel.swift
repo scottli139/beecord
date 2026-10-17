@@ -1,6 +1,6 @@
 import AppKit
-import BuzzLinkSync
 import BuzzLinkAudio
+import BuzzLinkSync
 import Foundation
 import os
 
@@ -31,6 +31,14 @@ final class LibraryViewModel {
     private(set) var items: [Item] = []
     private(set) var selectedID: String?
     private(set) var isScanning = false
+
+    // MARK: - 播放器（Phase C：仅 m4a 已就绪条目）
+    private(set) var playerState: PlayerEngine.State = .idle
+    private(set) var playerProgress = PlayerEngine.Progress(position: 0, duration: 0, fraction: 0, isPlaying: false)
+    private(set) var waveform: [WaveformExtractor.Column] = []
+    private(set) var playerRate: Float = 1
+    private var playerEngine: PlayerEngine?
+    nonisolated private let playerConsumption = ConsumptionHandle()
 
     let libraryRoot: URL
 
@@ -93,6 +101,74 @@ final class LibraryViewModel {
 
     func select(_ id: String) {
         selectedID = id
+        Task { await preparePlayer() }
+    }
+
+    // MARK: - 播放器意图
+
+    func togglePlay() async {
+        await playerEngine?.togglePlay()
+    }
+
+    func skip(by delta: TimeInterval) async {
+        await playerEngine?.skip(by: delta)
+    }
+
+    /// 倍速循环 1 → 1.5 → 2
+    func cycleRate() async {
+        let next: Float = playerRate == 1 ? 1.5 : (playerRate == 1.5 ? 2 : 1)
+        playerRate = next
+        await playerEngine?.setRate(next)
+    }
+
+    func seek(fraction: Double) async {
+        guard playerProgress.duration > 0 else { return }
+        await playerEngine?.seek(to: fraction * playerProgress.duration)
+    }
+
+    private func ensureEngine() -> PlayerEngine {
+        if let engine = playerEngine { return engine }
+        let engine = PlayerEngine(backend: AVAudioEngineBackend(), progressInterval: 0.1)
+        playerEngine = engine
+        playerConsumption.add(Task { [weak self] in
+            guard let self else { return }
+            for await progress in engine.progress {
+                await self.applyPlayerProgress(progress)
+            }
+        })
+        return engine
+    }
+
+    private func applyPlayerProgress(_ progress: PlayerEngine.Progress) async {
+        playerProgress = progress
+        playerState = progress.isPlaying ? .playing : (progress.duration > 0 ? .paused : .idle)
+    }
+
+    /// 选中项转码就绪则加载音频与波形；否则停止。
+    private func preparePlayer() async {
+        guard let item = selectedItem, item.transcode == .ready else {
+            stopPlayer()
+            return
+        }
+        let engine = ensureEngine()
+        let m4aURL = store.libraryURL.appendingPathComponent(item.id).appendingPathComponent("audio.m4a")
+        await engine.load(url: m4aURL)
+        // 波形（缓存命中即返；失败不阻塞播放）
+        waveform = []
+        Task {
+            let peaks = try? await WaveformExtractor.peaks(m4aURL: m4aURL)
+            if selectedID == item.id {
+                waveform = peaks ?? []
+            }
+        }
+    }
+
+    private func stopPlayer() {
+        Task {
+            await playerEngine?.stop()
+            playerProgress = PlayerEngine.Progress(position: 0, duration: 0, fraction: 0, isPlaying: false)
+            waveform = []
+        }
     }
 
     func selectRecent() {
@@ -162,7 +238,10 @@ final class LibraryViewModel {
             await upsert(meta: meta)
         case .removed(let id):
             items.removeAll { $0.id == id }
-            if selectedID == id { selectedID = nil }
+            if selectedID == id {
+                selectedID = nil
+                stopPlayer()
+            }
         }
     }
 
@@ -180,6 +259,8 @@ final class LibraryViewModel {
         if needsTranscode, !cancelledIDs.contains(meta.id) {
             let state = items.first(where: { $0.id == meta.id })?.transcode ?? .pending
             if state == .pending { enqueueTranscode(id: meta.id) }
+        } else if selectedID == meta.id, meta.audio.m4a != nil {
+            Task { await preparePlayer() }
         }
     }
 
