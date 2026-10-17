@@ -45,11 +45,14 @@ extension MainWindow {
         let idealHeight: CGFloat
     }
 
-    /// 窗口档位：UITest（-uiTestWindow）用小档保证任何 CI 可视区完整可交互；
-    /// 常规走产品值 + 按屏收缩。
+    /// 窗口档位：UITest（-uiTestWindow）用 CI 档——min 宽与产品最小宽对齐（1024，
+    /// 恰等于 CI runner 可视宽，见 TESTING.md §4"CI 环境三条认知"）；早期 900 min 会让
+    /// 库页详情列只剩 ~350，操作行/播放器区固有宽 ~460 撑破窗口右缘（最右按钮 AX frame
+    /// 落窗外点击被丢，CI run 39040395432 实录）。窄于 1024 的屏幕库页不支持
+    /// （详情区多区块固有宽 ~460，断两行仅收缩操作行、救不了整体溢出）。
     fileprivate static var windowFit: WindowFit {
         if LaunchOptions.uiTestWindow {
-            return WindowFit(minWidth: 900, idealWidth: 1080, minHeight: 560, idealHeight: 680)
+            return WindowFit(minWidth: 1024, idealWidth: 1140, minHeight: 560, idealHeight: 680)
         }
         return WindowFit(
             minWidth: DesignTokens.Layout.windowMinWidth,
