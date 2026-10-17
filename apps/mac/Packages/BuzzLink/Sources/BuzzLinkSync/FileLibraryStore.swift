@@ -108,6 +108,50 @@ public struct FileLibraryStore: LibraryStore {
         }
     }
 
+    // MARK: - read 侧（T6 录音库）
+
+    public func listRecordings() throws -> [RecordingMeta] {
+        let fileManager = FileManager.default
+        guard let dirs = try? fileManager.contentsOfDirectory(at: libraryURL, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        var result: [RecordingMeta] = []
+        for dir in dirs {
+            let name = dir.lastPathComponent
+            guard name != ".partial" else { continue }
+            guard fileManager.fileExists(atPath: dir.appendingPathComponent("meta.json").path) else { continue }
+            do {
+                result.append(try readMeta(in: dir))
+            } catch {
+                logger.error("跳过损坏的 meta.json（\(name)）：\(error.localizedDescription)")
+            }
+        }
+        return result
+    }
+
+    public func recording(id: String) throws -> RecordingMeta? {
+        let dir = libraryURL.appendingPathComponent(id, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: dir.appendingPathComponent("meta.json").path) else {
+            return nil
+        }
+        return try readMeta(in: dir)
+    }
+
+    public func deleteRecording(id: String) throws {
+        let dir = libraryURL.appendingPathComponent(id, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: dir.path) else { return }
+        try FileManager.default.removeItem(at: dir)
+    }
+
+    public func updateMeta(_ meta: RecordingMeta) throws {
+        let dir = libraryURL.appendingPathComponent(meta.id, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: dir.path) else {
+            throw LibraryStoreError.writeFailed("目录不存在：\(meta.id)")
+        }
+        let data = try makeMetaData(meta)
+        try data.write(to: dir.appendingPathComponent("meta.json"), options: .atomic)
+    }
+
     // MARK: - 目录名安全化
 
     /// 由设备文件 id 生成安全的目录名：非法文件系统字符（`/:*?"<>|\`）与控制字符
@@ -145,11 +189,15 @@ public struct FileLibraryStore: LibraryStore {
         try fileManager.moveItem(at: partial, to: audioDestination)
         var finalMeta = meta
         finalMeta.id = recordingID
+        let data = try makeMetaData(finalMeta)
+        try data.write(to: directory.appendingPathComponent("meta.json"), options: .atomic)
+    }
+
+    private func makeMetaData(_ meta: RecordingMeta) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(finalMeta)
-        try data.write(to: directory.appendingPathComponent("meta.json"), options: .atomic)
+        return try encoder.encode(meta)
     }
 
     private func readMeta(in directory: URL) throws -> RecordingMeta {

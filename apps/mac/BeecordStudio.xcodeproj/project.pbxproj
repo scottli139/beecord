@@ -14,6 +14,7 @@
 		5EED000000000000000002C0 /* BuzzLinkSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002C1 /* BuzzLinkSync */; };
 		5EED000000000000000002D0 /* BuzzLinkSimCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002D1 /* BuzzLinkSimCore */; };
 		5EED000000000000000002D2 /* BuzzLinkCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002D3 /* BuzzLinkCore */; };
+		5EED000000000000000002E0 /* BuzzLinkAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 5EED000000000000000002E1 /* BuzzLinkAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 				5EED00000000000000000170 /* BuzzLinkCore in Frameworks */,
 				5EED00000000000000000173 /* BuzzLink in Frameworks */,
 				5EED000000000000000002C0 /* BuzzLinkSync in Frameworks */,
+				5EED000000000000000002E0 /* BuzzLinkAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +127,7 @@
 				5EED00000000000000000180 /* BuzzLinkCore */,
 				5EED00000000000000000183 /* BuzzLink */,
 				5EED000000000000000002C1 /* BuzzLinkSync */,
+				5EED000000000000000002E1 /* BuzzLinkAudio */,
 			);
 			productName = BeecordStudio;
 			productReference = 5EED00000000000000000120 /* BeecordStudio.app */;
@@ -627,6 +630,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5EED00000000000000000190 /* XCLocalSwiftPackageReference "Packages/BuzzLink" */;
 			productName = BuzzLinkCore;
+		};
+		5EED000000000000000002E1 /* BuzzLinkAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5EED00000000000000000190 /* XCLocalSwiftPackageReference "Packages/BuzzLink" */;
+			productName = BuzzLinkAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

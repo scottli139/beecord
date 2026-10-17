@@ -8,7 +8,8 @@ let package = Package(
         .library(name: "BuzzLinkCore", targets: ["BuzzLinkCore"]),
         .library(name: "BuzzLinkSimCore", targets: ["BuzzLinkSimCore"]),
         .library(name: "BuzzLink", targets: ["BuzzLink"]),
-        .library(name: "BuzzLinkSync", targets: ["BuzzLinkSync"])
+        .library(name: "BuzzLinkSync", targets: ["BuzzLinkSync"]),
+        .library(name: "BuzzLinkAudio", targets: ["BuzzLinkAudio"])
     ],
     targets: [
         .target(name: "BuzzLinkCore"),
@@ -29,6 +30,16 @@ let package = Package(
         .target(
             name: "BuzzLinkTestSupport",
             dependencies: ["BuzzLink", "BuzzLinkSimCore", "BuzzLinkCore"]
+        ),
+        // 音频链（T6）：ogg→m4a 转码 + 播放器引擎（AVFoundation；PlayerEngine 逻辑可注入时钟单测）
+        .target(
+            name: "BuzzLinkAudio",
+            dependencies: ["BuzzLinkCore"]
+        ),
+        .testTarget(
+            name: "BuzzLinkAudioTests",
+            dependencies: ["BuzzLinkAudio", "BuzzLinkCore"],
+            resources: [.process("Fixtures")]
         ),
         .testTarget(
             name: "BuzzLinkCoreTests",

@@ -25,6 +25,20 @@ public protocol LibraryStore: Sendable {
 
     /// 清理全部 `.partial` 残留（启动时调用；存在即未完成）。
     func purgeStalePartials() async throws
+
+    // MARK: - read 侧（T6 录音库；read 方法不改变写入语义）
+
+    /// 全量录音元数据（录音库列表数据源；**不保证顺序**，排序由上层决定）。
+    func listRecordings() async throws -> [RecordingMeta]
+
+    /// 按 recording-id 读取单条元数据；不存在返回 nil。
+    func recording(id: String) async throws -> RecordingMeta?
+
+    /// 删除整目录（audio.ogg / audio.m4a / meta.json / 波形缓存等）；不存在则无事发生。
+    func deleteRecording(id: String) async throws
+
+    /// 原子更新 meta.json（重命名标题等）；目录不存在抛 ``LibraryStoreError/writeFailed``。
+    func updateMeta(_ meta: RecordingMeta) async throws
 }
 
 /// 录音库错误
