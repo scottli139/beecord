@@ -18,10 +18,19 @@ final class AppModel {
     private(set) var selectedPage: Page = .device
     /// 当前 Toast；nil = 不展示。
     private(set) var toast: ToastMessage?
-    /// 同步完成代数（LibraryViewModel 据此刷新 catalog；0 = 从未同步）
+    /// 同步完成代数（LibraryView 据此刷新 catalog；0 = 从未同步）
     private(set) var syncGeneration = 0
+    /// 同步完成广播（LibraryViewModel 订阅；视图不在层级时也能收到，手动下载同样派发转码）
+    private(set) var syncCompletedStream: AsyncStream<Void>
+    private let syncCompletedContinuation: AsyncStream<Void>.Continuation
 
     private var toastTask: Task<Void, Never>?
+
+    init() {
+        let stream = AsyncStream<Void>.makeStream()
+        self.syncCompletedStream = stream.stream
+        self.syncCompletedContinuation = stream.continuation
+    }
 
     // MARK: - 意图方法
 
@@ -42,8 +51,10 @@ final class AppModel {
     }
 
     /// 标记一轮同步完成（设备页 VM 在 syncCompleted 事件时调用）。
+    /// bump 代数（视图 onChange 用）+ 广播（VM 订阅用，库页不在层级时手动下载也触发对账/补转）。
     func markSyncCompleted() {
         syncGeneration &+= 1
+        syncCompletedContinuation.yield()
     }
 
     func dismissToast() {

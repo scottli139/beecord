@@ -120,6 +120,11 @@ final class SyncEngineAutoSyncTests: XCTestCase {
         config.autoSyncEnabled = false
         let fixture = makeSyncFixture(files: files, config: config)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
+        // 事件收集：手动下载完成必须发 syncCompleted（app 层入库即转依赖该事件，
+        // 见 CI run 39040395432 复盘——库页不在层级时靠 VM 订阅此信号派发补转）
+        let events = SyncEventCollector()
+        let collectingEvents = collectEvents(of: fixture.engine, into: events)
+        defer { collectingEvents.cancel() }
 
         await fixture.engine.connect()
         let listed = await pollUntil(timeout: 5) {
@@ -138,6 +143,10 @@ final class SyncEngineAutoSyncTests: XCTestCase {
                 && snapshot.rows.first { $0.id == files[1].id }?.status == .verified
         }
         XCTAssertTrue(downloaded, "手动勾选应下载所选")
+        let eventArrived = await pollUntil(timeout: 2) {
+            events.values.contains { $0 == .syncCompleted(newFiles: 1) }
+        }
+        XCTAssertTrue(eventArrived, "手动下载完成应发 syncCompleted(1)（入库即转的事件源）")
         let snapshot = await fixture.engine.snapshot
         XCTAssertEqual(
             snapshot.rows.filter { $0.status == .verified }.map(\.id),

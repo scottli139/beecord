@@ -66,6 +66,14 @@ final class LibraryViewModel {
                 await self.applyCatalogChange(change)
             }
         })
+        // 同步完成广播：入库即转不依赖库页可见（手动下载完成时人通常在设备页；
+        // 仅视图 onChange 会在库页未出现时漏派发，见 CI run 39040395432 复盘）
+        catalogConsumption.add(Task { [weak self] in
+            guard let self else { return }
+            for await _ in self.appModel.syncCompletedStream {
+                self.refresh()
+            }
+        })
         // 启动：全量扫描（存量录音进入列表；缺 m4a 的由变更事件触发补转）
         isScanning = true
         Task { [weak self] in
