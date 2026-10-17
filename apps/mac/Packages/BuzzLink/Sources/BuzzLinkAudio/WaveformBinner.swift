@@ -34,7 +34,7 @@ public enum WaveformBinner {
             return BarSpec(barWidth: bar, gap: gap, count: count)
         }
 
-        var count = max(1, Int((width + baseGap) / (baseBar + baseGap)))
+        let count = max(1, Int((width + baseGap) / (baseBar + baseGap)))
         let used = CGFloat(count) * baseBar + CGFloat(count - 1) * baseGap
         var gap = baseGap
         if count > 1, used < width { gap += (width - used) / CGFloat(count - 1) }  // 余量均分到间隙
