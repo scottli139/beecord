@@ -5,6 +5,7 @@ struct MainWindow: View {
     @Bindable var appModel: AppModel
     let settingsModel: SettingsModel
     let deviceViewModel: DeviceViewModel
+    let libraryViewModel: LibraryViewModel
 
     var body: some View {
         NavigationSplitView {
@@ -14,7 +15,7 @@ struct MainWindow: View {
             case .device:
                 DeviceView(viewModel: deviceViewModel)
             case .library:
-                LibraryView()
+                LibraryView(viewModel: libraryViewModel, appModel: appModel)
             case .console:
                 ConsoleView()
             }
@@ -53,6 +54,7 @@ private func previewMainWindow() -> some View {
     return MainWindow(
         appModel: appModel,
         settingsModel: settingsModel,
-        deviceViewModel: DeviceViewModel(appModel: appModel, settings: settingsModel)
+        deviceViewModel: DeviceViewModel(appModel: appModel, settings: settingsModel),
+        libraryViewModel: LibraryViewModel(appModel: appModel, settings: settingsModel)
     )
 }

@@ -119,6 +119,8 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 控制台行 | Menlo 12；方向符号 →（上行）←（下行）；行点击展开 hex | `console.logTable` |
 | 确认对话框 | NSAlert；主按钮写破坏性动词（"删除"）；**默认焦点=取消** | `common.confirmDialog` |
 | 权限面罩 | 全局面罩：图标 40 + 标题 15/600 + 说明 13 + 主按钮（跳系统设置）+ 次按钮（重试） | `common.permissionOverlay`（蓝牙实例 `device.bluetoothOverlay`） |
+| 库列表行 | 列表列宽 280；行 r8、padding 10×12、卡底 1px 边框；标题 13/600 单行截断；meta 11 tertiary（日期·时长）；**右列双徽标两行**（10px，右对齐：上行转码态、下行转写态）；选中：accent 1px 边 + 外环 1px（r8）；hover：accent 40% 边（选中优先，§2.2） | `library.recordingTable.row.{id}` / `.title` / `.transcodeBadge` / `.transcribeBadge` |
+| 确认对话框（自绘） | NSAlert 语义：图标? 无；标题 14/600；描述 12 secondary；按钮右对齐——破坏性动词红字（"删除"）+ **取消默认聚焦**（accent 3px 聚焦环）；遮罩 rgba(0,0,0,.16) | `common.confirmDialog`（按钮 `library.deleteConfirmButton` / `library.deleteCancelButton`） |
 
 ### 2.1 页面骨架与布局规则（Mac / SwiftUI）
 

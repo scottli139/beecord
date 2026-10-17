@@ -6,6 +6,7 @@ struct BeecordStudioApp: App {
     @State private var appModel: AppModel
     @State private var settingsModel: SettingsModel
     @State private var deviceViewModel: DeviceViewModel
+    @State private var libraryViewModel: LibraryViewModel
 
     init() {
         // 启动参数须早于 SettingsModel 初始化（-resetSettings 清 settings.*）
@@ -19,6 +20,10 @@ struct BeecordStudioApp: App {
             appModel: appModel,
             settings: settingsModel
         ))
+        self._libraryViewModel = State(wrappedValue: LibraryViewModel(
+            appModel: appModel,
+            settings: settingsModel
+        ))
     }
 
     var body: some Scene {
@@ -26,7 +31,8 @@ struct BeecordStudioApp: App {
             MainWindow(
                 appModel: appModel,
                 settingsModel: settingsModel,
-                deviceViewModel: deviceViewModel
+                deviceViewModel: deviceViewModel,
+                libraryViewModel: libraryViewModel
             )
         }
         .commands {

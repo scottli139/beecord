@@ -8,6 +8,11 @@ final class BeecordStudioUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // 确定性空库：隔离默认容器残留数据（本机曾手动同步过录音，空态断言会受污染）
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("studio-shell-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        app.launchArguments = ["-resetSettings", "-libraryRoot", root.path]
     }
 
     /// 类型无关的 AX id 查询（兼容 checkBox/switch/staticText 等角色差异）。
