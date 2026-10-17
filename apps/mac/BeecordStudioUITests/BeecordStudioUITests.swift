@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// App 骨架 UI 测试（TESTING.md §4：AX 树驱动，禁坐标/截图；R1 id 命名）。
@@ -19,7 +20,20 @@ final class BeecordStudioUITests: XCTestCase {
     private func launchWithSidebar() {
         app.launch()
         app.activate()
+        diag("after-launch")
         ensureSidebarVisible()
+        diag("after-ensureSidebar")
+    }
+
+    /// CI 取证诊断：打印 runner 侧屏幕与 app 窗口实况到测试日志（print 直达 CI log）。
+    /// 定位"CI 早期侧栏缺席"用（本地不触发也无害），收敛后可移除。
+    private func diag(_ tag: String) {
+        let full = NSScreen.main?.frame ?? .zero
+        let vis = NSScreen.main?.visibleFrame ?? .zero
+        let winCount = app.windows.count
+        let winFrame = app.windows.firstMatch.frame
+        let sidebar = element("sidebar.navItem.devices").exists
+        print("UITEST-DIAG[\(tag)] screen=\(full) visible=\(vis) state=\(app.state.rawValue) windows=\(winCount) winFrame=\(winFrame) sidebarDevices=\(sidebar)")
     }
 
     /// 侧栏可见性保障：CI runner 早期小屏可能折叠 NavigationSplitView 侧栏（

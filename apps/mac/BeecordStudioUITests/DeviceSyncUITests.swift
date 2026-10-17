@@ -1,3 +1,4 @@
+import AppKit
 import BuzzLinkCore
 import BuzzLinkSimCore
 import XCTest
@@ -127,12 +128,25 @@ final class DeviceSyncUITests: XCTestCase {
         app.launch()
         app.activate()
         self.app = app
+        diag("after-launch")
         // 兜底：主窗口未随启动出现（WindowGroup 恢复态异常等）时，激活 + ⌘N 强制新建主窗口
         if !waitForExistence("sidebar.navItem.devices", timeout: 15) {
             app.activate()
             app.typeKey("n", modifierFlags: .command)
             _ = waitForExistence("sidebar.navItem.devices", timeout: 5)
         }
+        diag("after-window-recovery")
+    }
+
+    /// CI 取证诊断：打印 runner 侧屏幕与 app 窗口实况到测试日志（print 直达 CI log）。
+    /// 定位"CI 早期侧栏缺席/控件缺席"用（本地无害），收敛后可移除。
+    private func diag(_ tag: String) {
+        let full = NSScreen.main?.frame ?? .zero
+        let vis = NSScreen.main?.visibleFrame ?? .zero
+        let winCount = app?.windows.count ?? -1
+        let winFrame = app?.windows.firstMatch.frame ?? .zero
+        let sidebar = app?.descendants(matching: .any).matching(identifier: "sidebar.navItem.devices").firstMatch.exists ?? false
+        print("UITEST-DIAG[\(tag)] screen=\(full) visible=\(vis) state=\(String(describing: app?.state)) windows=\(winCount) winFrame=\(winFrame) sidebarDevices=\(sidebar)")
     }
 
     /// 启动探针尾段（app 侧 LaunchTrace 写入库根；失败信息现场的一部分）
