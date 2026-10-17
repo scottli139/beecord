@@ -127,6 +127,7 @@
   .switch input:checked+i:before{left:16px}
   /* 录音库 */
   .lib-wrap{display:flex;gap:16px;min-height:0}
+  .lib-wrap.narrow .lib-detail{flex:none;width:350px}  /* 窄宽场景：模拟窗口 900 时的详情列宽 */
   .lib-list{width:280px;flex:none;display:flex;flex-direction:column;gap:6px}
   .lib-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer}
   .lib-item:hover{border-color:rgba(10,132,255,.4)}
@@ -221,7 +222,7 @@
   <div class="titlebar">
     <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
     <span>Beecord Studio</span>
-    <span class="proto">交互原型 v0.3（2026-10-16）· 数据均为演示 mock</span>
+    <span class="proto">交互原型 v0.4（2026-10-17）· 数据均为演示 mock</span>
     <label class="proto-picker">评审场景
       <select id="prototype-scenario">
         <option value="normal">主流程</option>
@@ -229,6 +230,7 @@
         <option value="device-empty">已连接 · 设备无录音</option>
         <option value="library-empty">录音库为空</option>
         <option value="library-no-selection">录音库未选择</option>
+        <option value="library-narrow">录音库 · 窄宽（操作行两行）</option>
         <option value="bluetooth-off">蓝牙不可用</option>
       </select>
     </label>
@@ -509,7 +511,7 @@ const $ = id => document.getElementById(id);
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
 const fmtT = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
-const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","bluetooth-off"]);
+const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","library-narrow","bluetooth-off"]);
 const requestedScenario=new URLSearchParams(location.search).get("state")||"normal";
 const SCENARIO=SCENARIOS.has(requestedScenario)?requestedScenario:"normal";
 $("prototype-scenario").value=SCENARIO;
@@ -832,6 +834,10 @@ function applyScenario(){
     S.lib=[]; S.curLib=null; renderLib(); showView("library"); startScan();
   }else if(SCENARIO==="library-no-selection"){
     S.curLib=null; renderLib(); showView("library"); startScan();
+  }else if(SCENARIO==="library-narrow"){
+    // 窄宽（详情列 ~350pt，如 UITest 小窗档）：操作行断两行（导出组一行 / Finder+删除一行）
+    renderLib(); showView("library"); selectLib(0);
+    $("library-content").classList.add("narrow");
   }else if(SCENARIO==="bluetooth-off"){
     showView("device"); showDeviceStage("none");
     $("bluetooth-overlay").style.display="flex";
