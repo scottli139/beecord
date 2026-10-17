@@ -88,6 +88,11 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
      已由 pollUntil(isDownloading) 锁定），重下全速 <0.1s 对抢占免疫；轮询收回 30s。
      **教训**：限速类故障注入只用于"制造时序窗口"的环节，后续阶段应解除——
      否则看门狗会把调度停顿当链路静默无限重试。
+     **短驻留断言紧跟交互**（2026-10-17，run 39046000493）：toast 类驻留仅秒级的元素，
+     断言必须排在触发它的交互之后立即执行——排在其他有界等待（行消失/noSelection 等，
+     CI 上每步实际耗时数秒）之后必然错过驻留窗。另记：NSSavePanel 在 AX 中为
+     `AXWindow/AXDialog` subrole，XCUITest 归类 `.dialog` **不进 `app.windows`**，
+     面板判定用 `app.dialogs` / `app.sheets` 双通道。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
    - **跨机实测（2026-10-16 已闭环，T5）**：`BLE_LIVE_SMOKE=1 swift test --filter

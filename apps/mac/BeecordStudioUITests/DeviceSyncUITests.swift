@@ -388,13 +388,17 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertTrue(waitForExistence("library.exportMenuItem.wav", timeout: 5), "导出菜单含 wav")
         XCTAssertTrue(waitForExistence("library.exportMenuItem.ogg", timeout: 5), "导出菜单含 ogg（原始）")
         element("library.exportMenuItem.m4a").click()
-        // runModal 的 NSSavePanel 是独立窗口（非 sheet）：窗口计数 +1 判定，语言无关
+        // NSSavePanel 的 AX 形态是 AXWindow + subrole=AXDialog——XCUITest 按 subrole
+        // 归类为 .dialog，不进 app.windows（CI run 39046000493 谓词打满 10s 实录）；
+        // 点击后 app 长时间不 idle（等待 app idle 5.5s）即面板已模态弹出。
         let panelShown = waitForElement(
             "library.detailTabs",
-            predicate: NSPredicate(block: { _, _ in (self.app?.windows.count ?? 0) >= 2 }),
+            predicate: NSPredicate(block: { _, _ in
+                (self.app?.dialogs.count ?? 0) >= 1 || (self.app?.sheets.count ?? 0) >= 1
+            }),
             timeout: 10
         )
-        XCTAssertTrue(panelShown, "导出 m4a 弹出 NSSavePanel")
+        XCTAssertTrue(panelShown, "导出 m4a 弹出 NSSavePanel（dialog/sheet 存在）")
         app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
         XCTAssertTrue(waitForExistence("library.detailTabs", timeout: 5), "Tab 分段出现")
     }
@@ -461,10 +465,12 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertTrue(element("library.recordingTable.row.\(first)").exists, "取消后行保留")
         XCTAssertTrue(libraryContainsRecording(first), "取消后库目录保留")
 
-        // 再删 → 确认：行消失 + 库目录移除 + 回到未选中态
+        // 再删 → 确认：先立即查 toast（驻留仅 2s，CI 上前置等待会吃掉窗口），
+        // 再行消失/目录移除/未选中态
         element("library.deleteButton").click()
         XCTAssertTrue(waitForExistence("common.confirmDialog", timeout: 10), "再次删除确认对话框出现")
         element("library.deleteConfirmButton").click()
+        XCTAssertTrue(pollElementExists("common.toast", timeout: 10), "已删除 toast 出现")
         XCTAssertTrue(
             waitForDisappearance("library.recordingTable.row.\(first)", timeout: 10),
             "确认后行消失"
@@ -472,7 +478,6 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertFalse(libraryContainsRecording(first), "确认后库目录无该 recording")
         XCTAssertEqual(libraryRecordingCount(), 2, "库内剩 2 个录音目录")
         XCTAssertTrue(waitForExistence("library.noSelection", timeout: 10), "删除选中项后回未选中态")
-        XCTAssertTrue(pollElementExists("common.toast", timeout: 15), "已删除 toast 出现")
     }
 
     // MARK: - 8. 库流：空库空态 + 无选中态联动
