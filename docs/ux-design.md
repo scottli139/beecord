@@ -90,9 +90,23 @@
 
 ### 3.5 协议控制台（开发者模式）
 
-- 预置命令（列文件/查信息/开始下载/结束校验）+ 自定义 hex 输入；
-- 日志表：时间 / 方向(→←) / type / channel / payload 摘要；行点击展开 hex；
-- 过滤（方向/type）+ 导出会话为 **JSON 测试向量**（可读性优先：时间戳/方向/type/hex 字符串等命名字段，可直接 diff；喂 `firmware/test_host`）。
+> **v0.5 定稿（2026-10-18 评审通过，T7 Phase 0）**：控制台 mock 按现行 BuzzLink 帧格式全面修订
+> （`BE EC` 魔数帧：version/type/session/flags/channel/length/payload/crc16，真实 type 值与握手时序）；
+> 拍板 A 四项落地——开始下载=发 DL_BEGIN 后自动 DL_ABORT、自定义 hex 同 session RX 响应 3s 高亮/
+> 自动展开、type 下拉多选（17 种并集）、同步中发送区禁用。
+
+- 预置命令（列文件 / 查信息 / **开始下载**[发 DL_BEGIN_REQ→RESP+首块→自动 DL_ABORT，单键看全握手] /
+  结束校验）+ 自定义 hex 输入（偶数长度/hex 字符/帧头校验，非法行内红字提示）；
+- 日志表：时间 / 方向(→←) / type（真实名称+十六进制）/ session / channel / payload 摘要；
+  行点击展开**完整帧 hex dump**（offset + hex + ASCII 对照，等宽字体），再点折叠；
+- 过滤三件套：方向单选（全部/→/←）+ **type 下拉多选**（17 种全列+名称+方向，勾选取并集）+
+  文本过滤（type 名/payload/注释子串），三者 AND 组合；
+- **DL_CHUNK 洪泛聚合**：连续 ≥4 块折叠为"DL_CHUNK ×N（已折叠，点击看明细）"，展开看个体
+  （原型评审控件可注入一次真实下载规模的 12,847 块流演示）；
+- 发送区门控：未连接（提示"连接设备后可发送命令"）与**同步中**（拍板 A：提示"完成后可发送"）
+  均禁用预置命令 + hex 输入 + 发送钮；
+- 导出会话为 **JSON 测试向量**（`buzzlink-vector/1` schema，可读性优先：ts/direction/
+  type/session/channel/payloadHex 命名字段，可直接 diff、可回放，喂 `firmware/test_host`）。
 
 ## 4. 状态与异常
 
