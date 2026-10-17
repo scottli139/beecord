@@ -1,7 +1,8 @@
 import BuzzLinkAudio
 import SwiftUI
 
-/// 波形图（prototype v0.3）：Canvas 绘制 min/max 双值柱——已播 accent、未播 35% accent。
+/// 波形图（prototype v0.3 观感：粗条可数）：Canvas 渲染——数据层 600 列经
+/// ``WaveformBinner`` 按实际宽度聚合（条宽 3pt + 间隙 2pt），已播 accent、未播 35% accent。
 /// R5：整图包 accessibilityElement，AXValue=播放进度 0-1（字符串数值），label 含总时长。
 struct WaveformView: View {
     let columns: [WaveformExtractor.Column]
@@ -14,18 +15,20 @@ struct WaveformView: View {
         GeometryReader { geometry in
             Canvas { context, size in
                 guard !columns.isEmpty else { return }
-                let columnCount = CGFloat(columns.count)
-                let columnWidth = size.width / columnCount
+                let spec = WaveformBinner.barSpec(width: size.width)
+                let bars = WaveformBinner.aggregate(columns, targetCount: spec.count)
+                guard !bars.isEmpty else { return }
                 let midY = size.height / 2
-                for (index, column) in columns.enumerated() {
-                    let played = Double(index) / Double(columns.count) <= progress
+                for (index, column) in bars.enumerated() {
+                    let played = Double(index) / Double(bars.count) <= progress
                     let color: Color = played ? Color.accentColor : Color.accentColor.opacity(0.35)
                     let up = CGFloat(max(0.03, column.max)) * midY
                     let down = CGFloat(max(0.03, abs(min(0, column.min)))) * midY
+                    let x = CGFloat(index) * (spec.barWidth + spec.gap)
                     let rect = CGRect(
-                        x: CGFloat(index) * columnWidth + columnWidth * 0.2,
+                        x: x,
                         y: midY - up,
-                        width: max(1, columnWidth * 0.6),
+                        width: spec.barWidth,
                         height: max(1, up + down)
                     )
                     context.fill(Path(rect), with: .color(color))

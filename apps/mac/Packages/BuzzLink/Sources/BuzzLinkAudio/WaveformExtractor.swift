@@ -10,6 +10,11 @@ public enum WaveformExtractor {
     public struct Column: Codable, Sendable, Equatable {
         public var min: Float
         public var max: Float
+
+        public init(min: Float, max: Float) {
+            self.min = min
+            self.max = max
+        }
     }
 
     /// 缓存文件结构（与录音同目录，meta 级联清理）
