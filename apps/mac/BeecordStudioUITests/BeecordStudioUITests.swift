@@ -12,12 +12,13 @@ final class BeecordStudioUITests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("studio-shell-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        app.launchArguments = ["-resetSettings", "-libraryRoot", root.path]
+        app.launchArguments = ["-resetSettings", "-libraryRoot", root.path, "-uiTestWindow"]
     }
 
     /// 启动并保障侧栏可见（小屏折叠时 ⌃⌘S 展开）。
     private func launchWithSidebar() {
         app.launch()
+        app.activate()
         ensureSidebarVisible()
     }
 

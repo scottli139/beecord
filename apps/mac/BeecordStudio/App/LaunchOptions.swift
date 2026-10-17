@@ -14,6 +14,12 @@ enum LaunchOptions {
     /// 手动下载用例的注入点；须与 -resetSettings 同用，避免污染用户设置）。
     static let autoSyncOff = arguments.contains("-autoSyncOff")
 
+    /// -uiTestWindow：UITest 专用窗口档位（min 900×560 / ideal 1080×680）。
+    /// CI runner 早期屏小/Dock 占位下，产品档（min 1140 / ideal 1280×800）会把
+    /// 底部控件挤出可视区（hittable 失败）或触发侧栏折叠；测试档保证
+    /// 任何 ≥1100×740 可视区完整可交互。产品值不受影响。
+    static let uiTestWindow = arguments.contains("-uiTestWindow")
+
     static let libraryRoot: String? = value(for: "-libraryRoot")
 
     /// App 启动早期调用（须早于 SettingsModel 初始化）。

@@ -119,12 +119,13 @@ final class DeviceSyncUITests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         state.libraryRoot = root
         let app = XCUIApplication()
-        var arguments = ["-resetSettings", "-libraryRoot", root.path]
+        var arguments = ["-resetSettings", "-libraryRoot", root.path, "-uiTestWindow"]
         if autoSyncOff {
             arguments.append("-autoSyncOff")
         }
         app.launchArguments = arguments
         app.launch()
+        app.activate()
         self.app = app
         // 兜底：主窗口未随启动出现（WindowGroup 恢复态异常等）时，激活 + ⌘N 强制新建主窗口
         if !waitForExistence("sidebar.navItem.devices", timeout: 15) {

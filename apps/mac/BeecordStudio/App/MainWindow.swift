@@ -21,10 +21,10 @@ struct MainWindow: View {
             }
         }
         .frame(
-            minWidth: DesignTokens.Layout.windowMinWidth,
-            idealWidth: Self.fittedIdealWidth,
-            minHeight: DesignTokens.Layout.windowMinHeight,
-            idealHeight: Self.fittedIdealHeight
+            minWidth: Self.windowFit.minWidth,
+            idealWidth: Self.windowFit.idealWidth,
+            minHeight: Self.windowFit.minHeight,
+            idealHeight: Self.windowFit.idealHeight
         )
         .overlay(alignment: .bottom) {
             if let toast = appModel.toast {
@@ -38,6 +38,27 @@ struct MainWindow: View {
 }
 
 extension MainWindow {
+    struct WindowFit: Sendable {
+        let minWidth: CGFloat
+        let idealWidth: CGFloat
+        let minHeight: CGFloat
+        let idealHeight: CGFloat
+    }
+
+    /// 窗口档位：UITest（-uiTestWindow）用小档保证任何 CI 可视区完整可交互；
+    /// 常规走产品值 + 按屏收缩。
+    fileprivate static var windowFit: WindowFit {
+        if LaunchOptions.uiTestWindow {
+            return WindowFit(minWidth: 900, idealWidth: 1080, minHeight: 560, idealHeight: 680)
+        }
+        return WindowFit(
+            minWidth: DesignTokens.Layout.windowMinWidth,
+            idealWidth: fittedIdealWidth,
+            minHeight: DesignTokens.Layout.windowMinHeight,
+            idealHeight: fittedIdealHeight
+        )
+    }
+
     /// 理想窗口尺寸按主屏可视区收缩（CI runner 早期小屏下防窗口超高裁底部控件；
     /// 产品最小/理想值不变，正常屏（≥1290×810）无效果）。
     fileprivate static var fittedIdealWidth: CGFloat {
