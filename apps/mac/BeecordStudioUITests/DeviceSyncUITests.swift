@@ -144,7 +144,10 @@ final class DeviceSyncUITests: XCTestCase {
         let full = NSScreen.main?.frame ?? .zero
         let vis = NSScreen.main?.visibleFrame ?? .zero
         let winCount = app?.windows.count ?? -1
-        let winFrame = app?.windows.firstMatch.frame ?? .zero
+        var winFrame = CGRect.zero
+        if winCount > 0 {
+            winFrame = app.windows.firstMatch.frame
+        }
         let sidebar = app?.descendants(matching: .any).matching(identifier: "sidebar.navItem.devices").firstMatch.exists ?? false
         print("UITEST-DIAG[\(tag)] screen=\(full) visible=\(vis) state=\(String(describing: app?.state)) windows=\(winCount) winFrame=\(winFrame) sidebarDevices=\(sidebar)")
     }

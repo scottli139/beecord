@@ -16,13 +16,19 @@ final class BeecordStudioUITests: XCTestCase {
         app.launchArguments = ["-resetSettings", "-libraryRoot", root.path, "-uiTestWindow"]
     }
 
-    /// 启动并保障侧栏可见（小屏折叠时 ⌃⌘S 展开）。
+    /// 启动并保障主窗口存在 + 侧栏可见。
     private func launchWithSidebar() {
         app.launch()
         app.activate()
         diag("after-launch")
+        // 兜底：CI 上 WindowGroup 偶发不自动建主窗（DeviceSyncUITests 同款 ⌘N 恢复）
+        if !element("sidebar.navItem.devices").waitForExistence(timeout: 10) {
+            app.activate()
+            app.typeKey("n", modifierFlags: .command)
+            _ = element("sidebar.navItem.devices").waitForExistence(timeout: 5)
+        }
+        diag("after-window-recovery")
         ensureSidebarVisible()
-        diag("after-ensureSidebar")
     }
 
     /// CI 取证诊断：打印 runner 侧屏幕与 app 窗口实况到测试日志（print 直达 CI log）。
@@ -31,7 +37,10 @@ final class BeecordStudioUITests: XCTestCase {
         let full = NSScreen.main?.frame ?? .zero
         let vis = NSScreen.main?.visibleFrame ?? .zero
         let winCount = app.windows.count
-        let winFrame = app.windows.firstMatch.frame
+        var winFrame = CGRect.zero
+        if winCount > 0 {
+            winFrame = app.windows.firstMatch.frame
+        }
         let sidebar = element("sidebar.navItem.devices").exists
         print("UITEST-DIAG[\(tag)] screen=\(full) visible=\(vis) state=\(app.state.rawValue) windows=\(winCount) winFrame=\(winFrame) sidebarDevices=\(sidebar)")
     }
