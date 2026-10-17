@@ -81,6 +81,13 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
      testDisconnectMidDownloadReconnectsAndResumes` 曾因 30s 轮询窗口被节流拉伸击穿
      flake 一次（rerun 自过）——重连+整文件重下轮询上限放宽至 60s（≈名义 8.5x 裕量，
      仍有界轮询非固定 sleep，断言语义不变）；同类先例见 `testCancelSyncStopsQueue`。
+     **二次复发根因更正**（2026-10-17，run 39043423121）：60s 窗口仍被"恰好吃满"——
+     非单纯慢，是**限速器 × 看门狗死锁空转**：throttle 的 Thread.sleep 只保下限，
+     慢 runner 上块间隔被抢占拉长超 chunkTimeout → 整文件重试 3 趟全灭 → 行回 failed、
+     终态条件永假。修复 = 断连确认后 `updateFaults` 解除限速（限速使命仅是制造断连窗口，
+     已由 pollUntil(isDownloading) 锁定），重下全速 <0.1s 对抢占免疫；轮询收回 30s。
+     **教训**：限速类故障注入只用于"制造时序窗口"的环节，后续阶段应解除——
+     否则看门狗会把调度停顿当链路静默无限重试。
    - **真 BLE 链路**：Sim 跑在另一台 Mac 或 iPhone/iPad（同一 App 双平台 target）上，
      作为 Studio 跨机联调与固件到货前的 BLE 演练对端。
    - **跨机实测（2026-10-16 已闭环，T5）**：`BLE_LIVE_SMOKE=1 swift test --filter

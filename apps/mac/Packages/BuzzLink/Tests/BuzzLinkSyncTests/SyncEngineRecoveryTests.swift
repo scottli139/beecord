@@ -98,8 +98,9 @@ final class SyncEngineRecoveryTests: XCTestCase {
 
     func testDisconnectMidDownloadReconnectsAndResumes() async throws {
         let file = SyncTestSupport.makeFile(id: "REC_20260101_120000", size: 100 * 224, seed: 9)
-        // 限速 ~2.8s 下完，留出断连窗口；看门狗放大：慢 runner 上块间隔会被调度拉长，
-        // 0.3s 的默认 chunkTimeout 会把调度停顿误判为链路静默，触发无谓的整文件重试
+        // 首轮限速 ~2.8s 下完，仅用于把断连窗口留长（保证 disconnect 落在下载中）；
+        // 看门狗放大：慢 runner 上块间隔会被调度拉长，0.3s 的默认 chunkTimeout
+        // 会把调度停顿误判为链路静默，触发无谓的整文件重试
         let fixture = makeSyncFixture(
             files: [file],
             throttleBytesPerSecond: 8_000,
@@ -122,14 +123,24 @@ final class SyncEngineRecoveryTests: XCTestCase {
         // 真断连（等价退出 Sim app 路径）
         fixture.transport.disconnect()
 
-        // 重下单文件名义 ~2.8s；慢 runner/高负载下节流拉伸可数倍于此（本机 7 路 CPU 抢占
-        // 实测 >3.5x；CI flake 实录：30s 窗口被慢速拉伸击穿后 rerun 自过），轮询上限放宽
-        // 到 60s ≈ 名义 8.5x 裕量（仍为有界轮询，非固定 sleep；断言语义不变）
-        let reconnected = await pollUntil(timeout: 60) {
+        // 断连后立刻解除限速：限速的使命已完成（断连窗口），重下阶段不再需要它。
+        // 慢 runner 上 28ms 名义块间隔被 CPU 抢占拉长无界，看门狗 5s 判定块间隔超时
+        // → 整文件重试 → 3 趟全灭后行回 failed、全局 ready，终态条件永假——
+        // 不是慢，是死锁式空转（CI run 39043423121 打满 60s 实录；此前 30s 窗口同病）。
+        // 全速重下 <0.1s，远离抢占敏感区；用例语义不变（断连→重连→重下完成）。
+        fixture.transport.updateFaults { $0.throttleBytesPerSecond = nil }
+
+        let reconnected = await pollUntil(timeout: 30) {
             let snapshot = await fixture.engine.snapshot
             return snapshot.state == .ready && snapshot.rows.first?.status == .verified
         }
-        XCTAssertTrue(reconnected, "断连后应自动重连并重下完成")
+        // 失败信息带现场快照：state/行态一眼定位（行 failed=看门狗误杀，syncing=真慢）
+        let finalSnapshot = await fixture.engine.snapshot
+        XCTAssertTrue(
+            reconnected,
+            "断连后应自动重连并重下完成；实际 state=\(finalSnapshot.state) "
+                + "rows=\(finalSnapshot.rows.map { String(describing: $0.status) })"
+        )
         // 快照/事件流经消费任务异步投递：actor 侧确认 ready 不保证记录器已 append
         // 重连流程早期 yield 的 reconnecting 态与断连事件；有界轮询等收敛再断言
         let recorded = await pollUntil(timeout: 5) {
