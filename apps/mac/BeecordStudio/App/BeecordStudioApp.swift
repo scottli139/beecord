@@ -8,6 +8,7 @@ import SwiftUI
 /// 同时承担尺寸校正：Window 场景忽略 .defaultSize/内容 frame 的 ideal（系统默认 ~1280×789），
 /// 且 -uiTestWindow 档位依赖窗口尺寸约束——补窗时对每个新窗口一次性应用档位（幂等标记，
 /// 不重置用户手动调整）。UITest 的 ⌘N 兜底保留作第二道防线（对 Window 场景无效果，无害）。
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openWindowAction: OpenWindowAction?
     /// 已应用尺寸档的窗口（每窗口只校正一次；新窗口创建后为 nil）
@@ -65,8 +66,10 @@ struct BeecordStudioApp: App {
 
     var body: some Scene {
         // 每次求值注入 openWindow 动作（幂等）；无恢复态冷启动时窗口补建靠 AppDelegate。
+        // 注意：SceneBuilder 体多语句时不可写 return——Settings 场景若在 return 之后
+        // 会成为不可达代码静默丢失（73cbe33 CI 骨架类 Settings 用例全挂实录）。
         let _ = appDelegate.openWindowAction = openWindow
-        return Window("Beecord Studio", id: "main") {
+        Window("Beecord Studio", id: "main") {
             MainWindow(
                 appModel: appModel,
                 settingsModel: settingsModel,
