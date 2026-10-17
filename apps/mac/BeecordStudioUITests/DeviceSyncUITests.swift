@@ -129,7 +129,10 @@ final class DeviceSyncUITests: XCTestCase {
         app.activate()
         self.app = app
         diag("after-launch")
-        // 兜底：主窗口未随启动出现（WindowGroup 恢复态异常等）时，激活 + ⌘N 强制新建主窗口
+        // 兜底：主窗口未随启动出现（无恢复态冷启动等）时，activate + ⌘N 强制新建主窗口。
+        // 2026-10-18 Window 单例场景改造后：主窗由 AppDelegate.applicationDidBecomeActive
+        // 检测零窗口自动补建（openWindow），本兜底实际不再触发——保留作防御
+        // （Window 场景下 ⌘N 无 New 命令，为无害 no-op；若未来场景回退 WindowGroup 仍有效）。
         if !waitForExistence("sidebar.navItem.devices", timeout: 15) {
             app.activate()
             app.typeKey("n", modifierFlags: .command)

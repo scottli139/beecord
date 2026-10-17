@@ -21,7 +21,10 @@ final class BeecordStudioUITests: XCTestCase {
         app.launch()
         app.activate()
         diag("after-launch")
-        // 兜底：CI 上 WindowGroup 偶发不自动建主窗（DeviceSyncUITests 同款 ⌘N 恢复）
+        // 兜底：主窗口未随启动出现（无恢复态冷启动等）时，activate + ⌘N 强制新建主窗口。
+        // 2026-10-18 Window 单例场景改造后：主窗由 AppDelegate 自动补建，本兜底实际不再
+        // 触发——保留作防御（Window 场景下 ⌘N 为无害 no-op；回退 WindowGroup 仍有效）。
+        // （原注：CI 上 WindowGroup 偶发不自动建主窗）
         if !element("sidebar.navItem.devices").waitForExistence(timeout: 10) {
             app.activate()
             app.typeKey("n", modifierFlags: .command)

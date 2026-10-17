@@ -62,6 +62,20 @@ extension MainWindow {
         )
     }
 
+    /// 场景级默认窗口尺寸（AppDelegate 补窗时一次性应用；含屏幕收缩——
+    /// 等价原 fittedIdeal 逻辑：ideal 超出可视区时退回 min 与可视区减边距的较大者）。
+    /// macOS 26 的 Window 场景忽略 .defaultSize 与内容 frame 的 ideal，须显式设置。
+    static var windowFitDefaultSize: CGSize {
+        let fit = windowFit
+        let screen = NSScreen.main?.visibleFrame
+        let maxWidth = max(fit.minWidth, (screen?.width ?? .greatestFiniteMagnitude) - 10)
+        let maxHeight = max(fit.minHeight, (screen?.height ?? .greatestFiniteMagnitude) - 10)
+        return CGSize(
+            width: min(fit.idealWidth, maxWidth),
+            height: min(fit.idealHeight, maxHeight)
+        )
+    }
+
     /// 理想窗口尺寸按主屏可视区收缩（CI runner 早期小屏下防窗口超高裁底部控件；
     /// 产品最小/理想值不变，正常屏（≥1290×810）无效果）。
     fileprivate static var fittedIdealWidth: CGFloat {
