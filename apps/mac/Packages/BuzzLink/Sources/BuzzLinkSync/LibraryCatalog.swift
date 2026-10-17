@@ -128,6 +128,7 @@ public actor LibraryCatalog {
 
     private func persistManifest() {
         do {
+            try FileManager.default.createDirectory(at: store.libraryURL, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(manifest)

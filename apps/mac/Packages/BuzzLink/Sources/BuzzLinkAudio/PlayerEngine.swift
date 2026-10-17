@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import Foundation
 
 /// 播放器引擎（studio-tech-design §5.1 决策 4：AVAudioEngine + AVAudioPlayerNode +
@@ -107,7 +108,13 @@ public actor PlayerEngine {
         await backend.pause()
         state = .paused
         stopPump()
-        emit(currentProgress(isPlaying: false))
+        let position = min(max(0, await backend.currentPosition()), duration)
+        emit(Progress(
+            position: position,
+            duration: duration,
+            fraction: duration > 0 ? position / duration : 0,
+            isPlaying: false
+        ))
     }
 
     /// 播放/暂停切换。
@@ -120,19 +127,19 @@ public actor PlayerEngine {
         guard state == .paused || state == .playing else { return }
         let target = min(max(0, position), duration)
         await backend.seek(to: target)
-        lastEmitted = Progress(
+        emit(Progress(
             position: target,
             duration: duration,
             fraction: duration > 0 ? target / duration : 0,
             isPlaying: state == .playing
-        )
-        emit(currentProgress(isPlaying: state == .playing))
+        ))
     }
 
     /// 相对跳转（±15s 走带）。
     public func skip(by delta: TimeInterval) async {
         guard state == .paused || state == .playing else { return }
-        await seek(to: currentPositionEstimate() + delta)
+        let base = lastEmitted?.position ?? 0
+        await seek(to: base + delta)
     }
 
     /// 倍速（1/1.5/2；其余值忽略）。
@@ -152,20 +159,6 @@ public actor PlayerEngine {
     }
 
     // MARK: - 私有
-
-    private func currentPositionEstimate() -> TimeInterval {
-        lastEmitted?.position ?? 0
-    }
-
-    private func currentProgress(isPlaying: Bool) -> Progress {
-        let position = min(currentPositionEstimate(), duration)
-        return Progress(
-            position: position,
-            duration: duration,
-            fraction: duration > 0 ? position / duration : 0,
-            isPlaying: isPlaying
-        )
-    }
 
     private func emit(_ value: Progress) {
         guard value != lastEmitted else { return }
@@ -204,8 +197,12 @@ public actor PlayerEngine {
             emit(Progress(position: 0, duration: duration, fraction: 0, isPlaying: false))
             return
         }
-        lastEmitted = Progress(position: clamped, duration: duration, fraction: duration > 0 ? clamped / duration : 0, isPlaying: true)
-        emit(currentProgress(isPlaying: true))
+        emit(Progress(
+            position: clamped,
+            duration: duration,
+            fraction: duration > 0 ? clamped / duration : 0,
+            isPlaying: true
+        ))
     }
 }
 
@@ -268,11 +265,12 @@ public final class AVAudioEngineBackend: AudioPlaybackBackend, @unchecked Sendab
 
     public func seek(to position: TimeInterval) async {
         guard audioFile != nil else { return }
+        let wasPlaying = playerNode.isPlaying
         positionOffset = min(max(0, position), currentDuration())
         playerNode.stop()
         scheduleFromCurrentPosition()
         hasScheduled = true
-        if playerNode.isPlaying {
+        if wasPlaying {
             playerNode.play()
         }
     }
