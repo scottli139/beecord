@@ -6,13 +6,27 @@ final class BeecordStudioUITests: XCTestCase {
 
     let app = XCUIApplication()
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         continueAfterFailure = false
         // 确定性空库：隔离默认容器残留数据（本机曾手动同步过录音，空态断言会受污染）
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("studio-shell-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         app.launchArguments = ["-resetSettings", "-libraryRoot", root.path]
+    }
+
+    /// 启动并保障侧栏可见（小屏折叠时 ⌃⌘S 展开）。
+    private func launchWithSidebar() {
+        app.launch()
+        ensureSidebarVisible()
+    }
+
+    /// 侧栏可见性保障：CI runner 早期小屏可能折叠 NavigationSplitView 侧栏（
+    /// 窗口被 AppKit 收到屏宽以下）——缺席时按标准 ⌃⌘S 展开（SidebarCommands）。
+    func ensureSidebarVisible() {
+        if element("sidebar.navItem.devices").waitForExistence(timeout: 3) { return }
+        app.typeKey("s", modifierFlags: [.control, .command])
+        _ = element("sidebar.navItem.devices").waitForExistence(timeout: 5)
     }
 
     /// 类型无关的 AX id 查询（兼容 checkBox/switch/staticText 等角色差异）。
@@ -37,7 +51,7 @@ final class BeecordStudioUITests: XCTestCase {
     // MARK: - 1. 启动：侧栏 + 设备页空态，控制台默认隐藏
 
     func testLaunchShowsSidebarAndDevicePage() throws {
-        app.launch()
+        launchWithSidebar()
         XCTAssertTrue(element("sidebar.navItem.devices").waitForExistence(timeout: 10))
         XCTAssertTrue(element("sidebar.navItem.library").exists)
         XCTAssertFalse(element("sidebar.navItem.console").exists)
@@ -47,7 +61,7 @@ final class BeecordStudioUITests: XCTestCase {
     // MARK: - 2. 侧栏导航切页 + ⌘1/⌘2 快捷键
 
     func testSidebarNavigationSwitchesPages() throws {
-        app.launch()
+        launchWithSidebar()
         element("sidebar.navItem.library").click()
         XCTAssertTrue(element("library.emptyState").waitForExistence(timeout: 5))
         app.typeKey("1", modifierFlags: .command)
@@ -59,7 +73,7 @@ final class BeecordStudioUITests: XCTestCase {
     // MARK: - 3. 设置窗口（⌘,）：分组与默认值
 
     func testSettingsWindowOpensAndGroupsExist() throws {
-        app.launch()
+        launchWithSidebar()
         openSettings()
         let autoSync = element("settings.autoSyncToggle")
         XCTAssertTrue(autoSync.waitForExistence(timeout: 10))
@@ -90,7 +104,7 @@ final class BeecordStudioUITests: XCTestCase {
     // MARK: - 4. 开发者模式门控控制台
 
     func testDeveloperModeRevealsConsole() throws {
-        app.launch()
+        launchWithSidebar()
         XCTAssertFalse(element("sidebar.navItem.console").exists)
         openSettings()
         let toggle = element("settings.developerModeToggle")

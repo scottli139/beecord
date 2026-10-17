@@ -331,9 +331,18 @@ final class DeviceSyncUITests: XCTestCase {
     // MARK: - 6. 库流：同步入列 + 选择出现播放器（Phase C）
 
     /// 库流前置：供源 + 启动 + 切库页 + 首行转码完成（有界等待）
+    /// 侧栏可见性保障（同骨架类）：小屏折叠时 ⌃⌘S 展开后再导航。
+    private func ensureSidebarVisible() {
+        let sidebar = element("sidebar.navItem.devices")
+        if sidebar.waitForExistence(timeout: 3) { return }
+        app.typeKey("s", modifierFlags: [.control, .command])
+        _ = sidebar.waitForExistence(timeout: 5)
+    }
+
     private func prepareLibraryWithReadyRows() throws {
         try startServerOrSkip()
         try launchApp()
+        ensureSidebarVisible()
         element("sidebar.navItem.library").click()
         let first = Self.sampleIDs[0]
         XCTAssertTrue(

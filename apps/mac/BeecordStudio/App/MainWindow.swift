@@ -22,9 +22,9 @@ struct MainWindow: View {
         }
         .frame(
             minWidth: DesignTokens.Layout.windowMinWidth,
-            idealWidth: DesignTokens.Layout.windowIdealWidth,
+            idealWidth: Self.fittedIdealWidth,
             minHeight: DesignTokens.Layout.windowMinHeight,
-            idealHeight: DesignTokens.Layout.windowIdealHeight
+            idealHeight: Self.fittedIdealHeight
         )
         .overlay(alignment: .bottom) {
             if let toast = appModel.toast {
@@ -34,6 +34,20 @@ struct MainWindow: View {
             }
         }
         .animation(.easeOut(duration: DesignTokens.Motion.fast), value: appModel.toast)
+    }
+}
+
+extension MainWindow {
+    /// 理想窗口尺寸按主屏可视区收缩（CI runner 早期小屏下防窗口超高裁底部控件；
+    /// 产品最小/理想值不变，正常屏（≥1290×810）无效果）。
+    fileprivate static var fittedIdealWidth: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.width ?? .greatestFiniteMagnitude
+        return min(DesignTokens.Layout.windowIdealWidth, max(DesignTokens.Layout.windowMinWidth, screen - 10))
+    }
+
+    fileprivate static var fittedIdealHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? .greatestFiniteMagnitude
+        return min(DesignTokens.Layout.windowIdealHeight, max(DesignTokens.Layout.windowMinHeight, screen - 10))
     }
 }
 

@@ -36,6 +36,7 @@ struct BeecordStudioApp: App {
             )
         }
         .commands {
+            SidebarCommands()  // 标准侧栏开关（⌃⌘S）：小屏下侧栏折叠时 UITest 可恢复
             CommandMenu("视图") {
                 Button("设备") {
                     appModel.selectPage(.device)
