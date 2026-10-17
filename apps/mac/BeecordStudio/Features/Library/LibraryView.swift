@@ -11,20 +11,6 @@ struct LibraryView: View {
     /// 删除确认目标（自绘 NSAlert 语义对话框；AX `common.confirmDialog`）
     @State private var deleteTarget: LibraryViewModel.Item?
 
-    /// 页内容宽（body VStack 实际宽，由窗口决定、不被详情内容撑宽）——推导详情列宽，
-    /// 供操作行窄宽断两行判定。初值按常规窗口（宽版）渲染，首帧回调后收敛。
-    @State private var pageContentWidth: CGFloat = 1280
-
-    /// 页内容宽 → 详情列宽：减侧栏 216（默认宽）+ 列表 280 + Divider + 页面水平 padding 52。
-    /// 侧栏被用户拖宽时列宽更小，断两行更保守，不会误判。
-    private var detailColumnWidth: CGFloat {
-        pageContentWidth - (216 + 280 + 1 + DesignTokens.Layout.mainPaddingHorizontal * 2)
-    }
-
-    private var actionsUseTwoRows: Bool {
-        detailColumnWidth - DesignTokens.Space.s4 * 2 < DetailActionsView.singleRowMinWidth
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             pageHeader
@@ -44,7 +30,6 @@ struct LibraryView: View {
                 deleteDialog(target)
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageContentWidth = $0 }
     }
 
     // MARK: - 页头（§2.1 骨架：标题 + 副标题，左对齐）
@@ -179,7 +164,6 @@ struct LibraryView: View {
                     directoryURL: viewModel.libraryRoot
                         .appendingPathComponent("Library")
                         .appendingPathComponent(item.id, isDirectory: true),
-                    twoRows: actionsUseTwoRows,
                     onDelete: { deleteTarget = item },
                     onReveal: { viewModel.revealInFinder(id: item.id) },
                     onExported: { result in

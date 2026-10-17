@@ -1,9 +1,13 @@
 # Beecord UX 设计系统（Design System）v1.0
 
-> 状态：**v1.2**（2026-10-17：§2 新增"库列表行"与"确认对话框（自绘）"组件行——自绘对话框
-> 按 NSAlert 语义复刻（红字删除/取消默认聚焦 prominence），因 SwiftUI `.alert` 挂不了 AX id；
-> §1.3 窗口规格修订 1280×800 / 最小 1140×680）。v1.1（2026-10-16：新增 §2.1 页面骨架与布局规则、
-> §2.2 交互状态与 `fill.hover` 令牌；主按钮 disabled 由"透明度 45%"修订为系统灰化）。
+> 状态：**v1.3**（2026-10-17：§2 新增"下拉按钮（Menu）"组件行——触发钮 h28 次按钮样式 +
+> 下拉箭头（系统自带），菜单项 13px 左对齐、分隔线 4px；AX 两级：触发钮
+> `library.exportButton` / 菜单项 `library.exportMenuItem.{m4a,wav,ogg}`。库页详情操作行
+> 定案为"导出合并"方案A，"窄宽断两行"兜底废弃。）。v1.2（2026-10-17：§2 新增"库列表行"与
+> "确认对话框（自绘）"组件行——自绘对话框按 NSAlert 语义复刻（红字删除/取消默认聚焦
+> prominence），因 SwiftUI `.alert` 挂不了 AX id；§1.3 窗口规格修订 1280×800 / 最小
+> 1140×680）。v1.1（2026-10-16：新增 §2.1 页面骨架与布局规则、§2.2 交互状态与
+> `fill.hover` 令牌；主按钮 disabled 由"透明度 45%"修订为系统灰化）。
 > v1.0 定稿于 2026-10-14。
 > 适用范围：**Beecord Studio（macOS）** 与 **手表固件 UI（LVGL）**。
 > 本文是 UI 实现的唯一依据；实现与本文冲突时，先改文档再写代码。
@@ -112,6 +116,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 次按钮 | h28，r6，1px 边框白底（`.bordered`）；disabled 系统灰化（§2.2） | `device.refreshButton` |
 | 危险按钮 | 红字；确认对话框内才允许红填充 | `library.deleteButton` |
 | 小按钮 | h24，12px 字 | `library.exportButton` |
+| 下拉按钮（Menu） | 触发钮 = 次按钮样式 h28 + 系统下拉箭头（Menu 系统控件自带 hover/展开）；菜单：13px 左对齐、行高 6px 10px、分隔线 1px 4px 边距；破坏性项红字置底（分隔线上） | 触发钮 `library.exportButton`；菜单项 `library.exportMenuItem.{m4a,wav,ogg}` |
 | 开关 / 复选 | 系统控件，不改样式 | `settings.autoSyncToggle`、`device.selectAllCheckbox` |
 | 卡片 | r10，1px 边框，padding 16，卡间距 16 | — |
 | 文件表行 | h28；选中 accent 6% 底；状态右对齐 | `device.fileTable.row.{fileName}` |

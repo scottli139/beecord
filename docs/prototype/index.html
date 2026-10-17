@@ -127,7 +127,6 @@
   .switch input:checked+i:before{left:16px}
   /* 录音库 */
   .lib-wrap{display:flex;gap:16px;min-height:0}
-  .lib-wrap.narrow .lib-detail{flex:none;width:350px}  /* 窄宽场景：模拟窗口 900 时的详情列宽 */
   .lib-list{width:280px;flex:none;display:flex;flex-direction:column;gap:6px}
   .lib-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer}
   .lib-item:hover{border-color:rgba(10,132,255,.4)}
@@ -166,7 +165,24 @@
   .pc .time{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums}
   .pc .prog{flex:1;height:4px;background:rgba(0,0,0,.08);border-radius:2px;overflow:hidden;cursor:pointer}
   .pc .prog>i{display:block;height:100%;background:var(--accent);width:0%}
-  .op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .op-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+  /* 操作行候选方案：下拉菜单 / 图标钮（方案A/B/C 评审） */
+  .menu-anchor{position:relative;display:inline-flex}
+  .menu{position:absolute;top:calc(100% + 4px);left:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:180px;z-index:60;display:none;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+  .menu.show{display:block}
+  .menu .mi{padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .menu .mi:hover{background:rgba(0,0,0,.05)}
+  .menu .sep{height:1px;background:var(--border);margin:4px 6px}
+  .menu .mi.danger{color:var(--danger)}
+  .menu-anchor.right .menu{left:auto;right:0}
+  .ico-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer;font-size:13px;padding:0}
+  .ico-btn:hover{border-color:rgba(10,132,255,.4)}
+  .ico-btn.danger{color:var(--danger)}
+  /* 宽度评审控件（原型控件，不进产品） */
+  .proto-tools{display:flex;gap:4px;align-items:center;margin:8px 0 0;padding:6px 10px;border:1px dashed rgba(0,0,0,.2);border-radius:8px;font-size:11px;width:fit-content}
+  .proto-tools .pt-label{color:var(--text2);margin-right:4px}
+  .ws-btn{padding:2px 8px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--card);cursor:pointer}
+  .ws-btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:16px 0 12px}
   .tabs div{padding:6px 14px;font-size:13px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px}
   .tabs div.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
@@ -230,7 +246,9 @@
         <option value="device-empty">已连接 · 设备无录音</option>
         <option value="library-empty">录音库为空</option>
         <option value="library-no-selection">录音库未选择</option>
-        <option value="library-narrow">录音库 · 窄宽（操作行两行）</option>
+        <option value="library-actions-a">录音库 · 操作行 方案A（导出合并·已定案）</option>
+        <option value="library-actions-b">录音库 · 操作行 方案B（⋯ 收纳·未采纳）</option>
+        <option value="library-actions-c">录音库 · 操作行 方案C（图标钮·未采纳）</option>
         <option value="bluetooth-off">蓝牙不可用</option>
       </select>
     </label>
@@ -321,6 +339,14 @@
       <section id="view-library">
         <h1>录音库</h1>
         <div class="sub">已同步录音的播放、转写与 AI 纪要（全部本地保存）</div>
+        <!-- 评审控件：仅操作行方案场景显示，模拟窗口宽（详情列宽 = 窗口宽 − 549） -->
+        <div class="proto-tools" id="width-switch" style="display:none">
+          <span class="pt-label">评审控件 · 模拟窗口宽</span>
+          <button class="ws-btn" data-w="1280">1280</button>
+          <button class="ws-btn" data-w="1024">1024</button>
+          <button class="ws-btn" data-w="900">900</button>
+          <span class="pt-label" id="col-width-hint"></span>
+        </div>
         <div class="card empty-state" id="library-empty" style="display:none">
           <svg class="state-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path d="M5 20h3l3-10 5 20 5-16 5 12 3-6h6" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -356,13 +382,7 @@
                     <div class="prog" id="pc-prog"><i id="pc-bar"></i></div>
                     <span class="time" id="pc-time">00:00 / 00:34</span>
                   </div>
-                  <div class="op-row">
-                    <button class="sm">导出 m4a</button>
-                    <button class="sm">导出 wav</button>
-                    <button class="sm" id="btn-export-ogg">导出 ogg（原始）</button>
-                    <button class="sm" id="btn-finder">显示于 Finder</button>
-                    <button class="sm danger" id="btn-del">删除</button>
-                  </div>
+                  <div class="op-row" id="op-row"></div>
                 </div>
                 <!-- P0-2 转码未完成占位：与列表徽标联动 -->
                 <div class="player-blocked" id="player-blocked" style="display:none"></div>
@@ -486,6 +506,21 @@
 <div class="toast" id="toast"></div>
 <script>
 /* ================= 状态 ================= */
+// 录音库 mock：DEFAULT_LIB 供常规场景（applyScenario 每场景重置，候选场景可覆盖）；
+// NPR_LIB 供操作行候选方案场景（评审用三条同质数据）
+const DEFAULT_LIB=[
+  {t:"周会同步 10-13", m:"10-13 16:50 · 34s", dur:34, tc:"ready", tr:"summary"},
+  {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, tc:"ready", tr:"done"},
+  {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, tc:"ready", tr:"none"},
+  {t:"2026-10-14 09_20_00", m:"10-14 09:20 · 42s", dur:42, tc:"running", tr:"none", pct:37},
+  {t:"2026-10-14 08_05_12", m:"10-14 08:05 · 21s", dur:21, tc:"failed", tr:"none"},
+  {t:"2026-10-14 07_48_30", m:"10-14 07:48 · 12s", dur:12, tc:"pending", tr:"none"},
+];
+const NPR_LIB=[
+  {t:"NPR 新闻 5m", m:"10-17 17:00 · 4:46", dur:286, tc:"ready", tr:"none"},
+  {t:"NPR 新闻 2m", m:"10-16 16:00 · 2:00", dur:120, tc:"ready", tr:"none"},
+  {t:"NPR 新闻 30s", m:"10-15 15:00 · 0:30", dur:30, tc:"ready", tr:"none"},
+];
 const S = {
   connected:false, scanned:false, devMode:true,
   files:[
@@ -497,21 +532,14 @@ const S = {
     {name:"2026-10-13 12_13_02.ogg",dur:"2s",size:"12 KB",dl:false},
     {name:"2026-10-13 11_17_52.ogg",dur:"20s",size:"112 KB",dl:false},
   ],
-  lib:[
-    {t:"周会同步 10-13", m:"10-13 16:50 · 34s", dur:34, tc:"ready", tr:"summary"},
-    {t:"客户访谈片段", m:"10-13 13:48 · 15s", dur:15, tc:"ready", tr:"done"},
-    {t:"2026-10-13 12_11_33", m:"10-13 12:11 · 16s", dur:16, tc:"ready", tr:"none"},
-    {t:"2026-10-14 09_20_00", m:"10-14 09:20 · 42s", dur:42, tc:"running", tr:"none", pct:37},
-    {t:"2026-10-14 08_05_12", m:"10-14 08:05 · 21s", dur:21, tc:"failed", tr:"none"},
-    {t:"2026-10-14 07_48_30", m:"10-14 07:48 · 12s", dur:12, tc:"pending", tr:"none"},
-  ],
+  lib:DEFAULT_LIB.map(r=>({...r})),
   curLib:null, playing:false, playT:0, speed:1, timer:null, dlCancel:false, scanTimer:null,
 };
 const $ = id => document.getElementById(id);
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
 const fmtT = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
-const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","library-narrow","bluetooth-off"]);
+const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","library-actions-a","library-actions-b","library-actions-c","bluetooth-off"]);
 const requestedScenario=new URLSearchParams(location.search).get("state")||"normal";
 const SCENARIO=SCENARIOS.has(requestedScenario)?requestedScenario:"normal";
 $("prototype-scenario").value=SCENARIO;
@@ -721,14 +749,83 @@ $("pc-prog").onclick=e=>{
   const r=e.currentTarget.getBoundingClientRect();
   setProgress((e.clientX-r.left)/r.width*S.lib[S.curLib].dur);
 };
-$("btn-finder").onclick=()=>toast("原型演示：Finder 路径 ~/Documents/Beecord");
-$("btn-export-ogg").onclick=()=>toast("原型演示：导出原始 ogg（原件不受转码影响）");
-// P0-3 删除确认：取消默认聚焦（蓝环），确认后真实移除 mock 项
-$("btn-del").onclick=()=>{
+/* ================= 操作行渲染（现行 + 候选方案 A/B/C） ================= */
+// 候选方案（窄宽兜底重设计，评审中；选定后替换现行实现）：
+// current = 现行五按钮（导出 m4a/wav/ogg + Finder + 删除，固有宽 ~460）
+// a = 导出合并下拉：【导出 ▾】(m4a/wav/ogg) + Finder + Spacer + 删除，固有宽 ~244
+// b = ⋯ 收纳：Finder + Spacer + 【⋯】(导出三项 / 删除…红字)，固有宽 ~160
+// c = 图标钮：⤓(导出下拉) + 👁(Finder) + Spacer + 🗑(删除)，固有宽 ~100
+function renderActions(variant){
+  const row=$("op-row"); row.innerHTML="";
+  const mk=(label,cls)=>{const b=document.createElement("button");b.className=cls||"sm";b.textContent=label;return b;};
+  const spacer=()=>{const s=document.createElement("span");s.style.flex="1";return s;};
+  const menu=(anchor,items)=>{
+    const wrap=document.createElement("span");wrap.className="menu-anchor";wrap.appendChild(anchor);
+    const m=document.createElement("div");m.className="menu";
+    items.forEach(it=>{
+      if(it==="—"){const sep=document.createElement("div");sep.className="sep";m.appendChild(sep);return;}
+      const mi=document.createElement("div");mi.className="mi"+(it.danger?" danger":"");
+      mi.textContent=it.label;
+      mi.onclick=e=>{e.stopPropagation();m.classList.remove("show");if(it.onClick)it.onClick();};
+      m.appendChild(mi);
+    });
+    wrap.appendChild(m);
+    anchor.onclick=e=>{e.stopPropagation();
+      document.querySelectorAll(".menu.show").forEach(x=>{if(x!==m)x.classList.remove("show");});
+      m.classList.toggle("show");};
+    return wrap;
+  };
+  const expItem=label=>({label,onClick:()=>toast(`原型演示：导出 ${label}`)});
+  const exportMenu=btn=>menu(btn,[expItem("导出 m4a"),expItem("导出 wav"),expItem("导出 ogg（原始）")]);
+  const finderBtn=(label,icon)=>{const b=icon?mk(label,"ico-btn"):mk(label);
+    if(icon)b.title="显示于 Finder";
+    b.onclick=()=>toast("原型演示：Finder 路径 ~/Documents/Beecord");return b;};
+  const delBtn=(label,icon)=>{const b=icon?mk(label,"ico-btn danger"):mk(label,"sm danger");
+    if(icon)b.title="删除";
+    b.onclick=openDeleteDialog;return b;};
+
+  if(variant==="a"){
+    row.appendChild(exportMenu(mk("导出 ▾")));
+    row.appendChild(finderBtn("显示于 Finder"));
+    row.appendChild(spacer());
+    row.appendChild(delBtn("删除"));
+  }else if(variant==="b"){
+    row.appendChild(finderBtn("显示于 Finder"));
+    row.appendChild(spacer());
+    const more=menu(mk("⋯"),[expItem("导出 m4a"),expItem("导出 wav"),
+      expItem("导出 ogg（原始）"),"—",{label:"删除…",danger:true,onClick:openDeleteDialog}]);
+    more.classList.add("right");   // ⋯ 靠右缘，菜单右对齐防出窗
+    row.appendChild(more);
+  }else if(variant==="c"){
+    const exp=exportMenu(mk("⤓","ico-btn"));exp.querySelector("button").title="导出";
+    row.appendChild(exp);
+    row.appendChild(finderBtn("👁",true));
+    row.appendChild(spacer());
+    row.appendChild(delBtn("🗑",true));
+  }else{ // current 现行
+    ["导出 m4a","导出 wav"].forEach(x=>{const b=mk(x);b.onclick=()=>toast(`原型演示：${x}`);row.appendChild(b);});
+    const ogg=mk("导出 ogg（原始）");ogg.onclick=()=>toast("原型演示：导出原始 ogg（原件不受转码影响）");row.appendChild(ogg);
+    row.appendChild(finderBtn("显示于 Finder"));
+    row.appendChild(spacer());
+    row.appendChild(delBtn("删除"));
+  }
+}
+document.addEventListener("click",()=>document.querySelectorAll(".menu.show").forEach(m=>m.classList.remove("show")));
+
+/* ================= 宽度评审控件（候选方案场景用） ================= */
+const urlW=+((new URLSearchParams(location.search).get("w"))||"");
+function setDetailWidth(w){
+  document.querySelector(".lib-detail").style.width=(w-549)+"px";
+  document.querySelectorAll("#width-switch .ws-btn").forEach(b=>b.classList.toggle("on",+b.dataset.w===w));
+  const hint=$("col-width-hint");if(hint)hint.textContent=`详情列 ≈ ${w-549}px`;
+}
+document.querySelectorAll("#width-switch .ws-btn").forEach(b=>b.onclick=()=>setDetailWidth(+b.dataset.w));
+
+function openDeleteDialog(){
   if(S.curLib===null) return;
   $("del-name").textContent=S.lib[S.curLib].t;
   $("del-mask").style.display="flex";
-};
+}
 $("btn-del-cancel").onclick=()=>{ $("del-mask").style.display="none"; };
 $("btn-del-confirm").onclick=()=>{
   const name=S.lib[S.curLib].t;
@@ -826,6 +923,11 @@ $("btn-ai-test").onclick=async ()=>{
 
 /* ================= 启动 ================= */
 function applyScenario(){
+  // 统一重置：候选场景会覆盖 S.lib / 操作行 / 详情列宽，其余场景从这里恢复默认
+  S.lib=DEFAULT_LIB.map(r=>({...r})); S.curLib=null;
+  $("width-switch").style.display="none";
+  document.querySelector(".lib-detail").style.width="";
+  renderActions("current");
   if(SCENARIO==="no-device"){
     S.scanned=true; showView("device"); showDeviceStage("empty");
   }else if(SCENARIO==="device-empty"){
@@ -834,10 +936,18 @@ function applyScenario(){
     S.lib=[]; S.curLib=null; renderLib(); showView("library"); startScan();
   }else if(SCENARIO==="library-no-selection"){
     S.curLib=null; renderLib(); showView("library"); startScan();
-  }else if(SCENARIO==="library-narrow"){
-    // 窄宽（详情列 ~350pt，如 UITest 小窗档）：操作行断两行（导出组一行 / Finder+删除一行）
-    renderLib(); showView("library"); selectLib(0);
-    $("library-content").classList.add("narrow");
+  }else if(SCENARIO==="library-actions-a"||SCENARIO==="library-actions-b"||SCENARIO==="library-actions-c"){
+    // 操作行方案场景（A 已定案 2026-10-17 实现为产品形态；B/C 未采纳，留作历史对照）：
+    // NPR 三条 mock + 方案操作行 + 窗口宽模拟控件（默认 1024，URL ?w=1280|1024|900）
+    const v=SCENARIO.slice(-1);
+    S.lib=NPR_LIB.map(r=>({...r})); renderLib(); showView("library"); selectLib(0);
+    renderActions(v);
+    $("width-switch").style.display="flex";
+    setDetailWidth([1280,1024,900].includes(urlW)?urlW:1024);
+    // ?menu=exp：截图/评审直接看展开态下拉
+    if((new URLSearchParams(location.search).get("menu"))==="exp"){
+      setTimeout(()=>{const m=document.querySelector("#op-row .menu-anchor .menu");if(m)m.classList.add("show");},300);
+    }
   }else if(SCENARIO==="bluetooth-off"){
     showView("device"); showDeviceStage("none");
     $("bluetooth-overlay").style.display="flex";

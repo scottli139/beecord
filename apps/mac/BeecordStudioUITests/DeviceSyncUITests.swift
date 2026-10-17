@@ -381,9 +381,21 @@ final class DeviceSyncUITests: XCTestCase {
         element("library.recordingTable.row.\(first)").click()
         XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15), "详情播放器出现")
         XCTAssertTrue(waitForExistence("library.waveform", timeout: 15), "波形出现")
-        XCTAssertTrue(waitForExistence("library.exportButton.m4a", timeout: 5))
-        XCTAssertTrue(waitForExistence("library.exportButton.wav", timeout: 5))
-        XCTAssertTrue(waitForExistence("library.exportButton.ogg", timeout: 5))
+        // 方案 A 定案操作行：导出合并下拉——展开断言三菜单项，点 m4a 触发 NSSavePanel（Esc 取消）
+        XCTAssertTrue(waitForExistence("library.exportButton", timeout: 5), "导出下拉存在")
+        element("library.exportButton").click()
+        XCTAssertTrue(waitForExistence("library.exportMenuItem.m4a", timeout: 5), "导出菜单含 m4a")
+        XCTAssertTrue(waitForExistence("library.exportMenuItem.wav", timeout: 5), "导出菜单含 wav")
+        XCTAssertTrue(waitForExistence("library.exportMenuItem.ogg", timeout: 5), "导出菜单含 ogg（原始）")
+        element("library.exportMenuItem.m4a").click()
+        // runModal 的 NSSavePanel 是独立窗口（非 sheet）：窗口计数 +1 判定，语言无关
+        let panelShown = waitForElement(
+            "library.detailTabs",
+            predicate: NSPredicate(block: { _, _ in (self.app?.windows.count ?? 0) >= 2 }),
+            timeout: 10
+        )
+        XCTAssertTrue(panelShown, "导出 m4a 弹出 NSSavePanel")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
         XCTAssertTrue(waitForExistence("library.detailTabs", timeout: 5), "Tab 分段出现")
     }
 
