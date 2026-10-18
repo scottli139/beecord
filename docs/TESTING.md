@@ -40,7 +40,10 @@ cd firmware/test_host && make test
   方向 `tx/rx`、帧 type、channel、payload hex、注释 `comment`）；一文件一会话。
 - **合成向量入库**：`Packages/BuzzLink/Tests/BuzzLinkCoreTests/Fixtures/`（Mac 侧）与经转换脚本生成的 C 表
   （固件侧，工具在 `tools/`）。同一份 JSON 两端消费，保证 Mac 与固件对协议的理解一致。
-- BuzzLink 协议控制台导出的会话可直接作为向量回放（格式同源，见 ux-design §3.5）。
+- **控制台导出即回放输入**（T7）：协议控制台"导出向量"经 `FrameLogBuffer.exportVector()`
+  **零 schema 变更**直接产同一份 JSON（ts/direction/type/session/channel/payloadHex），
+  可喂固件 `test_host` 回放（ux-design §3.5）；UITest 以 `-consoleExportPath` 注入直写、
+  测试侧解码 `BuzzLinkTestVector` 断言。
 - 修改协议行为 = 先更新 [`BUZZLINK.md`](BUZZLINK.md) 与向量，再改实现。
 
 ## 4. AI 手工测试规范（一线手段）
@@ -58,9 +61,11 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
      平台限制：同一台 macOS 上 Central 无法发现本机 Peripheral 的 BLE 广播（半双工无线电
      不收自身发射时隙，CoreBluetooth 无软件回环，2026-10-15 实测确认），因此 Sim 提供
      与空口同构的本地字节流通道（帧协议不变，§3.3 重组天然适配流式 socket）。
-     设备流与库流 UITest 均由测试进程内 UITestSimServer 供设备源（端口冲突自动 XCTSkip）；
-     库流设备源为**进程内合成 Ogg 静音流**（SyntheticOgg，零文件依赖——UITest runner 沙箱
-     读仓库 Fixtures 会被 TCC 拒绝，120s 仅 18KB，转码链全路径可消费）。
+     设备流/库流/控制台流 UITest 均由测试进程内 UITestSimServer 供设备源（端口冲突自动
+     XCTSkip）；库流设备源为**进程内合成 Ogg 静音流**（SyntheticOgg，零文件依赖——UITest
+     runner 沙箱读仓库 Fixtures 会被 TCC 拒绝，120s 仅 18KB，转码链全路径可消费）。
+     控制台流前置**开发者模式门控**（设置开关 `settings.developerModeToggle`，同骨架类现成
+     路径）；发送类断言先等 `console.sendGateTip` 消失（同步中禁用的门控语义）。
      **CI 现场取证**（2026-10-16，教训：CI 失败 5/5 无窗口）：app 侧 `LaunchTrace`
      仅在 `-libraryRoot` 注入时写 `<libraryRoot>/uitest-launch-trace.log`，用例失败时
      回读进失败信息；工作流失败时自动上传 xcresult（截图/AX 树/屏幕录像）为 artifact。
@@ -77,6 +82,17 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
         `activate + ⌘N` 兜底；
      3. 该恢复模式**骨架类与库页类 UITest 都需要**（`BeecordStudioUITests` 与
         `DeviceSyncUITests` 的 launch helper 均已内置；新增用例类照抄同款）。
+     **弹出式容器 AX 不可靠**（2026-10-18 固化，与 DESIGN_SYSTEM R9 并列）：
+     1. Menu 弹层内 **Toggle 的 AX id 不透传**（Button 菜单项可——导出菜单项按 id 查询 CI 已验；
+        Toggle 实测 NOTFOUND）；
+     2. **Popover 内容对 AX 遍历不可见**（展开时进程仅 1 窗口、零内容元素，本机实测）；
+     3. `menuActionDismissBehavior` 是 **iOS-only**（macOS 不存在）。
+     结论：**多选/复合控件用内联展开面板**（控制台 type 过滤实例；AX id 全可达）。
+     另：`Text+Spacer+尾部按钮` 的面板标题行结构在 CI 测试窗（1024×664）下尾部钮 AX 缺席
+     （run 39102093567 实录）——尾部动作钮内联到工具行同排（done 钮实例）。
+     **聚合行计入可见行数**（2026-10-18 固化）：帧日志断言统计元素数时 `.row.` 与 `.agg.`
+     双前缀都要算（勾选 DL_CHUNK 后个体行全折叠成聚合行，只数 `.row.` 得 0——
+     run 39100523966 实录）；"含某 type"断言同样扫聚合行（其 label 含 type 名）。
      **慢 runner 时序加固**（2026-10-17）：`SyncEngineRecoveryTests.
      testDisconnectMidDownloadReconnectsAndResumes` 曾因 30s 轮询窗口被节流拉伸击穿
      flake 一次（rerun 自过）——重连+整文件重下轮询上限放宽至 60s（≈名义 8.5x 裕量，

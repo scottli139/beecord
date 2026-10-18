@@ -1,12 +1,16 @@
 # Beecord Studio 技术设计（macOS）
 
-> 状态：**v1.4**（2026-10-17）：T6 已交付——`BuzzLinkAudio` 新 target（Ogg demuxer 在
+> 状态：**v1.5**（2026-10-18）：T7 已交付——协议控制台全量（`FrameTapTransport` 旁听装饰器、
+> `FrameLogBuffer` 环形缓冲、`BuzzLinkClient.sendRaw`、ConsoleViewModel/ConsoleView 全量 UI）、
+> 控制台流 UITest 4 用例（合计 17）。包测试 **215 用例**（2 个活体冒烟 skip）、UITest 17 用例全绿。
+> §5.4 补 T7 落地注记（AsyncStream 单播坑→重建转发流、聚合折叠 ≥4、导出零 schema 变更、
+> 弹层 AX 不可靠→内联面板——TESTING §4 已固化）。
+> v1.4（2026-10-17）：T6 已交付——`BuzzLinkAudio` 新 target（Ogg demuxer 在
 > Core、转码链/PlayerEngine/波形/导出在 Audio）、`LibraryCatalog` 对账 + manifest 缓存、
 > 库页全量 UI（双徽标/重命名/自绘删除确认/详情播放器/Tab 占位）、存量补转幂等（实测闭环）、
-> 库流 UITest 4 用例（合计 13）。包测试 **199 用例**（2 个活体冒烟 skip）、UITest 13 用例全绿。
+> 库流 UITest 4 用例（合计 13）。包测试 199 用例（2 个活体冒烟 skip）、UITest 13 用例全绿。
 > §5.1/§5.3 补 T6 落地注记（已知偏差：解码走 AVAudioConverter 逐包喂入、产物 48 kHz AAC、
 > 临时产物 `tmp-<名>.m4a`、自绘确认对话框、波形 3pt 条 + 2pt 间隙自适应聚合）。
-> 下一步 T7（协议控制台）。
 > v1.3（2026-10-16）：UI 对齐原型定稿——设备页空态布局、侧栏品牌头 + 连接状态脚标 +
 > 脚标设置入口（交互与令牌见 ux-design / DESIGN_SYSTEM §2.1，布局自检流程见 TESTING §4.5）；
 > 本文口径修正：包测试 164 用例（2 个活体冒烟 skip）、BLE 跨机实测 ≈39.8 KB/s（T5 闭环）、
@@ -46,25 +50,30 @@ apps/mac/
 │   ├── Features/{Device,Library,Console,Settings}/
 │   │                                #   Library（T6）：LibraryView/ViewModel、PlayerBar、
 │   │                                #   Waveform、DetailActions/DetailTabs、RenameField
+│   │                                #   Console（T7）：ConsoleViewModel/ConsoleView 全量
+│   │                                #   （帧日志/过滤/发送/导出）
 │   └── Resources/Assets.xcassets    # 图标取自 docs/brand
 ├── BuzzLinkSim/                     # 虚拟设备 app target（macOS + iOS/iPadOS 双平台；BLE 外设
 │                                    #   + loopback TCP 127.0.0.1:40404 同机通道，见 TESTING.md §4）
 ├── Packages/BuzzLink/               # 本地 SwiftPM
 │   ├── Sources/BuzzLinkCore/        # 纯算法：帧/CRC/向量（无 CoreBluetooth 依赖）；
-│   │                                #   OggDemuxer 自研页遍历（T6，抛具名错不 crash）
+│   │                                #   OggDemuxer 自研页遍历（T6，抛具名错不 crash）；
+│   │                                #   FrameLogBuffer 控制台环形缓冲（T7，可宿主单测）
 │   ├── Sources/BuzzLinkSimCore/     # 设备侧协议引擎 SimEngine + 故障注入（纯逻辑，无 IO 依赖）
 │   ├── Sources/BuzzLink/            # Central 封装（T2 已交付：BuzzLinkClient actor
 │   │                                #   + BLE/loopback 双 Transport）+ 合作式即时取消（T5 A 阶段）
+│   │                                #   + sendRaw（T7 控制台原始命令）与 FrameTapTransport
+│   │                                #   帧旁听装饰器（T7）
 │   ├── Sources/BuzzLinkSync/        # LibraryStore + SyncEngine（T5）+ LibraryCatalog 与
 │   │                                #   read 侧扩展（T6：actor，纯 Foundation）
 │   ├── Sources/BuzzLinkAudio/       # T6 新增：转码链（demux→解码→AAC 写盘）、PlayerEngine、
 │   │                                #   WaveformExtractor/Binner、AudioExporter（AVFoundation 依赖，
 │   │                                #   纯逻辑时钟注入可单测）
 │   ├── Sources/BuzzLinkTestSupport/ # 测试支撑 target（T5 A 阶段：SimEngineTransport 等，不进 products）
-│   └── Tests/                       # 五个 test target（Core/SimCore/Central/Sync/Audio，共 199 用例，
+│   └── Tests/                       # 五个 test target（Core/SimCore/Central/Sync/Audio，共 215 用例，
 │                                    #   2 活体冒烟 skip）+ Fixtures（在 BuzzLinkCoreTests 内）
-└── BeecordStudioUITests/            # AX 驱动：骨架 4 + 设备流/库流端到端 9（UITestSimServer
-                                     #   进程内设备源；库流 4 用例 T6 新增，共 13）
+└── BeecordStudioUITests/            # AX 驱动：骨架 4 + 设备/库/控制台流 13（UITestSimServer
+                                     #   进程内设备源；库流 4 用例 T6、控制台流 4 用例 T7 新增，共 17）
 ```
 
 - **零三方依赖（P0）**；P1 仅引入 whisper.cpp（官方 SwiftPM 源码集成）。
@@ -108,8 +117,12 @@ apps/mac/
   ≈39.8 KB/s，实测中修复跨 actor 断言崩溃，见 TESTING.md §4）；
 - **协议常量集中 `BuzzLinkConstants` 一处**，以 [`BUZZLINK.md`](BUZZLINK.md) 规范为准。
 
-扩展点（未做，按需再补）：beginDownload/chunk 流/endVerify 细粒度 API（T7 控制台逐帧展示用）；
-删除等写命令 P1 评估。
+**T7 已补 `sendRaw`**（2026-10-18）：`sendRaw(_:awaitResponse:allocatedSession:) async throws
+-> BuzzLinkFrame?`——任意构造帧的发送通道（session 由客户端分配并回调、awaitResponse 复用
+pendingCommands/ResponseWaiter、超时沿用 commandTimeout、门控与高层命令同源）；协议控制台
+预置命令与自定义 hex 共用。beginDownload/chunk 流/endVerify **细粒度命令 API 仍未做**
+——T7 旁听链（FrameTapTransport）已覆盖"逐帧观察"需求，细粒度 API 留档按需再补；
+删除等写命令 P1 评估不变。
 
 **T5 A 阶段已补合作式即时取消**（2026-10-16）：`downloadWithRetries`/chunk 循环头与
 `runCommand` 返回后插 `Task.checkCancellation()`——取消即时中断在飞下载并走
@@ -123,10 +136,13 @@ apps/mac/
 
 ### 4.4 测试
 
-现状 **199 用例、2 skip、0 失败**（T6 后）：Core 59（帧/CRC/向量 + OggDemuxer 畸形页矩阵）+
+现状 **215 用例、2 skip、0 失败**（T7 后）：Core 65（帧/CRC/向量 + OggDemuxer 畸形页矩阵 +
+FrameLogBuffer 淘汰/过滤组合/导出 round-trip）+
 SimCore 33（引擎 + 故障注入矩阵）+
-Central 55（命令/下载/状态机、乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本
-全量下载验收、合作式即时取消）+ Sync 35（自动同步 diff/恢复/进度聚合/取消/重连/保活 +
+Central 65（命令/下载/状态机、乱序/截断/逐字节重组、进程内 SimEngine 集成——真实 Ogg 样本
+全量下载验收、合作式即时取消、sendRaw 会话匹配/超时/断连映射 +
+FrameTapTransport 方向/粘包拆包/重连全流程/state 透传）+
+Sync 35（自动同步 diff/恢复/进度聚合/取消/重连/保活 +
 FileLibraryStore 读写单测、LibraryCatalog 扫描/增量/事件）+
 Audio 17（demuxer/转码 round-trip/导出/播放器状态机/波形提取与聚合——时钟注入不进音频设备）。
 2 个 skip 均为活体冒烟（缺环境自动跳过，不进 CI 统计）：
@@ -231,8 +247,25 @@ AX `common.confirmDialog`），确认后整目录移除（含波形缓存）+ ca
 
 ### 5.4 ConsoleStore（协议控制台）
 
-环形缓冲（最近 5000 帧）；方向/type 过滤；行展开 hex；**导出 JSON 测试向量**
-（schema 与 BuzzLinkCore 共用，见 §4.1）。
+**T7 已交付**（2026-10-18）：
+
+- **旁听架构**：`FrameTapTransport` 装饰器包 transport 工厂（DeviceViewModel 装配点），
+  TX/RX 两侧 `BuzzLinkFrameParser` 重组出帧事件流；**AsyncStream 单播坑**——透传流会让
+  内部任务与 Client 竞争消费丢字节，改为**重建转发流**（本类做 base 唯一消费者）；
+  双点 reset（`.disconnected` 监听 + `connect()` 新会话边界）；不进 actor，热路径仅
+  copy + 增量 parser（39.8 KB/s 实测无感）。
+- **缓冲/过滤/导出**：`FrameLogBuffer`（BuzzLinkCore，环形 5000 淘汰最旧、行 ID 单调、
+  三过滤 AND、`exportVector()` 直接产 `buzzlink-vector/1`——**schema 零变更**，导出即可
+  回放）；`ConsoleViewModel`（app 层 @MainActor @Observable）订阅事件流驱动；
+  导出 NSSavePanel + `-consoleExportPath` 测试注入直写。
+- **UI**：行点击展开完整帧 hex dump（offset+hex+ASCII）；**DL_CHUNK 连续 ≥4 聚合折叠**
+  （"DL_CHUNK ×N（已折叠）"，点开明细防御 200 行）；工具行控件统一 small 级
+  （DESIGN_SYSTEM §2 v1.4"工具行控件"）；自定义 hex 同 session RX 3s 高亮。
+- **实测**：loopback 自动同步 2.6k 块 chunk 流聚合折叠 + 滚动流畅；12k+ 级留真 BLE 冒烟
+  （TESTING §7 L4）。
+- **弹层 AX 教训**：Menu 弹层内 Toggle 的 AX id 不透传（Button 可）、Popover 内容对 AX
+  遍历不可见、`menuActionDismissBehavior` iOS-only——多选类控件用**内联展开面板**
+  （TESTING §4 固化，与 DESIGN_SYSTEM R9 并列）。
 
 ### 5.5 AIService（P1）
 
@@ -260,10 +293,12 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 - 每个视图提交前自检：可交互控件都有 `accessibilityIdentifier`？动态行用稳定业务 id？
   图标按钮有中文 label？进度/开关暴露 AXValue？（对应 R1-R4、R6）
 - 波形等自定义绘制包 `accessibilityElement`（R5）；快捷键表按 R7；Toast 走 `common.toast`（R8）；
-- **UITests target**：骨架 4 用例 + 设备流端到端 9 用例已绿（UITestSimServer 进程内设备源，
-  库流 4 用例 T6 新增：同步入列选择/播放走带/删除确认/空态联动；共 13 用例，CI 基线）；
-  P0 全主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放）已覆盖，T8 仅余 Accessibility
-  Audit 收口；`xcodebuild test` 可跑，作为回归基线；
+- **UITests target**：骨架 4 + 设备流 9 + 控制台流 4 用例全绿（UITestSimServer 进程内设备源；
+  库流 4 用例 T6：同步入列选择/播放走带/删除确认/空态联动；控制台流 4 用例 T7：帧日志与
+  三过滤/预置命令/自定义 hex/导出向量解码；共 17 用例，CI 基线）；控制台用例前置开发者模式
+  门控（设置开关），发送断言等 `console.sendGateTip` 消失（同步中门控解除）；
+  P0 全主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放→控制台收发）已覆盖，
+  T8 仅余 Accessibility Audit 收口；`xcodebuild test` 可跑，作为回归基线；
 - **BuzzLinkSim 支持故障注入**（丢块/限速/中途断连），异常路径同样可脚本化验证；
 - Accessibility Inspector Audit 无 error 级问题纳入 P0 验收。
 
@@ -279,7 +314,7 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | T4 | App 骨架（侧栏/设置窗口/AX id 全套/深色） | 已完成（2026-10-15） | — |
 | T5 | 设备页 + SyncEngine | 已完成（2026-10-16） | T2、T4 |
 | T6 | 录音库 + 播放器 | 已完成（2026-10-17，实测 4.25d） | T4 |
-| T7 | 协议控制台 + 向量导出 | 1d | T2、T4 |
+| T7 | 协议控制台 + 向量导出 | 已完成（2026-10-18；预排 1d，实测含原型修订与四轮 CI 环境适配超估，如实上报） | T2、T4 |
 | T8 | UITests 主流程 + Audit | 1d | T3、T5、T6 |
 
 P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。

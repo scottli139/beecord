@@ -92,8 +92,8 @@
 
 > **v0.5 定稿（2026-10-18 评审通过，T7 Phase 0）**：控制台 mock 按现行 BuzzLink 帧格式全面修订
 > （`BE EC` 魔数帧：version/type/session/flags/channel/length/payload/crc16，真实 type 值与握手时序）；
-> 拍板 A 四项落地——开始下载=发 DL_BEGIN 后自动 DL_ABORT、自定义 hex 同 session RX 响应 3s 高亮/
-> 自动展开、type 下拉多选（17 种并集）、同步中发送区禁用。
+> 四项行为定案落地——开始下载=发 DL_BEGIN 后自动 DL_ABORT、自定义 hex 同 session RX 响应
+> 3s 高亮/自动展开、type 内联面板多选（17 种并集）、同步中发送区禁用。
 
 - 预置命令（列文件 / 查信息 / **开始下载**[发 DL_BEGIN_REQ→RESP+首块→自动 DL_ABORT，单键看全握手] /
   结束校验）+ 自定义 hex 输入（偶数长度/hex 字符/帧头校验，非法行内红字提示）；
@@ -105,7 +105,7 @@
   （DESIGN_SYSTEM §2 工具行控件）；
 - **DL_CHUNK 洪泛聚合**：连续 ≥4 块折叠为"DL_CHUNK ×N（已折叠，点击看明细）"，展开看个体
   （原型评审控件可注入一次真实下载规模的 12,847 块流演示）；
-- 发送区门控：未连接（提示"连接设备后可发送命令"）与**同步中**（拍板 A：提示"完成后可发送"）
+- 发送区门控：未连接（提示"连接设备后可发送命令"）与**同步中**（提示"完成后可发送"）
   均禁用预置命令 + hex 输入 + 发送钮；
 - 导出会话为 **JSON 测试向量**（`buzzlink-vector/1` schema，可读性优先：ts/direction/
   type/session/channel/payloadHex 命名字段，可直接 diff、可回放，喂 `firmware/test_host`）。

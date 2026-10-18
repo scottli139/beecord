@@ -119,7 +119,8 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 次按钮 | h28，r6，1px 边框白底（`.bordered`）；disabled 系统灰化（§2.2） | `device.refreshButton` |
 | 危险按钮 | 红字；确认对话框内才允许红填充 | `library.deleteButton` |
 | 小按钮 | h24，12px 字 | `library.exportButton` |
-| 下拉按钮（Menu） | 触发钮 = 次按钮样式 h28 + 系统下拉箭头（Menu 系统控件自带 hover/展开）；菜单：13px 左对齐、行高 6px 10px、分隔线 1px 4px 边距；破坏性项红字置底（分隔线上） | 触发钮 `library.exportButton`；菜单项 `library.exportMenuItem.{m4a,wav,ogg}` |
+| 下拉按钮（Menu） | 触发钮 = 次按钮样式 h28 + 系统下拉箭头（Menu 系统控件自带 hover/展开）；菜单：13px 左对齐、行高 6px 10px、分隔线 1px 4px 边距；破坏性项红字置底（分隔线上）。**适用范围：仅纯 Button 菜单项**——菜单弹层内 Toggle 的 AX id 不透传（Button 可；TESTING §4 固化），多选/复合控件用内联展开面板 | 触发钮 `library.exportButton`；菜单项 `library.exportMenuItem.{m4a,wav,ogg}` |
+| 内联展开多选面板 | 触发钮（工具行 small 级，标题带选中数"（N）▾"）→ 面板内联过滤行下方展开：网格 3 列、行距 2px、面板卡 s3 内边距；**完成钮内联过滤行**（触发钮旁——`Text+Spacer+尾部按钮` 标题行结构尾部钮在 CI 测试窗 AX 缺席，run 39102093567）；勾选态即 AX value | 触发钮 `console.typeFilter`；面板 `console.typeFilter.panel`；项 `console.typeFilter.item.{TYPE}`；完成 `console.typeFilter.done` |
 | 工具行控件 | **辅助/过滤/发送类工具行统一 `.controlSize(.small)`**（h24 级）；文字 `toolRow`（12/400）；等宽输入用 `toolRowMono`；间距 s2；主操作类按钮（发送/确认）允许 `.borderedProminent` 提级但**尺寸仍 small**。**例外（不算工具行，保持 regular 默认）**：内容主操作（设备页【下载所选】、走带播放钮、空态卡主按钮、设置行控件） | 过滤行/操作行/发送行（`console.*`、`library.exportButton.*`、`device.selectAllCheckbox` 等） |
 | 开关 / 复选 | 系统控件，不改样式 | `settings.autoSyncToggle`、`device.selectAllCheckbox` |
 | 卡片 | r10，1px 边框，padding 16，卡间距 16 | — |
