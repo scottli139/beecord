@@ -3,9 +3,11 @@ name: firmware-host-test
 on:
   push:
     branches: [main]
-    paths: ['firmware/main/proto/**', 'firmware/test_host/**', '.github/workflows/firmware-host-test.yml']
+    paths: ['firmware/main/proto/**', 'firmware/test_host/**', 'tools/**',
+            'apps/mac/Packages/BuzzLink/Tests/**', '.github/workflows/firmware-host-test.yml']
   pull_request:
-    paths: ['firmware/main/proto/**', 'firmware/test_host/**', '.github/workflows/firmware-host-test.yml']
+    paths: ['firmware/main/proto/**', 'firmware/test_host/**', 'tools/**',
+            'apps/mac/Packages/BuzzLink/Tests/**', '.github/workflows/firmware-host-test.yml']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -5,6 +5,8 @@ build/
 sdkconfig
 sdkconfig.old
 managed_components/
+# 向量转换生成物（tools/vector2c.py 输出，make 时自动生成）
+generated/
 __pycache__/
 *.pyc
 xcuserdata/
