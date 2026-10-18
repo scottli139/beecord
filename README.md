@@ -14,9 +14,9 @@ Open-source AI voice recorder: watch-form firmware + local-first companion apps.
   on-device transcription (whisper.cpp), optional cloud-AI summaries via
   OpenAI-compatible endpoints (Kimi, DeepSeek, ...).
 
-> Status: early development (pre-M0). Docs: [BuzzLink protocol spec](docs/BUZZLINK.md) ·
-> [Studio tech design](docs/studio-tech-design.md) · [Coding standards](docs/CODING_STANDARDS.md) ·
-> [Testing](docs/TESTING.md)
+> Status: early development (firmware M0 skeleton done). Docs: [BuzzLink protocol spec](docs/BUZZLINK.md) ·
+> [Firmware](docs/FIRMWARE.md) · [Studio tech design](docs/studio-tech-design.md) ·
+> [Coding standards](docs/CODING_STANDARDS.md) · [Testing](docs/TESTING.md)
 
 ## 简介（中文）
 
@@ -44,7 +44,7 @@ Beecord 是开源的 AI 录音手表项目：基于微雪 ESP32-S3-Touch-AMOLED-
 
 | Path | Content |
 |---|---|
-| `firmware/` | ESP-IDF project (ESP32-S3, NimBLE, LVGL) |
+| `firmware/` | ESP-IDF project (ESP32-S3). M0 done: protocol layer + Ogg writer, host-tested; audio/storage/BLE/UI land in later milestones. See [FIRMWARE.md](docs/FIRMWARE.md) |
 | `apps/mac/` | BeecordStudio Xcode project (Studio + BuzzLinkSim + UITests) and `Packages/BuzzLink` (`BuzzLinkCore` + `BuzzLinkSimCore` SwiftPM targets) |
 | `apps/mac/BuzzLinkSim/` | BuzzLinkSim virtual device app (macOS + iOS/iPadOS, BLE peripheral + loopback TCP for same-machine development) |
 | `sdk/python/`, `sdk/swift/` | BuzzLink client SDKs |

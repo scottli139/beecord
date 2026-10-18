@@ -7,7 +7,7 @@
 
 | 层 | 范围 | 工具 | 依赖硬件 |
 |---|---|---|---|
-| **L1 单元** | BuzzLinkCore（帧/CRC/重组/向量）、固件协议层 | XCTest；gcc/clang 宿主单测 | 否 |
+| **L1 单元** | BuzzLinkCore（帧/CRC/重组/向量）、固件协议层 | XCTest；`make -C firmware/test_host test`（宿主单测，CI job `firmware-host-test`，gcc/clang 双编译器零警告） | 否 |
 | **L2 组件** | BLE 会话状态机、下载重组、SyncEngine 逻辑 | BuzzLinkSim（回环 + 故障注入） | 否 |
 | **L3 端到端** | P0 用户流程、异常路径 | UITests（AX 驱动）+ AI 手工测试 | 否（Sim） |
 | **L4 实机** | 固件 ↔ Studio 真实 BLE 链路、吞吐与稳定性 | 开发板 + 手动清单 | 是 |

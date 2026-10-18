@@ -246,6 +246,6 @@ be ec 01 31 31 00 02 00 0d 00 00 e0 00 a6 11 00 00 ac 6e 0f 00 3a 6f 02 47
 
 | 端 | 要点 |
 |---|---|
-| 固件（C） | 协议层硬件无关（见 [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §3）；常量集中在 `buzz_proto.h`；推流节奏与连接参数联调 |
+| 固件（C） | 协议层硬件无关（见 [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §3）；常量集中在 `buzz_proto.h`；推流节奏与连接参数联调。**M0 已落地**：帧编解码/分片重组/CRC16/Ogg 封装均过宿主单测，会话向量与 Mac 侧共享同一份 JSON 回放（见 [`TESTING.md`](TESTING.md) §3） |
 | Mac SDK（Swift） | 常量集中在 `BuzzLinkConstants`；notify 按字节流重组；chunkDataLen 以 BEGIN 声明为准 |
 | BuzzLinkSim | 严格按本规范应答；故障注入不改变合法路径行为（见 [`TESTING.md`](TESTING.md) §5）；同机联调走 loopback TCP（见 TESTING.md §4，字节流与空口同构） |
