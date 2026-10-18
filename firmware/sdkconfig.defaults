@@ -1,0 +1,6 @@
+# 目标芯片：开发板主控 ESP32-S3
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash 大小：资料标称 32MB，但未经实测，保守按 16MB 配置。
+# M1 开发板到货后跑 esptool.py flash_id 实测，再复核本项与分区表。
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

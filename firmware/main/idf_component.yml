@@ -1,0 +1,5 @@
+# 依赖锁定：首次构建时由 ESP-IDF 组件管理器自动拉取。
+# BSP 提供屏幕/触摸/电源/音频编解码等板级驱动；codec_dev 为音频采集播放抽象层。
+dependencies:
+  waveshare/esp32_s3_touch_amoled_2_06: "^2.0.0"
+  espressif/esp_codec_dev: "~1.5"

@@ -1,6 +1,10 @@
 .DS_Store
 build/
 .build/
+# ESP-IDF 本地配置与组件管理器产物（firmware/ 下同样适用）
+sdkconfig
+sdkconfig.old
+managed_components/
 __pycache__/
 *.pyc
 xcuserdata/

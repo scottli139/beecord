@@ -1,0 +1,28 @@
+name: firmware-build
+
+on:
+  push:
+    branches: [main]
+    paths: ['firmware/**', '.github/workflows/**']
+  pull_request:
+    paths: ['firmware/**', '.github/workflows/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # espressif/idf 镜像自带完整工具链，idf.py 已在 PATH
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: espressif/idf:v5.4
+    steps:
+      - uses: actions/checkout@v6
+
+      # 首次构建需从组件仓库拉取 BSP 等依赖（需网络，锁版本见 main/idf_component.yml）
+      - name: Build firmware
+        run: |
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
