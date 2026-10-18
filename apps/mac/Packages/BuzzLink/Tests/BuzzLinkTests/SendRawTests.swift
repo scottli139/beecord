@@ -78,7 +78,10 @@ final class SendRawTests: XCTestCase {
             _ = try await client.sendRaw(frame)
             XCTFail("应抛 disconnected")
         } catch BuzzLinkError.disconnected {
-            // 期望路径
+            // 期望路径：send 失败映射为 disconnected
+        } catch BuzzLinkError.notConnected {
+            // 可接受的竞争路径：断连状态事件先于门控检查落地（stateStream 异步投递，
+            // CI runner 上偶发，2026-10-18 run 39110324865）。两种映射都表明断连已收敛。
         }
         // 断连收敛：此时再发应抛 notConnected（hasEverBeenReady 会话断连后重连策略由上层决定，
         // 此处只验证错误映射与即时收敛不崩溃）
