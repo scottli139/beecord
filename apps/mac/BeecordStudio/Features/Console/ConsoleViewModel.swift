@@ -345,15 +345,17 @@ final class ConsoleViewModel {
         return bytes
     }
 
-    /// offset + hex（16/行）+ ASCII 对照
+    /// offset + hex（16/行）+ ASCII 对照。
+    /// - Warning: `String(format:)` 的 `%x` 须显式无符号参数——Int 直传按 `%lld`
+    ///   推断会触发运行时 format 不匹配（12:32 实测 crash 实录）。
     static func hexDump(bytes: [UInt8]) -> String {
         var lines: [String] = []
         for offset in stride(from: 0, to: bytes.count, by: 16) {
             let chunk = Array(bytes[offset..<min(offset + 16, bytes.count)])
-            let hex = chunk.map { String(format: "%02x", $0) }.joined(separator: " ")
+            let hex = chunk.map { String(format: "%02x", UInt32($0)) }.joined(separator: " ")
                 .padding(toLength: 16 * 3 - 1, withPad: " ", startingAt: 0)
             let ascii = chunk.map { (0x20..<0x7E).contains($0) ? String(Unicode.Scalar($0)) : "." }.joined()
-            lines.append(String(format: "%04x  %@  %@", offset, hex, ascii))
+            lines.append(String(format: "%04x  %@  %@", UInt32(offset), hex, ascii))
         }
         return lines.joined(separator: "\n")
     }
