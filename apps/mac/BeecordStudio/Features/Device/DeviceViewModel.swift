@@ -42,6 +42,9 @@ final class DeviceViewModel {
 
     let settings: SettingsModel
 
+    /// T7 帧旁听数据源（协议控制台订阅其 events；装配点 = init 的 tap 包装）
+    let frameTap: FrameTapTransport
+
     private let appModel: AppModel
     nonisolated private let engine: SyncEngine
     private let logger = Logger(subsystem: "com.beeuc.beecord.studio", category: "device")
@@ -60,14 +63,20 @@ final class DeviceViewModel {
             state: .idle, rows: [], progress: nil, deviceInfo: nil, isStorageNearlyFull: false
         )
         // transport 工厂：loopback（默认）/ BLE（P0 单设备直连）
-        let transport: any BuzzLinkTransport
+        // transport 工厂：loopback（默认）/ BLE（P0 单设备直连）
+        let baseTransport: any BuzzLinkTransport
         switch TransportMode(rawValue: settings.transportMode) ?? .loopback {
         case .ble:
-            transport = BLETransport()
+            baseTransport = BLETransport()
         case .loopback:
-            transport = LoopbackTransport()
+            baseTransport = LoopbackTransport()
         }
-        let client = BuzzLinkClient(transport: transport)
+        // T7 编辑点①：包 tap 装饰器——控制台帧旁听数据源；同步路径仅 copy + 增量重组
+        // （FrameTapTransport 头注释），BLE/loopback 行为一致。Phase B 由 ConsoleViewModel
+        // 订阅 frameTap.events。
+        let tap = FrameTapTransport(wrapping: baseTransport)
+        self.frameTap = tap
+        let client = BuzzLinkClient(transport: tap)
         let store = FileLibraryStore(rootURL: Self.makeLibraryRoot(settings: settings, appModel: appModel))
         let config = SyncConfig(autoSyncEnabled: settings.autoSyncEnabled)
         let engine = SyncEngine(client: client, store: store, config: config)

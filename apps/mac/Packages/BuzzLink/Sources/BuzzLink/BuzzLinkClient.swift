@@ -524,6 +524,63 @@ public actor BuzzLinkClient {
     // MARK: - 私有：命令收发
 
     /// 发出一条命令并等待同 session 响应；超时按 `timeout` 计（§3.4）。
+    /// 发送任意构造的帧（T7 协议控制台通道：预置命令与自定义 hex 共用）。
+    ///
+    /// 语义与高层命令一致（``requireCommandAllowed(allowDuringTransfer:)`` 默认放行传输期）：
+    /// session 由客户端分配（覆写 `frame.session`，与 ``nextSession`` 单调序列同源）；
+    /// `awaitResponse=true` 时按 session 匹配响应（``ResponseWaiter`` + 超时沿用
+    /// `commandTimeout`），超时/断连错误同 ``runCommand``；`false` 为发送即返回 nil，
+    /// 响应经旁听流（`FrameTapTransport/events`）观测。发送期断连即时收敛处理同 ``runCommand``。
+    public func sendRaw(_ frame: BuzzLinkFrame, awaitResponse: Bool = true) async throws -> BuzzLinkFrame? {
+        try requireCommandAllowed()
+        let session = nextSession()
+        let request = BuzzLinkFrame(
+            type: frame.type, session: session, flags: frame.flags,
+            channel: frame.channel, payload: frame.payload
+        )
+        guard awaitResponse else {
+            // fire-and-forget：不注册 waiter（响应由控制台旁听流呈现）
+            do {
+                try await transport.send(request.encoded())
+            } catch {
+                let mapped = mapTransportError(error)
+                if mapped == .disconnected {
+                    handleTransportDisconnected()
+                }
+                throw mapped
+            }
+            return nil
+        }
+        let waiter = ResponseWaiter()
+        pendingCommands[session] = waiter
+        do {
+            try await transport.send(request.encoded())
+        } catch {
+            pendingCommands.removeValue(forKey: session)
+            let mapped = mapTransportError(error)
+            waiter.settle(with: .failure(mapped))
+            if mapped == .disconnected {
+                // 发送期断连：立即收敛（传输的 .disconnected 状态稍后到达时幂等去重）
+                handleTransportDisconnected()
+            }
+            throw mapped
+        }
+        let timeout = commandTimeout
+        let timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(Self.milliseconds(of: timeout)))
+            guard !Task.isCancelled else { return }
+            await self?.timeoutCommand(session: session)
+        }
+        do {
+            let response = try await waiter.value()
+            timeoutTask.cancel()
+            return response
+        } catch {
+            timeoutTask.cancel()
+            throw error
+        }
+    }
+
     private func runCommand(
         timeout: TimeInterval,
         build: (UInt8) throws -> BuzzLinkFrame
