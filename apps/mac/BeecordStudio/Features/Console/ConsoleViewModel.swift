@@ -7,7 +7,7 @@ import os
 
 /// 协议控制台视图模型（T7 Phase B）：订阅 FrameTapTransport 事件流驱动帧日志；
 /// 预置命令/自定义 hex 发送（sendRaw）、过滤、行展开、导出、发送区门控
-/// （未连接/同步中禁用——拍板 A）、自定义 hex 同 session RX 3s 高亮（拍板 A）。
+/// （未连接/同步中禁用）、自定义 hex 同 session RX 3s 高亮。
 ///
 /// 线程模型：@MainActor @Observable；buffer 为值语义 struct，append 后整体回写触发刷新。
 /// 性能：派生展示行（过滤+聚合）为 O(n)（n ≤ 5000），每事件重算实测 <1ms；
@@ -16,7 +16,7 @@ import os
 @Observable
 final class ConsoleViewModel {
 
-    /// 发送区禁用原因（nil = 可发送；拍板 A：同步中禁用；未连接禁用）
+    /// 发送区禁用原因（nil = 可发送；同步中禁用；未连接禁用）
     enum SendGate: Equatable {
         case disconnected
         case syncing
@@ -51,7 +51,7 @@ final class ConsoleViewModel {
     private(set) var directionFilter: FrameLogBuffer.Direction?
     private(set) var typeFilter = Set<UInt8>()
     private(set) var textFilter = ""
-    /// 高亮行（自定义 hex 响应反馈，拍板 A：3s）
+    /// 高亮行（自定义 hex 响应反馈：3s）
     private(set) var highlightedRowID: Int?
 
     let deviceViewModel: DeviceViewModel
@@ -80,7 +80,7 @@ final class ConsoleViewModel {
 
     // MARK: - 派生状态
 
-    /// 发送区门控：同步中（拍板 A）> 未连接
+    /// 发送区门控：同步中 > 未连接
     var sendGate: SendGate? {
         switch deviceViewModel.snapshot.state {
         case .syncing, .cancelling:
@@ -139,7 +139,7 @@ final class ConsoleViewModel {
         Self.hexDump(bytes: [UInt8]((try? entry.frame.encoded()) ?? Data()))
     }
 
-    /// 全量 17 种 type（拍板 A：下拉多选全列）
+    /// 全量 17 种 type（多选并集全列）
     static let allTypes: [UInt8] = [
         0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x20, 0x21,
         0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x40, 0x41, 0x7F
@@ -178,7 +178,7 @@ final class ConsoleViewModel {
         expandedIDs.removeAll()
     }
 
-    /// 预置命令发送；「开始下载」=拍板 A：BEGIN（等 RESP）→ 自动 ABORT，单键看全握手。
+    /// 预置命令发送；「开始下载」：BEGIN（等 RESP）→ 自动 ABORT，单键看全握手。
     func send(_ preset: Preset) {
         guard sendGate == nil else { return }
         Task { [weak self] in
@@ -198,7 +198,7 @@ final class ConsoleViewModel {
                     _ = try await self.sendRaw(type: BuzzLinkFrameType.dlBeginReq.rawValue,
                                                channel: BuzzLinkChannel.file.rawValue,
                                                payload: payload)
-                    // 拍板 A：看完握手即释放链路
+                    // 看完握手即释放链路
                     _ = try await self.sendRaw(type: BuzzLinkFrameType.dlAbort.rawValue,
                                                channel: BuzzLinkChannel.file.rawValue,
                                                payload: payload, awaitResponse: false)
@@ -213,7 +213,7 @@ final class ConsoleViewModel {
         }
     }
 
-    /// 自定义 hex 发送（拍板 A：3s 内同 session RX 高亮 + 自动展开）。
+    /// 自定义 hex 发送（3s 内同 session RX 高亮 + 自动展开）。
     /// - Returns: 校验失败原因（行内红字提示）；nil = 已发送。
     @discardableResult
     func sendCustomHex(_ raw: String) -> String? {
@@ -286,7 +286,7 @@ final class ConsoleViewModel {
     }
 
     /// sendRaw 薄封装；awaitResponse=false 时经 allocatedSession 回调记录待高亮 session
-    /// （拍板 A：自定义 hex 的响应反馈按同 session 匹配）。
+    /// （自定义 hex 的响应反馈按同 session 匹配）。
     private func sendRaw(type: UInt8, flags: UInt8 = 0, channel: UInt16, payload: Data,
                          awaitResponse: Bool = true, trackHighlight: Bool = false) async throws -> BuzzLinkFrame? {
         let frame = BuzzLinkFrame(type: type, session: 0, flags: flags, channel: channel, payload: payload)
@@ -304,7 +304,7 @@ final class ConsoleViewModel {
     private func ingest(_ event: FrameTapEvent) async {
         let comment = FrameLogBuffer.typeName(event.frame.type)
         buffer.append(frame: event.frame, direction: event.direction, comment: comment)
-        // 拍板 A：自定义 hex 发送后 3s 内同 session RX 高亮 + 自动展开
+        // 自定义 hex 发送后 3s 内同 session RX 高亮 + 自动展开
         if let pending = pendingHighlightSession,
            event.direction == .rx, event.frame.session == pending {
             pendingHighlightSession = nil

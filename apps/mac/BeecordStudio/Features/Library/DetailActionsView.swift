@@ -25,9 +25,11 @@ struct DetailActionsView: View {
             } label: {
                 Text("导出")
             }
+            .controlSize(.small)
             .accessibilityIdentifier("library.exportButton")
             Button("显示于 Finder", action: onReveal)
                 .fixedSize()
+                .controlSize(.small)
                 .accessibilityIdentifier("library.revealInFinderButton")
             Spacer()
             Button("删除", action: onDelete)

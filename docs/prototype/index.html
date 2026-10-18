@@ -230,9 +230,12 @@
   .con-send-area.disabled .con-input{opacity:.45;pointer-events:none}
   .con-disabled-tip{font:12px -apple-system;color:var(--warn);margin-bottom:8px}
   .con-log-empty{padding:24px;text-align:center;color:var(--text2);font-size:13px}
-  /* type 多选面板 */
-  #con-type-menu .mi{display:flex;align-items:center;gap:8px}
-  #con-type-menu .mi input{pointer-events:none}
+  /* type 多选内联面板（与实现对齐：3 列网格） */
+  .con-type-panel{background:var(--card2,#ececf0);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:8px}
+  .con-type-panel-title{font-size:11px;color:var(--text2);margin-bottom:4px}
+  .con-type-grid{display:grid;grid-template-columns:repeat(3,150px);gap:2px 18px}
+  .con-type-grid label{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .con-type-grid input{pointer-events:none}
   .con-log .dir.up{color:#64d2ff}
   .con-log .dir.dn{color:#30d158}
   .con-log .ty{color:#bf5af2}
@@ -460,11 +463,9 @@
               <option value="tx">上行 →（C→D）</option>
               <option value="rx">下行 ←（D→C）</option>
             </select>
-            <!-- type 多选下拉（拍板 A：17 种全列+名称，勾选取并集；AX console.typeFilter） -->
-            <span class="menu-anchor" id="con-type-anchor" data-ax="console.typeFilter">
-              <button class="sm" id="con-type-btn">类型 ▾</button>
-              <div class="menu" id="con-type-menu" style="max-height:300px;overflow-y:auto"></div>
-            </span>
+            <!-- type 多选（内联面板：与实现对齐——菜单弹层 Toggle AX id 不透传；AX console.typeFilter） -->
+            <button class="sm" id="con-type-btn" data-ax="console.typeFilter">类型 ▾</button>
+            <button class="sm" id="con-type-done" data-ax="console.typeFilter.done" style="display:none">完成</button>
             <!-- 文本过滤（AX console.filterField） -->
             <input id="con-text-filter" class="con-text" placeholder="文本过滤（payload/注释）" data-ax="console.filterField">
             <button class="sm" id="con-clear" data-ax="console.clearButton">清除</button>
@@ -480,6 +481,11 @@
           <div class="proto-tools" id="con-flood-switch" style="display:none">
             <span class="pt-label">评审控件 · 洪泛演示</span>
             <button class="ws-btn" id="con-flood-btn">注入一次下载的 chunk 流（12,847 块）</button>
+          </div>
+          <!-- type 多选内联面板（3 列网格 17 项，勾选态即 AX value；展开时显示） -->
+          <div class="con-type-panel" id="con-type-panel" style="display:none" data-ax="console.typeFilter.panel">
+            <div class="con-type-panel-title">类型过滤</div>
+            <div class="con-type-grid" id="con-type-grid"></div>
           </div>
           <!-- 发送区（未连接/同步中禁用；AX 见子元素） -->
           <div class="con-send-area" id="con-send-area">
@@ -1097,20 +1103,27 @@ function conUpdateSendArea(){
   tip.textContent=msg; tip.style.display=msg?"block":"none";
   document.querySelectorAll("[data-cmd],#con-send").forEach(b=>b.disabled=!!msg);
 }
-/* ---- type 多选下拉（拍板 A：17 种全列+名称，并集） ---- */
-(function buildTypeMenu(){
-  const m=$("con-type-menu");
+/* ---- type 多选内联面板（17 种全列+名称，并集；与实现 3 列网格对齐） ---- */
+(function buildTypePanel(){
+  const g=$("con-type-grid");
   CON_TYPE_KEYS.forEach(t=>{
     const [name,dir]=CON_TYPES[t];
-    const mi=document.createElement("div"); mi.className="mi";
-    mi.innerHTML=`<input type="checkbox" id="ct-${t}"><label for="ct-${t}" style="cursor:pointer">${name} <span style="color:var(--text3)">0x${hex2(t)} ${dir==="tx"?"C→D":"D→C"}</span></label>`;
-    mi.onchange=e=>{ e.target.checked?S.conFilter.types.add(t):S.conFilter.types.delete(t); renderCon(); };
-    m.appendChild(mi);
+    const label=document.createElement("label");
+    label.innerHTML=`<input type="checkbox" id="ct-${t}"> ${name} <span style="color:var(--text3)">${dir==="tx"?"C→D":"D→C"}</span>`;
+    label.onchange=e=>{ e.target.checked?S.conFilter.types.add(t):S.conFilter.types.delete(t); updateTypeBtn(); renderCon(); };
+    g.appendChild(label);
   });
 })();
+function updateTypeBtn(){
+  $("con-type-btn").textContent=S.conFilter.types.size?`类型（${S.conFilter.types.size}）▾`:"类型 ▾";
+}
+function toggleTypePanel(show){
+  $("con-type-panel").style.display=show?"block":"none";
+  $("con-type-done").style.display=show?"":"none";
+}
 $("con-type-btn").onclick=e=>{e.stopPropagation();
-  document.querySelectorAll(".menu.show").forEach(x=>{if(x!==$("con-type-menu"))x.classList.remove("show");});
-  $("con-type-menu").classList.toggle("show");};
+  toggleTypePanel($("con-type-panel").style.display==="none");};
+$("con-type-done").onclick=()=>toggleTypePanel(false);
 /* ---- 绑定 ---- */
 document.querySelectorAll("[data-cmd]").forEach(b=>{
   b.onclick=()=>{ if(b.disabled) return; PRESETS[b.dataset.cmd](); };
@@ -1266,7 +1279,7 @@ function applyScenario(){
     if(demo==="list"){ PRESETS.list(); setTimeout(()=>PRESETS.info(),500); setTimeout(()=>PRESETS.begin(),900); }
     else if(demo==="flood"){ conFloodInject(); }
     else if(demo==="expand"){ PRESETS.list(); setTimeout(()=>{S.conExpanded.add(S.conLog[0].id);renderCon();},400); }
-    else if(demo==="typemenu"){ $("con-type-menu").classList.add("show"); }
+    else if(demo==="typemenu"){ toggleTypePanel(true); }
     else if(demo==="export"){
       if(!S.conLog.length) PRESETS.list();
       setTimeout(()=>{

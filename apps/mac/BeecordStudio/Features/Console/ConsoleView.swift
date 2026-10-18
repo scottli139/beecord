@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 协议控制台（T7 Phase B；视觉唯一依据 prototype v0.5 控制台场景）：
 /// 工具行（4 预置 + 导出）→ 过滤行（方向/type 多选/文本/清除）→ 发送行
-/// （hex 输入 + 发送；未连接/同步中禁用——拍板 A）→ 帧日志（Menlo 深色卡；
+/// （hex 输入 + 发送；未连接/同步中禁用）→ 帧日志（Menlo 深色卡；
 /// →/← 方向色；行点击展开完整 hex dump；DL_CHUNK ≥4 聚合折叠；自定义 hex 响应 3s 高亮）。
 /// AX id 全量见 T7 计划 §7（data-ax 注释与实现逐一对齐）。
 struct ConsoleView: View {
@@ -86,6 +86,7 @@ struct ConsoleView: View {
                     .accessibilityIdentifier("console.directionFilter.rx")
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
             .labelsHidden()
             .frame(width: 200)
             .accessibilityIdentifier("console.directionFilter")
@@ -99,6 +100,16 @@ struct ConsoleView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityIdentifier("console.typeFilter")
+            if typePanelShown {
+                // 完成钮放过滤行（触发钮旁）：面板标题行右端按钮在 1024 测试窗下
+                // AX 缺席（CI run 39102093567 实录），同排内联后稳定可达。
+                Button("完成") {
+                    typePanelShown = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("console.typeFilter.done")
+            }
 
             TextField("文本过滤（payload/注释）", text: textBinding)
                 .textFieldStyle(.roundedBorder)
@@ -127,19 +138,10 @@ struct ConsoleView: View {
     /// type 多选内联面板（17 项 Toggle 两列网格，勾选状态即 AX value）
     private var typePanelInline: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Space.s2) {
-            HStack {
-                Text("类型过滤（勾选取并集，拍板 A）")
-                    .font(DesignTokens.FontToken.caption)
-                    .foregroundStyle(DesignTokens.ColorToken.textSecondary)
-                Spacer()
-                Button("完成") {
-                    typePanelShown = false
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-                .accessibilityIdentifier("console.typeFilter.done")
-            }
-            LazyVGrid(columns: [GridItem(.fixed(200)), GridItem(.fixed(200))], alignment: .leading, spacing: 2) {
+            Text("类型过滤")
+                .font(DesignTokens.FontToken.caption)
+                .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+            LazyVGrid(columns: [GridItem(.fixed(150)), GridItem(.fixed(150)), GridItem(.fixed(150))], alignment: .leading, spacing: 2) {
                 ForEach(ConsoleViewModel.allTypes, id: \.self) { type in
                     Toggle(ConsoleViewModel.typeName(type), isOn: typePanelBinding(type))
                         .toggleStyle(.checkbox)
@@ -189,7 +191,7 @@ struct ConsoleView: View {
                           text: $hexInput)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(DesignTokens.FontToken.toolRowMono)
                     .disabled(viewModel.sendGate != nil)
                     .focused($hexFieldFocused)
                     .onSubmit(sendHex)
@@ -299,7 +301,7 @@ struct ConsoleView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .font(.system(.caption, design: .monospaced))
+                .font(DesignTokens.FontToken.toolRowMono)
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
             }
@@ -344,7 +346,7 @@ struct ConsoleView: View {
                         .foregroundStyle(Color(red: 0.616, green: 0.616, blue: 0.651))
                     Spacer(minLength: 0)
                 }
-                .font(.system(.caption, design: .monospaced))
+                .font(DesignTokens.FontToken.toolRowMono)
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
             }

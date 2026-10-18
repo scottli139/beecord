@@ -104,6 +104,10 @@ enum DesignTokens {
         static let digit = Font.body.monospacedDigit()
         /// 空态标题 15/600（DESIGN_SYSTEM §2 空态规格）
         static let emptyStateTitle = Font.system(size: 15, weight: .semibold)
+        /// 工具行文字 12/400（DESIGN_SYSTEM §2"工具行控件"：过滤行/操作行/发送行统一）
+        static let toolRow = Font.caption
+        /// 工具行等宽输入 12/等宽（hex 输入、过滤框等）
+        static let toolRowMono = Font.system(.caption, design: .monospaced)
     }
 
     /// 动效时长（§1.4，秒）。

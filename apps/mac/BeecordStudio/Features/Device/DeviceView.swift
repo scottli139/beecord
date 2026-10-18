@@ -132,6 +132,7 @@ struct DeviceView: View {
                 set: { _ in viewModel.toggleSelectAll() }
             ))
             .toggleStyle(.checkbox)
+            .controlSize(.small)
             .accessibilityIdentifier("device.selectAllCheckbox")
             Button(viewModel.downloadButtonTitle) {
                 viewModel.downloadSelectedTapped()
@@ -144,6 +145,7 @@ struct DeviceView: View {
                 set: { viewModel.setAutoSync($0) }
             ))
             .toggleStyle(.checkbox)
+            .controlSize(.small)
             .accessibilityIdentifier("device.autoSyncToggle")
             Spacer()
             Button {
@@ -152,6 +154,7 @@ struct DeviceView: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 14))
             }
+            .controlSize(.small)
             .accessibilityLabel("刷新文件列表")
             .accessibilityIdentifier("device.refreshButton")
         }

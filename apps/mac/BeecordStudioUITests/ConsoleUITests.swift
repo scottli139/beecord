@@ -265,7 +265,7 @@ final class ConsoleUITests: XCTestCase {
         )
         XCTAssertTrue(
             waitForRowContaining("PONG", timeout: 15),
-            "设备应回 PONG（RX 行；拍板 A 高亮无 AX 通道，行存在即反馈）"
+            "设备应回 PONG（RX 行；响应高亮无 AX 通道，行存在即反馈）"
         )
     }
 
