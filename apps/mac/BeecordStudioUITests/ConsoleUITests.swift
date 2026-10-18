@@ -45,21 +45,32 @@ final class ConsoleUITests: XCTestCase {
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
-    /// 有界轮询：行元素数（console.logTable.row.*，未展开时无 .hex 子元素混入）
-    private func visibleRowCount() -> Int {
+    /// 日志可见条目数 = 个体行 + 聚合行（console.logTable.row.* / .agg.*）。
+    /// 聚合行不算 .row. 前缀——勾选 DL_CHUNK 等过滤后个体行被折叠成 agg 行，
+    /// 只统计 .row. 会得到 0（CI run 39100523966 :199 实录）。
+    /// 注：.row.N.hex 展开区仅展开态存在，本用例不展开行。
+    private func visibleLogCount() -> Int {
         let rows = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "console.logTable.row."))
-        return rows.count
+        let aggs = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "console.logTable.agg."))
+        return rows.count + aggs.count
     }
 
-    /// 有界等待任一行的 AX label 含给定文本（行 = 时间·方向·type 拼接，R4 可读文本）
+    /// 有界等待任一**个体行或聚合行**的 AX label 含给定文本（R4 可读文本；
+    /// 聚合行 label 形如 "DL_CHUNK ×2,351（已折叠，点击看明细）"，同样含 type 名）
     private func waitForRowContaining(_ text: String, timeout: TimeInterval = 15) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let rows = app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", "console.logTable.row."))
+            let aggs = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "console.logTable.agg."))
             for index in 0..<min(rows.count, 60) {
                 if rows.element(boundBy: index).label.contains(text) { return true }
+            }
+            for index in 0..<min(aggs.count, 20) {
+                if aggs.element(boundBy: index).label.contains(text) { return true }
             }
             Thread.sleep(forTimeInterval: 0.2)
         }
@@ -159,11 +170,11 @@ final class ConsoleUITests: XCTestCase {
         // 连接即自动同步——帧流自然产生；等有界行数 ≥4
         let enough = waitForElement(
             "console.logTable",
-            predicate: NSPredicate(block: { [weak self] _, _ in (self?.visibleRowCount() ?? 0) >= 4 }),
+            predicate: NSPredicate(block: { [weak self] _, _ in (self?.visibleLogCount() ?? 0) >= 4 }),
             timeout: 30
         )
         XCTAssertTrue(enough, "自动同步应产生 ≥4 行帧日志")
-        let baseline = visibleRowCount()
+        let baseline = visibleLogCount()
 
         // 方向过滤 → 仅上行（segmented 项有 AX id，本机验证可达；行数单调收敛）
         element("console.directionFilter.tx").click()
@@ -171,12 +182,12 @@ final class ConsoleUITests: XCTestCase {
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
                 guard let self else { return false }
-                let count = self.visibleRowCount()
+                let count = self.visibleLogCount()
                 return count > 0 && count <= baseline
             }),
             timeout: 10
         )
-        let txOnly = visibleRowCount()
+        let txOnly = visibleLogCount()
         XCTAssertGreaterThan(txOnly, 0, "上行过滤后仍有帧")
         XCTAssertLessThanOrEqual(txOnly, baseline, "方向过滤后行数不增")
 
@@ -191,7 +202,7 @@ final class ConsoleUITests: XCTestCase {
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
                 guard let self else { return false }
-                let count = self.visibleRowCount()
+                let count = self.visibleLogCount()
                 return count > 0 && count <= baseline
             }),
             timeout: 10
@@ -206,7 +217,7 @@ final class ConsoleUITests: XCTestCase {
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
                 guard let self else { return false }
-                let count = self.visibleRowCount()
+                let count = self.visibleLogCount()
                 return count > 0 && count <= baseline
             }),
             timeout: 10
@@ -217,6 +228,8 @@ final class ConsoleUITests: XCTestCase {
             element("console.filterField").typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: stringValue.count))
         }
         element("console.typeFilter.item.DL_CHUNK").click()
+        // done 有界等待再点（面板 LazyVGrid 重建后 done 可能短暂缺席，CI :220 实录）
+        XCTAssertTrue(waitForExistence("console.typeFilter.done", timeout: 5), "type 面板完成钮在场")
         element("console.typeFilter.done").click()
     }
 
