@@ -429,17 +429,40 @@ final class DeviceSyncUITests: XCTestCase {
             ),
             "进度增长"
         )
+        // 慢 runner 时序加固（CI run 39094081688 实录）：播放中点 +15s 的期望窗口依赖
+        // "观测进度→点击落地"之间的墙钟耗时，慢机上可漂到 0:14+15=0:29 打穿 "0:1x" 窗口。
+        // 改为先暂停锁定时钟，-15s×3 钳回 0:00，再 +15s——暂停态下 label 稳定，与墙钟解耦。
+        element("library.player.playButton").click()
+        XCTAssertTrue(
+            waitForElement(
+                "library.player.playButton",
+                predicate: NSPredicate(format: "label == %@", "播放"),
+                timeout: 10
+            ),
+            "暂停后按钮变回「播放」"
+        )
+        element("library.player.back15Button").click()
+        element("library.player.back15Button").click()
+        element("library.player.back15Button").click()
+        XCTAssertTrue(
+            waitForElement(
+                "library.player.timeLabel",
+                predicate: NSPredicate(format: "value BEGINSWITH %@", "0:00"),
+                timeout: 10
+            ),
+            "-15s×3 后钳回 0:00"
+        )
         element("library.player.fwd15Button").click()
         let seekOK = waitForElement(
             "library.player.timeLabel",
-            predicate: NSPredicate(format: "value BEGINSWITH %@", "0:1"),
+            predicate: NSPredicate(format: "value BEGINSWITH %@", "0:15"),
             timeout: 10
         )
         if !seekOK {
             let actual = element("library.player.timeLabel").exists
                 ? (element("library.player.timeLabel").value ?? "nil")
                 : "<timeLabel 不存在>"
-            XCTFail("+15s 后时间进入 0:15~，实际 label=\(actual)")
+            XCTFail("暂停态 +15s 后应为 0:15，实际 label=\(actual)")
         }
         element("library.player.speedButton").click()
         XCTAssertTrue(
