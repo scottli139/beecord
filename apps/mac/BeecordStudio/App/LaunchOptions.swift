@@ -22,6 +22,10 @@ enum LaunchOptions {
 
     static let libraryRoot: String? = value(for: "-libraryRoot")
 
+    /// -consoleExportPath <path>：控制台导出直写该路径、跳过 NSSavePanel
+    /// （UITest 断言导出 JSON；T7 Phase B 测试友好注入，同 -libraryRoot 模式）。
+    static let consoleExportPath: String? = value(for: "-consoleExportPath")
+
     /// App 启动早期调用（须早于 SettingsModel 初始化）。
     static func applyIfNeeded() {
         guard resetSettings else { return }

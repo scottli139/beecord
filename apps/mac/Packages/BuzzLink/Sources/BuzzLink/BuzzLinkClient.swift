@@ -531,9 +531,16 @@ public actor BuzzLinkClient {
     /// `awaitResponse=true` 时按 session 匹配响应（``ResponseWaiter`` + 超时沿用
     /// `commandTimeout`），超时/断连错误同 ``runCommand``；`false` 为发送即返回 nil，
     /// 响应经旁听流（`FrameTapTransport/events`）观测。发送期断连即时收敛处理同 ``runCommand``。
-    public func sendRaw(_ frame: BuzzLinkFrame, awaitResponse: Bool = true) async throws -> BuzzLinkFrame? {
+    /// - Parameter allocatedSession: session 分配后的同步回调（控制台"同 session 响应高亮"
+    ///   反馈需要知道分配值；在 actor 内调用，闭包需 @Sendable）。
+    public func sendRaw(
+        _ frame: BuzzLinkFrame,
+        awaitResponse: Bool = true,
+        allocatedSession: @Sendable (UInt8) -> Void = { _ in }
+    ) async throws -> BuzzLinkFrame? {
         try requireCommandAllowed()
         let session = nextSession()
+        allocatedSession(session)
         let request = BuzzLinkFrame(
             type: frame.type, session: session, flags: frame.flags,
             channel: frame.channel, payload: frame.payload

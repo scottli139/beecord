@@ -1,5 +1,6 @@
 import AppKit
 import BuzzLink
+import BuzzLinkCore
 import BuzzLinkSync
 import Foundation
 import os
@@ -45,6 +46,8 @@ final class DeviceViewModel {
     /// T7 帧旁听数据源（协议控制台订阅其 events；装配点 = init 的 tap 包装）
     let frameTap: FrameTapTransport
 
+    private let client: BuzzLinkClient
+
     private let appModel: AppModel
     nonisolated private let engine: SyncEngine
     private let logger = Logger(subsystem: "com.beeuc.beecord.studio", category: "device")
@@ -63,7 +66,6 @@ final class DeviceViewModel {
             state: .idle, rows: [], progress: nil, deviceInfo: nil, isStorageNearlyFull: false
         )
         // transport 工厂：loopback（默认）/ BLE（P0 单设备直连）
-        // transport 工厂：loopback（默认）/ BLE（P0 单设备直连）
         let baseTransport: any BuzzLinkTransport
         switch TransportMode(rawValue: settings.transportMode) ?? .loopback {
         case .ble:
@@ -72,11 +74,11 @@ final class DeviceViewModel {
             baseTransport = LoopbackTransport()
         }
         // T7 编辑点①：包 tap 装饰器——控制台帧旁听数据源；同步路径仅 copy + 增量重组
-        // （FrameTapTransport 头注释），BLE/loopback 行为一致。Phase B 由 ConsoleViewModel
-        // 订阅 frameTap.events。
+        // （FrameTapTransport 头注释），BLE/loopback 行为一致。
         let tap = FrameTapTransport(wrapping: baseTransport)
         self.frameTap = tap
         let client = BuzzLinkClient(transport: tap)
+        self.client = client
         let store = FileLibraryStore(rootURL: Self.makeLibraryRoot(settings: settings, appModel: appModel))
         let config = SyncConfig(autoSyncEnabled: settings.autoSyncEnabled)
         let engine = SyncEngine(client: client, store: store, config: config)
@@ -240,6 +242,18 @@ final class DeviceViewModel {
     func openBluetoothSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.Bluetooth") else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - T7 协议控制台
+
+    /// 控制台原始命令通道：经 tap 包装的 client.sendRaw（session 分配见回调；
+    /// 门控/超时语义同高层命令）。ConsoleViewModel 专用。
+    func sendRawConsoleCommand(
+        _ frame: BuzzLinkFrame,
+        awaitResponse: Bool,
+        allocatedSession: @Sendable (UInt8) -> Void = { _ in }
+    ) async throws -> BuzzLinkFrame? {
+        try await client.sendRaw(frame, awaitResponse: awaitResponse, allocatedSession: allocatedSession)
     }
 
     // MARK: - 流消费

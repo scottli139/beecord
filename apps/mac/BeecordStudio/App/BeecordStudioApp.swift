@@ -43,6 +43,7 @@ struct BeecordStudioApp: App {
     @State private var settingsModel: SettingsModel
     @State private var deviceViewModel: DeviceViewModel
     @State private var libraryViewModel: LibraryViewModel
+    @State private var consoleViewModel: ConsoleViewModel
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
 
@@ -52,15 +53,20 @@ struct BeecordStudioApp: App {
         LaunchTrace.mark("app.init")
         let appModel = AppModel()
         let settingsModel = SettingsModel()
-        self._appModel = State(wrappedValue: appModel)
-        self._settingsModel = State(wrappedValue: settingsModel)
-        self._deviceViewModel = State(wrappedValue: DeviceViewModel(
+        let deviceViewModel = DeviceViewModel(
             appModel: appModel,
             settings: settingsModel
-        ))
+        )
+        self._appModel = State(wrappedValue: appModel)
+        self._settingsModel = State(wrappedValue: settingsModel)
+        self._deviceViewModel = State(wrappedValue: deviceViewModel)
         self._libraryViewModel = State(wrappedValue: LibraryViewModel(
             appModel: appModel,
             settings: settingsModel
+        ))
+        self._consoleViewModel = State(wrappedValue: ConsoleViewModel(
+            appModel: appModel,
+            deviceViewModel: deviceViewModel
         ))
     }
 
@@ -74,7 +80,8 @@ struct BeecordStudioApp: App {
                 appModel: appModel,
                 settingsModel: settingsModel,
                 deviceViewModel: deviceViewModel,
-                libraryViewModel: libraryViewModel
+                libraryViewModel: libraryViewModel,
+                consoleViewModel: consoleViewModel
             )
         }
         // 窗口尺寸档：macOS 26 的 Window 场景忽略 .defaultSize 与内容 frame 的 ideal

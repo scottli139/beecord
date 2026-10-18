@@ -6,6 +6,7 @@ struct MainWindow: View {
     let settingsModel: SettingsModel
     let deviceViewModel: DeviceViewModel
     let libraryViewModel: LibraryViewModel
+    let consoleViewModel: ConsoleViewModel
 
     var body: some View {
         NavigationSplitView {
@@ -17,7 +18,7 @@ struct MainWindow: View {
             case .library:
                 LibraryView(viewModel: libraryViewModel, appModel: appModel)
             case .console:
-                ConsoleView()
+                ConsoleView(viewModel: consoleViewModel, appModel: appModel)
             }
         }
         .frame(
@@ -103,10 +104,12 @@ extension MainWindow {
 private func previewMainWindow() -> some View {
     let appModel = AppModel()
     let settingsModel = SettingsModel()
+    let deviceViewModel = DeviceViewModel(appModel: appModel, settings: settingsModel)
     return MainWindow(
         appModel: appModel,
         settingsModel: settingsModel,
-        deviceViewModel: DeviceViewModel(appModel: appModel, settings: settingsModel),
-        libraryViewModel: LibraryViewModel(appModel: appModel, settings: settingsModel)
+        deviceViewModel: deviceViewModel,
+        libraryViewModel: LibraryViewModel(appModel: appModel, settings: settingsModel),
+        consoleViewModel: ConsoleViewModel(appModel: appModel, deviceViewModel: deviceViewModel)
     )
 }
