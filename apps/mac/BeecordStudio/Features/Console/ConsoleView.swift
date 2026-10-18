@@ -13,6 +13,7 @@ struct ConsoleView: View {
     @State private var hexInput = ""
     @State private var hexError: String?
     @State private var hoveredRowID: Int?
+    @State private var typePanelShown = false
     @FocusState private var hexFieldFocused: Bool
 
     var body: some View {
@@ -22,6 +23,9 @@ struct ConsoleView: View {
                 VStack(alignment: .leading, spacing: DesignTokens.Space.s3) {
                     toolbarRow
                     filterRow
+                    if typePanelShown {
+                        typePanelInline
+                    }
                     sendArea
                     logCard
                 }
@@ -75,22 +79,25 @@ struct ConsoleView: View {
         HStack(spacing: DesignTokens.Space.s2) {
             Picker("方向", selection: directionBinding) {
                 Text("全部").tag(FrameLogBuffer.Direction?.none)
+                    .accessibilityIdentifier("console.directionFilter.all")
                 Text("→ 上行").tag(FrameLogBuffer.Direction?.some(.tx))
+                    .accessibilityIdentifier("console.directionFilter.tx")
                 Text("← 下行").tag(FrameLogBuffer.Direction?.some(.rx))
+                    .accessibilityIdentifier("console.directionFilter.rx")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 200)
             .accessibilityIdentifier("console.directionFilter")
 
-            Menu {
-                ForEach(ConsoleViewModel.allTypes, id: \.self) { type in
-                    Toggle(ConsoleViewModel.typeName(type), isOn: typeToggleBinding(type))
-                }
-            } label: {
-                Text(viewModel.hasTypeFilter ? "类型（\(viewModel.typeFilter.count)）▾" : "类型 ▾")
+            // type 多选：内联展开面板——菜单弹层的 Toggle AX id 不透传（本机实测）、
+            // popover 内容对 AX 遍历不可见（本机实测仅 1 窗口），内联内容在窗口
+            // 主视图树 id 稳定可达（同 segmented 项方案；CI run 39098188609 label 查询教训）。
+            Button(viewModel.hasTypeFilter ? "类型（\(viewModel.typeFilter.count)）▾" : "类型 ▾") {
+                typePanelShown.toggle()
             }
-            .menuOrder(.fixed)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .accessibilityIdentifier("console.typeFilter")
 
             TextField("文本过滤（payload/注释）", text: textBinding)
@@ -117,7 +124,36 @@ struct ConsoleView: View {
         )
     }
 
-    private func typeToggleBinding(_ type: UInt8) -> Binding<Bool> {
+    /// type 多选内联面板（17 项 Toggle 两列网格，勾选状态即 AX value）
+    private var typePanelInline: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Space.s2) {
+            HStack {
+                Text("类型过滤（勾选取并集，拍板 A）")
+                    .font(DesignTokens.FontToken.caption)
+                    .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+                Spacer()
+                Button("完成") {
+                    typePanelShown = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .accessibilityIdentifier("console.typeFilter.done")
+            }
+            LazyVGrid(columns: [GridItem(.fixed(200)), GridItem(.fixed(200))], alignment: .leading, spacing: 2) {
+                ForEach(ConsoleViewModel.allTypes, id: \.self) { type in
+                    Toggle(ConsoleViewModel.typeName(type), isOn: typePanelBinding(type))
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .accessibilityIdentifier("console.typeFilter.item.\(ConsoleViewModel.typeName(type))")
+                }
+            }
+        }
+        .padding(DesignTokens.Space.s3)
+        .background(DesignTokens.ColorToken.surfaceCard2, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("console.typeFilter.panel")
+    }
+
+    private func typePanelBinding(_ type: UInt8) -> Binding<Bool> {
         Binding(
             get: { viewModel.typeFilter.contains(type) },
             set: { _ in viewModel.toggleTypeFilter(type) }

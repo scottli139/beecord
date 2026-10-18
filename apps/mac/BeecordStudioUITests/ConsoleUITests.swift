@@ -52,21 +52,6 @@ final class ConsoleUITests: XCTestCase {
         return rows.count
     }
 
-    /// segmented/radio 项点击（类型无关：按 label 全树有界查询——segmented 在不同系统版本
-    /// AX 角色为 radioButton/button，统一走 label 命中）
-    private func clickSegment(_ label: String) {
-        let item = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", label)).firstMatch
-        item.click()
-    }
-
-    /// 弹出菜单项点击（SwiftUI Menu 弹层不进 app.menuBars 查询，走 descendants）
-    private func clickMenuItem(_ label: String) {
-        let item = app.descendants(matching: .menuItem)
-            .matching(NSPredicate(format: "label == %@", label)).firstMatch
-        item.click()
-    }
-
     /// 有界等待任一行的 AX label 含给定文本（行 = 时间·方向·type 拼接，R4 可读文本）
     private func waitForRowContaining(_ text: String, timeout: TimeInterval = 15) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -180,8 +165,8 @@ final class ConsoleUITests: XCTestCase {
         XCTAssertTrue(enough, "自动同步应产生 ≥4 行帧日志")
         let baseline = visibleRowCount()
 
-        // 方向过滤 → 仅上行：行数单调收敛（断言 ≤ 基线；慢 runner 上不收也不增，主要防回归）
-        clickSegment("→ 上行")
+        // 方向过滤 → 仅上行（segmented 项有 AX id，本机验证可达；行数单调收敛）
+        element("console.directionFilter.tx").click()
         _ = waitForElement(
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
@@ -195,13 +180,13 @@ final class ConsoleUITests: XCTestCase {
         XCTAssertGreaterThan(txOnly, 0, "上行过滤后仍有帧")
         XCTAssertLessThanOrEqual(txOnly, baseline, "方向过滤后行数不增")
 
-        // 恢复全部方向；type 过滤勾选 DL_CHUNK（弹出菜单项按 label 查询）
-        clickSegment("全部")
+        // 恢复全部方向；type 过滤勾选 DL_CHUNK（内联面板项按 AX id 查询——菜单/popover
+        // 弹层的 AX 查询在 CI/本机均不稳，run 39098188609 实录）
+        element("console.directionFilter.all").click()
         element("console.typeFilter").click()
-        let chunkMenuItem = app.descendants(matching: .menuItem)
-            .matching(NSPredicate(format: "label == %@", "DL_CHUNK")).firstMatch
-        XCTAssertTrue(chunkMenuItem.waitForExistence(timeout: 5), "type 菜单弹出含 DL_CHUNK")
-        chunkMenuItem.click()
+        XCTAssertTrue(waitForExistence("console.typeFilter.item.DL_CHUNK", timeout: 5),
+                      "type 面板展开含 DL_CHUNK 项")
+        element("console.typeFilter.item.DL_CHUNK").click()
         let chunkFiltered = waitForElement(
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
@@ -226,16 +211,13 @@ final class ConsoleUITests: XCTestCase {
             }),
             timeout: 10
         )
-        // 恢复：清文本过滤 + 取消 type 勾选（避免影响后续断言/用例结束状态）
+        // 恢复：清文本过滤 + 取消 type 勾选（面板仍展开——项点击即切换，无需先展开）
         element("console.filterField").click()
         if let stringValue = element("console.filterField").value as? String, !stringValue.isEmpty {
             element("console.filterField").typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: stringValue.count))
         }
-        element("console.typeFilter").click()
-        let chunkToggle = app.descendants(matching: .menuItem)
-            .matching(NSPredicate(format: "label == %@", "DL_CHUNK")).firstMatch
-        _ = chunkToggle.waitForExistence(timeout: 5)
-        chunkToggle.click()
+        element("console.typeFilter.item.DL_CHUNK").click()
+        element("console.typeFilter.done").click()
     }
 
     // MARK: - 2. 预置命令：列文件 → LIST_REQ(TX) + LIST_RESP(RX)
