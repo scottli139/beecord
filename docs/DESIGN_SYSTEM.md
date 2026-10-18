@@ -1,6 +1,12 @@
 # Beecord UX 设计系统（Design System）v1.0
 
-> 状态：**v1.4**（2026-10-18：§2 新增"工具行控件"分级——辅助/过滤/发送类工具行统一
+> 状态：**v1.5**（2026-10-18：§4 新增 **R10 语义色对比度政策**——Mac 系统语义色=平台基准
+> （浅色 secondary 3.44:1 与 Apple 自家 app 同水平，深色实测 5.3~6.0 达标）；tertiary
+> 不得用于正文/状态信息（一律 text.secondary 起，保留给纯装饰图形）；豁免登记制度
+> （豁免表即"有意不修复"唯一清单，新增豁免须同步 AccessibilityAuditUITests 豁免表）。
+> 同步修订：§1.1 对比度底线加 Mac 语义色豁免注记、§2 状态徽标"未下载"与库列表行 meta
+> 由 tertiary 提级 secondary）。
+> v1.4（2026-10-18：§2 新增"工具行控件"分级——辅助/过滤/发送类工具行统一
 > `.controlSize(.small)` + `toolRow`/`toolRowMono` 令牌（macOS HIG 工具行惯例；例外=
 > 内容主操作保持 regular）；起因：控制台工具行 5 种尺寸并存的用户评审反馈）。
 > v1.3（2026-10-17：§2 新增"下拉按钮（Menu）"组件行——触发钮 h28 次按钮样式 +
@@ -43,6 +49,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | `fill.hover` | labelColor 5% | labelColor 5% | —（无 hover） | 自绘控件 hover 底（§2.2） |
 
 对比度底线：正文文字与背景 ≥ 4.5:1（琥珀底上的文字一律用墨黑 #101014，不用白）。
+Mac 端系统语义色（label/secondaryLabel/tertiaryLabel 系）按 **R10 平台基准豁免**处理。
 
 ### 1.2 字体
 
@@ -125,7 +132,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 开关 / 复选 | 系统控件，不改样式 | `settings.autoSyncToggle`、`device.selectAllCheckbox` |
 | 卡片 | r10，1px 边框，padding 16，卡间距 16 | — |
 | 文件表行 | h28；选中 accent 6% 底；状态右对齐 | `device.fileTable.row.{fileName}` |
-| 状态徽标 | 12px 文字：未下载 tertiary / 下载中 accent / ✓已校验 success / 失败 danger | `device.fileTable.row.{fileName}.status` |
+| 状态徽标 | 12px 文字：未下载 secondary（R10） / 下载中 accent / ✓已校验 success / 失败 danger | `device.fileTable.row.{fileName}.status` |
 | 进度条 | h6，r3，轨道 card2，填充 accent | `device.downloadProgress`（AXValue 0-1） |
 | 标签页 | **下划线页签**：accent 2px 下划线 + active 字重加重（2026-10-17 评审修订，替换 `.segmented`；设备页无标签页） | `library.detailTabs` |
 | 播放器 | 波形 h80；走带按钮 h36；倍速菜单 1/1.5/2；±15s | `library.player.playButton`、`.progressSlider` |
@@ -134,7 +141,7 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 | 设置行 | 左标签右控件，行距 12 | `settings.aiProviderPicker` 等 |
 | 控制台行 | Menlo 12；方向符号 →（上行）←（下行）；行点击展开 hex | `console.logTable` |
 | 权限面罩 | 全局面罩：图标 40 + 标题 15/600 + 说明 13 + 主按钮（跳系统设置）+ 次按钮（重试） | `common.permissionOverlay`（蓝牙实例 `device.bluetoothOverlay`） |
-| 库列表行 | 列表列宽 280；行 r8、padding 10×12、卡底 1px 边框；标题 13/600 单行截断；meta 11 tertiary（日期·时长）；**右列双徽标两行**（10px，右对齐：上行转码态、下行转写态）；选中：accent 1px 边 + 外环 1px（r8）；hover：accent 40% 边（选中优先，§2.2） | `library.recordingTable.row.{id}` / `.title` / `.transcodeBadge` / `.transcribeBadge` |
+| 库列表行 | 列表列宽 280；行 r8、padding 10×12、卡底 1px 边框；标题 13/600 单行截断；meta 11 secondary（日期·时长，R10）；**右列双徽标两行**（10px，右对齐：上行转码态、下行转写态）；选中：accent 1px 边 + 外环 1px（r8）；hover：accent 40% 边（选中优先，§2.2） | `library.recordingTable.row.{id}` / `.title` / `.meta` / `.transcodeBadge` / `.transcribeBadge` |
 | 确认对话框（自绘） | NSAlert 语义：图标? 无；标题 14/600；描述 12 secondary；按钮右对齐——破坏性动词红字（"删除"）+ **取消默认聚焦**（accent 3px 聚焦环）；遮罩 rgba(0,0,0,.16) | `common.confirmDialog`（按钮 `library.deleteConfirmButton` / `library.deleteCancelButton`） |
 
 ### 2.1 页面骨架与布局规则（Mac / SwiftUI）
@@ -225,6 +232,15 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
   （同族陷阱：列表行 `children: .contain` 合并）。规则：容器 id 与其内部元素的 id 必须
   互斥分配——两态视图把各自 id 挂到对应分支上（如 `console.logTable` 挂非空分支的
   logList、`console.emptyState` 挂空态分支），不要把父 id 罩在带子 id 的子树上。
+- **R10 语义色对比度政策**（2026-10-18，T8 Accessibility Audit 收口定案）：① **Mac 系统
+  语义色 = 平台基准**：`text.secondary` 等系统语义色浅色实测 3.44:1（WCAG AA 4.5 未达）
+  但与 Apple 自家 app 同水平，深色实测 5.3~6.0 达标——**不为过审计改调色值、不引入
+  preferredColorScheme**；② **tertiary 不得用于正文/状态信息**（一律 `text.secondary`
+  起）：`text.tertiary` 浅色实测 1.73:1，仅保留给**纯装饰图形**（空态大图标等无信息
+  负载的图形）；③ **豁免登记制度**：Accessibility Audit 中未修复即豁免的 issue
+  （框架生成容器、系统控件误报、语义色浅色差距等）以
+  `AccessibilityAuditUITests` 的**豁免表为唯一清单**——每条附中文理由，新增豁免必须
+  同步更新豁免表与本节。
 
 ### 4.2 工具与验收
 

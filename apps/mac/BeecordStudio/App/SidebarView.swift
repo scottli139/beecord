@@ -53,6 +53,7 @@ struct SidebarView: View {
             Image("BrandMark")
                 .resizable()
                 .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
             Text("Beecord Studio")
                 .font(DesignTokens.FontToken.groupTitle)
                 .foregroundStyle(DesignTokens.ColorToken.textSecondary)
@@ -101,7 +102,7 @@ struct SidebarView: View {
         if deviceViewModel.isConnected {
             return DesignTokens.ColorToken.stateSuccess
         }
-        return DesignTokens.ColorToken.textTertiary
+        return DesignTokens.ColorToken.textSecondary
     }
 }
 

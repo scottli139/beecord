@@ -27,6 +27,7 @@ struct DetailActionsView: View {
             }
             .controlSize(.small)
             .accessibilityIdentifier("library.exportButton")
+            .accessibilityAddTraits(.isButton)
             Button("显示于 Finder", action: onReveal)
                 .fixedSize()
                 .controlSize(.small)

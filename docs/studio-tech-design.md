@@ -297,8 +297,11 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
   库流 4 用例 T6：同步入列选择/播放走带/删除确认/空态联动；控制台流 4 用例 T7：帧日志与
   三过滤/预置命令/自定义 hex/导出向量解码；共 17 用例，CI 基线）；控制台用例前置开发者模式
   门控（设置开关），发送断言等 `console.sendGateTip` 消失（同步中门控解除）；
-  P0 全主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放→控制台收发）已覆盖，
-  T8 仅余 Accessibility Audit 收口；`xcodebuild test` 可跑，作为回归基线；
+  P0 全主流程（启动→发现 Sim→连接→列表→下载→校验→库内播放→控制台收发）已覆盖；
+  **T8 已完成（2026-10-18）**：Accessibility Audit 门禁化（`AccessibilityAuditUITests`
+  7 场景 `performAccessibilityAudit(for: .all)`，handler 按豁免表判定——命中豁免抑制、
+  未豁免即 fail；豁免表见代码与 DESIGN_SYSTEM §4 R10 豁免登记制度）；`xcodebuild test`
+  共 17 用例 + 7 审计场景，作为回归基线；
 - **BuzzLinkSim 支持故障注入**（丢块/限速/中途断连），异常路径同样可脚本化验证；
 - Accessibility Inspector Audit 无 error 级问题纳入 P0 验收。
 
@@ -315,7 +318,7 @@ whisper.cpp（SwiftPM 集成，Metal 加速）；模型 `ggml-base`/`ggml-small`
 | T5 | 设备页 + SyncEngine | 已完成（2026-10-16） | T2、T4 |
 | T6 | 录音库 + 播放器 | 已完成（2026-10-17，实测 4.25d） | T4 |
 | T7 | 协议控制台 + 向量导出 | 已完成（2026-10-18；预排 1d，实测含原型修订与四轮 CI 环境适配超估，如实上报） | T2、T4 |
-| T8 | UITests 主流程 + Audit | 1d | T3、T5、T6 |
+| T8 | UITests 主流程 + Audit | 已完成（2026-10-18：17 用例 + Audit 7 场景门禁化） | T3、T5、T6 |
 
 P1 随后：T9 转写、T10 AI 纪要、T11 导出扩展、T12 i18n。
 

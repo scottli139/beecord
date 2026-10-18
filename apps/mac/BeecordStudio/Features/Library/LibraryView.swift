@@ -88,11 +88,13 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: DesignTokens.Space.s1) {
             HStack {
                 Text("录音 \(viewModel.sortedItems.count) 条")
+                    .accessibilityIdentifier("library.recordingCount")
                 Spacer()
                 Text("按录制时间 新→旧")
+                    .accessibilityIdentifier("library.sortHint")
             }
             .font(DesignTokens.FontToken.caption)
-            .foregroundStyle(DesignTokens.ColorToken.textTertiary)
+            .foregroundStyle(DesignTokens.ColorToken.textSecondary)
             .padding(.horizontal, DesignTokens.Space.s2)
 
             ScrollView {
@@ -244,7 +246,7 @@ struct LibraryView: View {
                 Text("转码完成，播放器随 Phase C 交付")
                     .font(DesignTokens.FontToken.callout)
             }
-            .foregroundStyle(DesignTokens.ColorToken.textTertiary)
+            .foregroundStyle(DesignTokens.ColorToken.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, DesignTokens.Space.s8)
         case .running, .pending:
@@ -342,7 +344,8 @@ private struct LibraryRowView: View {
                         .accessibilityIdentifier("library.recordingTable.row.\(item.id).title")
                     Text(metaLine)
                         .font(DesignTokens.FontToken.caption)
-                        .foregroundStyle(DesignTokens.ColorToken.textTertiary)
+                        .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+                        .accessibilityIdentifier("library.recordingTable.row.\(item.id).meta")
                 }
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: DesignTokens.Space.s1) {
@@ -407,7 +410,7 @@ private struct LibraryRowView: View {
         switch item.transcode {
         case .ready: return DesignTokens.ColorToken.stateSuccess
         case .running: return Color.accentColor
-        case .pending: return DesignTokens.ColorToken.textTertiary
+        case .pending: return DesignTokens.ColorToken.textSecondary
         case .failed: return DesignTokens.ColorToken.stateDanger
         }
     }

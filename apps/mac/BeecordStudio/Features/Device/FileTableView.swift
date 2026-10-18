@@ -35,6 +35,20 @@ struct FileTableView: View {
     static func sizeText(_ bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .binary)
     }
+
+    /// 复选框 AX label（R3）：业务 id（`REC_20260101_120000`）解析为可读录制时间，
+    /// 解析失败回退原串。
+    static func selectionLabel(_ fileID: String) -> String {
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyyMMdd_HHmmss"
+        let raw = fileID.hasPrefix("REC_") ? String(fileID.dropFirst(4)) : fileID
+        guard let date = parser.date(from: raw) else { return "选择 \(fileID)" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return "选择录音 \(formatter.string(from: date))"
+    }
 }
 
 /// 单行：原生 checkbox（R6 真控件）+ 文件名 + 时长 + 大小 + 状态徽标（R4 可读文本）。
@@ -54,7 +68,7 @@ private struct FileRowView: View {
             }
             .labelsHidden()
             .toggleStyle(.checkbox)
-            .accessibilityLabel("选择 \(row.id)")
+            .accessibilityLabel(FileTableView.selectionLabel(row.id))
             .accessibilityIdentifier("device.fileTable.row.\(row.id).checkbox")
             Text(row.id)
                 .font(DesignTokens.FontToken.body)
@@ -86,7 +100,7 @@ private struct FileRowView: View {
         case .notDownloaded:
             Text("未下载")
                 .font(DesignTokens.FontToken.callout)
-                .foregroundStyle(DesignTokens.ColorToken.textTertiary)
+                .foregroundStyle(DesignTokens.ColorToken.textSecondary)
                 .accessibilityIdentifier("device.fileTable.row.\(row.id).status")
         case .downloading(let fraction):
             Text("下载中 \(Int((fraction * 100).rounded()))%")

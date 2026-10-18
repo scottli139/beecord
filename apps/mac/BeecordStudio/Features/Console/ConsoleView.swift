@@ -117,6 +117,7 @@ struct ConsoleView: View {
                 .frame(maxWidth: 220)
                 .font(DesignTokens.FontToken.caption)
                 .accessibilityIdentifier("console.filterField")
+                .accessibilityLabel("过滤")
 
             Button("清除") {
                 viewModel.clear()
@@ -196,6 +197,7 @@ struct ConsoleView: View {
                     .focused($hexFieldFocused)
                     .onSubmit(sendHex)
                     .accessibilityIdentifier("console.hexField")
+                    .accessibilityLabel("自定义命令")
                 Button("发送") {
                     sendHex()
                 }
@@ -382,7 +384,7 @@ struct ConsoleView: View {
             if segment.count > 200 {
                 Text("… 共 \(segment.count) 块，仅渲染前 200 块明细")
                     .font(DesignTokens.FontToken.caption)
-                    .foregroundStyle(DesignTokens.ColorToken.textTertiary)
+                    .foregroundStyle(DesignTokens.ColorToken.textSecondary)
                     .padding(.vertical, 2)
             }
         }

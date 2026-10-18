@@ -29,6 +29,7 @@ struct RenameField: View {
             }
             .onExitCommand { commit() }
             .accessibilityIdentifier("library.renameField")
+            .accessibilityLabel("录音标题")
     }
 
     private func commit() {

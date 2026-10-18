@@ -42,6 +42,7 @@ struct WaveformView: View {
         }
         .frame(height: 80) // DESIGN_SYSTEM §2：波形 h80
         .accessibilityElement()
+        .accessibilityAddTraits(.isImage)
         .accessibilityLabel("波形，总时长 \(durationText)")
         .accessibilityValue(String(format: "%.3f", progress))
         .accessibilityIdentifier("library.waveform")

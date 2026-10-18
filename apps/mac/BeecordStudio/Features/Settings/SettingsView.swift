@@ -39,10 +39,11 @@ struct SettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings.transportPicker")
+            .accessibilityAddTraits(.isButton)
             LabeledContent("下载目录") {
                 HStack(spacing: DesignTokens.Space.s2) {
                     Text(settingsModel.downloadDir.isEmpty ? "未选择" : settingsModel.downloadDir)
-                        .foregroundStyle(settingsModel.downloadDir.isEmpty ? DesignTokens.ColorToken.textTertiary : DesignTokens.ColorToken.textPrimary)
+                        .foregroundStyle(settingsModel.downloadDir.isEmpty ? DesignTokens.ColorToken.textSecondary : DesignTokens.ColorToken.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: 320, alignment: .trailing)
@@ -82,6 +83,7 @@ struct SettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings.aiProviderPicker")
+            .accessibilityAddTraits(.isButton)
             LabeledContent("Base URL") {
                 TextField("", text: Binding(
                     get: { settingsModel.aiBaseURL },
