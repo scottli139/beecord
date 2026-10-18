@@ -215,6 +215,11 @@ Mac 端优先用系统语义色（自动适配深浅色）；下表"品牌令牌
 - **R7 键盘可达**：Full Keyboard Access 下所有功能可操作；快捷键：⌘1/2/3 切侧栏页、⌘D 下载所选、
   ⌘R 刷新、空格 播放/暂停、⌘←/⌘→ ∓15s、⌘, 设置。
 - **R8 Toast**：identifier `common.toast`，文本可被轮询断言。
+- **R9 容器 id 吞并**（2026-10-18 实录，CI run 39096993559）：带 `accessibilityIdentifier` 的
+  Group/容器会被 SwiftUI 合成为单个 AX 元素，**其内部子视图的 id 全部被吞并不可达**
+  （同族陷阱：列表行 `children: .contain` 合并）。规则：容器 id 与其内部元素的 id 必须
+  互斥分配——两态视图把各自 id 挂到对应分支上（如 `console.logTable` 挂非空分支的
+  logList、`console.emptyState` 挂空态分支），不要把父 id 罩在带子 id 的子树上。
 
 ### 4.2 工具与验收
 

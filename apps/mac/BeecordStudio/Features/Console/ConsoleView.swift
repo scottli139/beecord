@@ -12,6 +12,7 @@ struct ConsoleView: View {
 
     @State private var hexInput = ""
     @State private var hexError: String?
+    @State private var hoveredRowID: Int?
     @FocusState private var hexFieldFocused: Bool
 
     var body: some View {
@@ -202,7 +203,9 @@ struct ConsoleView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(DesignTokens.ColorToken.surfaceCard2, lineWidth: 1)
         )
-        .accessibilityIdentifier("console.logTable")
+        // 注意：logTable 的 id 挂在 else 分支（logList）上而非本 Group——
+        // Group 级 id 会把整组合成单个 AX 元素吞掉子 id（空态时 console.emptyState
+        // 不可达，CI run 39096993559 实录）。
     }
 
     private var logList: some View {
@@ -221,6 +224,7 @@ struct ConsoleView: View {
                 .padding(DesignTokens.Space.s2)
             }
             .frame(minHeight: 320, idealHeight: 420)
+            .accessibilityIdentifier("console.logTable")
             .onChange(of: viewModel.buffer.count) { _, _ in
                 // 新帧滚动到底（P0 简化：总是滚；用户回看历史被打断留 P1 精细化）
                 if let lastID = viewModel.displayRows.last?.id {
@@ -264,6 +268,14 @@ struct ConsoleView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .background(hoveredRowID == entry.rowID
+                        ? Color.white.opacity(0.06)
+                        : (viewModel.highlightedRowID == entry.rowID
+                           ? DesignTokens.ColorToken.stateSync.opacity(0.28)
+                           : Color.clear))
+            .onHover { hovering in
+                hoveredRowID = hovering ? entry.rowID : (hoveredRowID == entry.rowID ? nil : hoveredRowID)
+            }
             .accessibilityIdentifier("console.logTable.row.\(entry.rowID)")
 
             if viewModel.expandedIDs.contains(entry.rowID) {
