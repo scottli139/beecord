@@ -101,9 +101,16 @@ final class AccessibilityAuditUITests: XCTestCase {
     private func audit(_ sceneTag: String) throws {
         print("AUDIT[\(sceneTag)] begin")
         try app.performAccessibilityAudit(for: .all) { issue in
-            // Phase 1（侦察）：全量记录。issue 字段：auditType / compactDescription / element。
-            print("AUDIT[\(sceneTag)] type=\(String(describing: issue.auditType)) "
-                  + "desc=\(issue.compactDescription)")
+            // Phase 1（侦察）：全量记录。element 的 identifier/label/elementType 用于定位修复点。
+            // element 为可选（部分 issue 不关联具体元素），缺省时打占位。
+            let elDesc: String
+            if let el = issue.element {
+                elDesc = "[id=\(el.identifier) label=\(el.label) role=\(el.elementType.rawValue)]"
+            } else {
+                elDesc = "[no-element]"
+            }
+            print("AUDIT[\(sceneTag)] type=\(issue.auditType.rawValue) "
+                  + "desc=\(issue.compactDescription) el=\(elDesc)")
             return true   // TODO(Phase 2)：已修复项改 return false；有意设计项在此精确豁免并注释理由
         }
         print("AUDIT[\(sceneTag)] end")
