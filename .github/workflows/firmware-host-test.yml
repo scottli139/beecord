@@ -1,0 +1,23 @@
+name: firmware-host-test
+
+on:
+  push:
+    branches: [main]
+    paths: ['firmware/main/proto/**', 'firmware/test_host/**', '.github/workflows/firmware-host-test.yml']
+  pull_request:
+    paths: ['firmware/main/proto/**', 'firmware/test_host/**', '.github/workflows/firmware-host-test.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # 协议层宿主单测：ubuntu + gcc（本机对应门禁为 macOS + clang，见 firmware/test_host/Makefile）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run host protocol tests
+        run: make CC=gcc -C firmware/test_host test

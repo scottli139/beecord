@@ -1,2 +1,6 @@
 idf_component_register(SRCS "main.c"
-                       INCLUDE_DIRS ".")
+                            "proto/crc16.c"
+                            "proto/buzz_proto.c"
+                            "proto/buzz_reasm.c"
+                       INCLUDE_DIRS "."
+                                    "proto")
