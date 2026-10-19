@@ -18,6 +18,7 @@
 
 #include "audio/buzz_audio.h"
 #include "audio/buzz_recorder.h"
+#include "ble/buzz_ble.h"
 
 static const char *TAG = "console";
 
@@ -225,6 +226,22 @@ static int cmd_get(int argc, char **argv)
     return sent == to_send ? 0 : 1;
 }
 
+// ---------- ble（BLE 状态查询） ----------
+
+static int cmd_ble(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    printf("device:   %s\n", buzz_ble_device_name());
+    printf("connected: %s\n", buzz_ble_is_connected() ? "yes" : "no");
+    if (buzz_ble_is_connected()) {
+        printf("conn_handle: %u\n", (unsigned)buzz_ble_conn_handle());
+    }
+    printf("mtu:      %u\n", (unsigned)buzz_ble_mtu());
+    printf("notify subscribed: %s\n", buzz_ble_notify_subscribed() ? "yes" : "no");
+    return 0;
+}
+
 // ---------- REPL 启动 ----------
 
 esp_err_t console_cmd_start_repl(void)
@@ -267,10 +284,17 @@ esp_err_t console_cmd_start_repl(void)
         .hint = "<dB>",
         .func = &cmd_gain,
     };
+    const esp_console_cmd_t ble_cmd = {
+        .command = "ble",
+        .help = "BLE 状态（设备名/连接/MTU/订阅）",
+        .hint = NULL,
+        .func = &cmd_ble,
+    };
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rec_cmd), TAG, "register rec failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ls_cmd), TAG, "register ls failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&get_cmd), TAG, "register get failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&gain_cmd), TAG, "register gain failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ble_cmd), TAG, "register ble failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

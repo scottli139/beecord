@@ -9,8 +9,11 @@ idf_component_register(SRCS "main.c"
                             "audio/buzz_audio.c"
                             "audio/buzz_recorder.c"
                             "storage/buzz_sdcard.c"
+                            "ble/buzz_ble.c"
+                            "ble/buzz_gatt.c"
                             "console_cmd.c"
                        INCLUDE_DIRS "."
                                     "proto"
                                     "audio"
-                                    "storage")
+                                    "storage"
+                                    "ble")

@@ -25,3 +25,10 @@ CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 # 定点才可实时，故显式关闭浮点走定点实现。编码器 state/pseudostack 分配
 # 走组件 Kconfig 默认（线程安全 pseudostack + PSRAM 优先），无需额外配置。
 CONFIG_OPUS_FLOATING_POINT=n
+
+# BLE（M4.1）：NimBLE host 单连接（规划 D9），ATT MTU 247（BUZZLINK.md §2.1）；
+# 只用 peripheral 能力，不启用 Bluedroid/mesh/blufi，其余 NimBLE 配置走组件默认。
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
