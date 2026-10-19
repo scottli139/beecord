@@ -2,8 +2,9 @@
 
 录音手表固件：ESP32-S3 上采集编码、TF 卡存储、经 BuzzLink 协议（BLE）同步到电脑。
 M0（骨架/协议层/宿主单测）、M1（到货自检：Flash 实测 32MB、自定义分区表、USB 控制台、
-SDMMC 双卡实测）、M2（音频采集：ES7210 → 混单声道 → WAV 写 TF 卡 + 串口 REPL 录控，
-上板验收通过）已完成；BLE 服务（M4）与表盘 UI（M5）等随后续里程碑落地。
+SDMMC 双卡实测）、M2（音频采集：ES7210 → 混单声道 → WAV 写 TF 卡 + 串口 REPL 录控）、
+M3（编码封装：Opus 定点编码 → Ogg 写卡，8MB PSRAM 启用，上板验收通过）已完成；
+BLE 服务（M4）与表盘 UI（M5）等随后续里程碑落地。
 
 ## 构建前提
 
@@ -55,10 +56,12 @@ firmware/
 │   │   ├── buzz_reasm.h/.c       #   FRAG 分片重组
 │   │   └── crc16.h/.c            #   CRC-16/CCITT-FALSE（帧 CRC 与文件 CRC 共用）
 │   ├── audio/
-│   │   ├── ogg_writer.h/.c       # Ogg 页封装（RFC 3533，硬件无关）；Opus 编码 M3 接入
+│   │   ├── ogg_writer.h/.c       # Ogg 页封装（RFC 3533，硬件无关）+ OpusHead/Tags 头包生成
+│   │   ├── opus_enc.h/.c         # Opus 薄包装（opaque 句柄）：目标链 micro-opus，宿主链系统 libopus
+│   │   ├── rec_pipe.h/.c         # 录音管线（硬件无关）：帧切片 320 采样 → Opus → Ogg 会话 → 页回调
 │   │   ├── buzz_audio.h/.c       # ES7210 采集封装：BSP 初始化 + 16k/16bit/双声道 + 33dB 增益
 │   │   ├── wav_writer.h/.c       # WAV 封装（纯 stdio 硬件无关，宿主可测）：占位头 + 收尾回填
-│   │   └── buzz_recorder.h/.c    # 采集任务（prio5/栈6K/4KB 缓冲）：读→混单声道→写 WAV
+│   │   └── buzz_recorder.h/.c    # 采集任务（prio5/栈8K/4KB 缓冲）：读→混单声道→Ogg/WAV 双格式写卡
 │   ├── storage/                  # buzz_sdcard：TF 卡挂载/探测（M1 实测 16GB/128GB 通过）
 │   ├── ble/                      # 占位（M4：BuzzLink GATT 服务）
 │   └── ui/                       # 占位（M5：表盘与交互）
@@ -71,13 +74,16 @@ firmware/
 make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`（ubuntu）
 ```
 
-- **46 用例 / 706 断言**：帧编解码（§11 向量 V1~V4 往返）、字节流重组（重同步/容错）、
+- **50 用例 / 1259 断言**：帧编解码（§11 向量 V1~V4 往返）、字节流重组（重同步/容错）、
   分片重组（乱序/丢片/超上限）、CRC16、Ogg 页结构 + 每页 CRC32、Opus 头包、
-  WAV 头字段逐字节（小端序/回填长度/落盘复读/空文件/API 守卫）
+  WAV 头字段逐字节（小端序/回填长度/落盘复读/空文件/API 守卫）、
+  **rec_pipe 全链路 roundtrip**（真 libopus 编解码：granule 序列/头页独占/EOS/尾帧丢弃/静音能量隔离）
 - **会话向量回放**：与 Mac 侧 XCTest 共享同一份 JSON（`buzzlink-vector/1` schema），
   由 `tools/vector2c.py` 生成 C 表对拍——机制见 [TESTING.md](TESTING.md) §3
 - **Ogg 对拍**：测试产出的 `.ogg` 由独立校验器 `tools/ogg_check.py` 逐页复核
   CRC32（含坏页反向验证）
+- roundtrip 用例依赖系统 libopus（本机 `brew install opus`；CI 装 `libopus-dev`），
+  无库时跳过并打印提示；CI 必装不允许静默跳过
 - CI：`firmware-host-test`（ubuntu + gcc）与 `firmware-build`
   （`espressif/idf:v5.4` 容器编译回归）两个 job
 
@@ -90,8 +96,9 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 | 音频抽象 | `espressif/esp_codec_dev` ~1.5 | ✅ M2 已用（ES7210 采集，解析 1.5.11） |
 | UI | LVGL 9.6（经 `esp_lvgl_port` 2.9.0 传递引入） | ✅ 依赖锁定，M5 起使用 |
 | Ogg 封装 | 手写 `ogg_writer`（本仓 `main/audio/`，约 300 行） | ✅ 已实现 + 宿主单测 |
-| 音频编码 | Opus（esp-opus / libopus），16kHz 单声道 | 🔜 M3 引入 |
-| 存储 | FATFS + SDMMC 1-bit（TF 卡，BSP 实现） | ✅ M2 已用（录音写 WAV；M1 验证 16GB/128GB 挂载） |
+| 音频编码 | `esphome/micro-opus` ^0.3.6（定点模式，16kHz 单声道 VBR ~44kbps） | ✅ M3 已用（解析 0.3.6） |
+| PSRAM | 8MB octal（80MHz，caps_alloc） | ✅ M3 启用（Opus state/pseudostack 落 PSRAM） |
+| 存储 | FATFS + SDMMC 1-bit（TF 卡，BSP 实现） | ✅ M2 已用（录音写 Ogg/WAV；M1 验证 16GB/128GB 挂载） |
 | BLE | NimBLE（MTU 247） | 🔜 M4 引入（IDF 内置组件） |
 
 ## 里程碑路线图
@@ -101,7 +108,7 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 | **M0 环境与骨架** | 工程骨架 + 协议层 + Ogg 封装 + 宿主单测 + CI | ✅ 已完成（2026-10-18） |
 | **M1 到货自检** | `esptool.py flash_id` 实测 Flash（32MB）并定分区表；出厂固件自检；骨架刷机 + USB 控制台启动验证 | ✅ 已完成（2026-10-19） |
 | **M2 音频采集** | BSP + esp_codec_dev 初始化 ES7210，录 PCM/WAV 到 TF 卡 | ✅ 已完成（2026-10-19）：Mac 播放正常、30min soak 无错、宿主单测绿 |
-| **M3 编码封装** | Opus 编码接 `ogg_writer` 写卡 | 播放器放 `.ogg`，时长/波形正确、页 CRC 全对 |
+| **M3 编码封装** | Opus 定点编码（micro-opus）+ PSRAM 启用 + `rec_pipe` 管线接 `ogg_writer` 写卡 | ✅ 已完成（2026-10-19）：ffplay 播放正常、时长精确、页 CRC 双对拍全过、30min soak 无错、WAV 回归通过 |
 | **M4 BuzzLink BLE 服务** | NimBLE GATT + 全命令 + 下载流 | Beecord Studio 列文件/查信息/下载/CRC 验收通过 |
 | **M5 端到端联调** | 录音→同步→Studio 全链路 + 表盘 UI | 一场真实录音完整同步回 Mac |
 | **M6 打磨** | 电源管理、吞吐与稳定性调优 | 视情况 |
@@ -112,26 +119,40 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 
 ### 录音管线（采集 → Opus → Ogg → TF 卡）
 
-**M2 已落地段**：双麦 → ES7210（I2S Slave，16kHz/16bit/立体声）→ 软件混单声道 → WAV 写 `/sdcard`。
-Opus 编码与 Ogg 封装随 M3 接入（`ogg_writer` 已就绪）。
+**M3 全链路已落地**：双麦 → ES7210（I2S Slave，16kHz/16bit/立体声）→ 软件混单声道 →
+`rec_pipe`（帧切片 → Opus 定点编码 → `ogg_writer` Ogg 封装）→ 页回调 `fwrite` 写 `/sdcard`。
+WAV 格式保留并存（`rec start wav`）。
 
 - **初始化**（`buzz_audio`）：`bsp_audio_codec_microphone_init()`（BSP 2.0.0 内部幂等完成
   I2C/I2S）→ `esp_codec_dev_open(16k/16bit/2ch)` → `esp_codec_dev_set_in_gain(33.0)`。
   增益为上板扫频定案：24dB 电平偏低、36dB 近讲削顶，33dB 远近兼顾（0-37.5dB 可调）。
-- **采集**（`buzz_recorder`，FreeRTOS 任务 prio 5 / 栈 6KB / 4KB 读缓冲 = 64ms 音频）：
+- **采集**（`buzz_recorder`，FreeRTOS 任务 prio 5 / 栈 8KB / 4KB 读缓冲 = 64ms 音频）：
   `esp_codec_dev_read`（内部 1000ms 超时，只回状态码）→ L/R 交错 int16 混单声道
-  `(int32)(l+r)/2` 就地写回 → 追加写 WAV。非 OK 读取计数、连续 10 次失败中止上报。
-  单声道码率 32KB/s，SDMMC 直写带宽余量充足。
-- **WAV 封装**（`wav_writer`，纯 stdio 硬件无关）：open 写 44 字节占位头，close 时
-  fseek 回填 RIFF/data 长度；文件名 `REC_%04d.WAV` 递增（启动与开录前双扫描取最大序号+1）。
+  `(int32)(l+r)/2` 就地写回 → 按格式分发到 `rec_pipe`（Ogg）或 `wav_writer`（WAV）。
+  非 OK 读取计数、连续 10 次失败中止上报。
+- **Opus 编码**（`opus_enc` 薄包装，opaque 句柄）：`opus_encoder_create(16000, 1,
+  OPUS_APPLICATION_AUDIO)` + 44kbps VBR + complexity 5。micro-opus 组件以**定点模式**构建
+  （`CONFIG_OPUS_FLOATING_POINT=n`：S3 上浮点 SILK 编码慢 4~6 倍无法实时，官方 benchmark 结论）；
+  编码器 state 与 120KB pseudostack 经组件默认配置落 PSRAM（M3 起启用 8MB octal PSRAM）。
+  目标侧链 micro-opus、宿主侧链系统 libopus，同码两编故整条管线可宿主 roundtrip。
+- **Ogg 会话**（`rec_pipe`，硬件无关零 malloc）：init 写 RFC 7845 头两页（OpusHead BOS 独占
+  首页、OpusTags 各占一页）；feed 跨读块攒 320 采样（20ms）帧切片后编码，
+  granule 48kHz 域首包 960、逐帧 +960，preskip=312 仅头声明；页缓冲 4KB（约 28 包/页），
+  页满经回调写卡（码率 ~5.6KB/s，写频 ~1.8 次/s，远低于 WAV 的 8 次/s）；finish 丢弃不足
+  一帧的尾采样（<20ms），末包带 EOS flag 封页（空会话则产空 EOS 页）。
+  单任务直写沿用 M2 结论：编码耗时（定点 SILK 16kHz 单声道）与写页阻塞远小于 64ms 读节奏。
+- **双格式与文件序号**：`buzz_recorder_start(buzz_rec_fmt_t)` 选 Ogg（默认）/WAV；
+  `REC_%04d` 序号池两种后缀共用（扫目录取全局最大+1）。
 - **录控**（`console_cmd`，USB Serial/JTAG 串口 REPL，提示符 `beecord> `）：
-  `rec start/stop`、`ls`（含卡容量）、`get <文件> [字节数]`（base64 串口导出，免读卡器取文件，
-  实测 ~27KB/s）、`gain <dB>`（运行期调增益）。REPL 在 M3/M4 继续复用。
+  `rec start [ogg|wav]` / `rec stop`、`ls`（含卡容量）、`get <文件> [字节数]`（base64 串口导出，
+  免读卡器取文件，实测 ~27KB/s）、`gain <dB>`（运行期调增益）。REPL 在 M4 继续复用。
 - **握手协议**：start 在会话开始（文件打开后）即回应答，stop 收会话收尾应答（含统计进日志）；
   start 前清空应答队列防陈旧 ack。REPL 侧先做状态预检给出中文提示。
 - **M2.4 实测修正**：①REPL 创建前不能再调 `esp_console_init`（`esp_console_new_repl_*` 内部
   已含，重复初始化报 `ESP_ERR_INVALID_STATE`）；②串口脚本须 `dtr=False` 并等待提示符同步，
   否则开端口触发的复位会吞掉命令。
+- **M3.4 实测补充**：串口会话中途断开（host 侧 close/复位）会打断录音并留下不完整文件
+  （无 EOS 页，极端情况 0 字节）——属已接受的"断电丢尾"范畴，周期 flush 与现场保护列 M6 候选。
 
 ### BuzzLink BLE 服务实现
 

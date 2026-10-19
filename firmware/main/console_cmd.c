@@ -275,6 +275,6 @@ esp_err_t console_cmd_start_repl(void)
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 
     s_repl_started = true;
-    ESP_LOGI(TAG, "REPL ready (USB Serial/JTAG), try 'rec start' / 'rec stop' / 'ls'");
+    ESP_LOGI(TAG, "REPL ready (USB Serial/JTAG), try 'rec start [ogg|wav]' / 'rec stop' / 'ls'");
     return ESP_OK;
 }
