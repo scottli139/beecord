@@ -4,6 +4,7 @@ CC     := clang
 CFLAGS := -std=c11 -Wall -Wextra -Werror -g
 PROTO  := ../main/proto
 AUDIO  := ../main/audio
+BLE    := ../main/ble
 BUILD  := build
 
 # 会话向量回放（TESTING.md §3）：JSON 或转换脚本变更时 make 自动重新生成 C 表
@@ -24,9 +25,9 @@ HAVE_OPUS   := $(shell pkg-config --exists opus > /dev/null 2>&1 && echo 1)
 PIPE_SRCS   := $(AUDIO)/opus_enc.c $(AUDIO)/rec_pipe.c
 PIPE_HDRS   := $(AUDIO)/opus_enc.h $(AUDIO)/rec_pipe.h
 
-SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(VECTOR_SRC)
-HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer
+SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(BLE)/buzz_server.c $(VECTOR_SRC)
+HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(BLE)/buzz_server.h $(VECTOR_HDR) test.h
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server
 
 ifeq ($(HAVE_OPUS),1)
 TESTS += test_rec_pipe
@@ -59,7 +60,7 @@ endif
 # test_rec_pipe 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
 $(filter-out test_rec_pipe,$(TESTS)): %: %.c $(SRCS) $(HDRS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
+	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
 
 # 生成物一次产出 .c/.h 两个文件：.h 仅作同批声明，避免 macOS make 3.81 双跑生成
 $(VECTOR_HDR): $(VECTOR_SRC)
