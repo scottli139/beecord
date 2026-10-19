@@ -1,8 +1,9 @@
 # Beecord 固件
 
 录音手表固件：ESP32-S3 上采集编码、TF 卡存储、经 BuzzLink 协议（BLE）同步到电脑。
-当前为 **M0 骨架阶段**——工程链路、协议层与 Ogg 封装已就绪并通过宿主单测，
-硬件功能（音频/存储/BLE/UI）随 M1~M5 里程碑逐块落地。
+固件本体当前为 **M0 骨架阶段**——工程链路、协议层与 Ogg 封装已就绪并通过宿主单测，
+硬件功能（音频/存储/BLE/UI）随 M2~M5 里程碑逐块落地；
+M1（到货自检）已完成：Flash 实测 32MB、自定义分区表与 USB 控制台启用、烧录链路验证通过。
 
 ## 构建前提
 
@@ -17,16 +18,35 @@
 cd firmware
 idf.py set-target esp32s3
 idf.py build
-idf.py -p /dev/tty.usbserial-XXXX flash monitor    # 串口设备名按实际调整
+idf.py -p /dev/cu.usbmodemXXXX flash monitor    # USB-C 直连，端口名按实际调整
 ```
 
-烧录失败需进强制下载模式时：完全断电 → 按住 BOOT 上电 → 重新执行 flash。
+- 本板**无 USB-UART 桥**：USB-C 直连 ESP32-S3 原生 USB，控制台与烧录都走 **USB Serial/JTAG**
+  （`sdkconfig.defaults` 已配 `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`）。
+- 本固件运行期保持 USB 枚举，esptool 可自动复位进下载模式，日常刷机**无需按键**。
+- 若板子当前跑的是出厂固件（运行期关闭 USB、系统看不到设备），需先进强制下载模式：
+  关机（PWR 长按 ~6s）→ **按住 BOOT（右上侧键）再插 USB 上电** → 松手后执行 flash。
+  下载模式下屏幕黑屏属正常。
+
+## Flash 与分区表
+
+Flash 实测 **32MB**。自定义分区表 `partitions.csv`：
+
+| 分区 | 类型 | 大小 | 用途 |
+|---|---|---|---|
+| nvs | data | 24KB | 配置/状态 |
+| phy_init | data | 4KB | RF 校准 |
+| factory | app | 4MB | 固件本体（不做 OTA） |
+| coredump | data | 64KB | 崩溃转储（开发期调试） |
+| storage | data(fat) | 1MB | 录音索引等少量持久数据（录音本体在 TF 卡） |
+
+其余空间预留。
 
 ## 目录结构
 
 ```
 firmware/
-├── CMakeLists.txt / sdkconfig.defaults / dependencies.lock
+├── CMakeLists.txt / sdkconfig.defaults / partitions.csv / dependencies.lock
 ├── main/                         # 固件应用（idf.py build 的 main 组件）
 │   ├── main.c                    # 启动入口（M0 仅打印版本日志）
 │   ├── proto/                    # BuzzLink 协议层：硬件无关纯 C，宿主可测
@@ -40,9 +60,6 @@ firmware/
 │   └── ui/                       # 占位（M5：表盘与交互）
 └── test_host/                    # 宿主单测（详见下节）
 ```
-
-> M0 未自定义分区表（用 IDF 默认）；`sdkconfig.defaults` 按 16MB Flash 保守配置，
-> M1 实测 Flash 容量后复核。
 
 ## 宿主单测（无需开发板）
 
@@ -77,7 +94,7 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 | 里程碑 | 内容 | 验收 |
 |---|---|---|
 | **M0 环境与骨架** | 工程骨架 + 协议层 + Ogg 封装 + 宿主单测 + CI | ✅ 已完成（2026-10-18） |
-| **M1 到货自检** | `esptool.py flash_id` 实测 Flash 并定分区表；出厂固件自检；BSP 点灯/触屏 | 官方 demo 全绿 |
+| **M1 到货自检** | `esptool.py flash_id` 实测 Flash（32MB）并定分区表；出厂固件自检；骨架刷机 + USB 控制台启动验证 | ✅ 已完成（2026-10-19） |
 | **M2 音频采集** | BSP + esp_codec_dev 初始化 ES7210，录 PCM/WAV 到 TF 卡 | Mac 播放 WAV 正常 |
 | **M3 编码封装** | Opus 编码接 `ogg_writer` 写卡 | 播放器放 `.ogg`，时长/波形正确、页 CRC 全对 |
 | **M4 BuzzLink BLE 服务** | NimBLE GATT + 全命令 + 下载流 | Beecord Studio 列文件/查信息/下载/CRC 验收通过 |
@@ -86,7 +103,7 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 
 ## 架构详述（占位）
 
-以下内容随 M1~M3 实现后以实际代码为准补写，避免文档超前于实现：
+以下内容随 M2~M5 实现后以实际代码为准补写，避免文档超前于实现：
 
 ### 录音管线（采集 → Opus → Ogg → TF 卡）
 

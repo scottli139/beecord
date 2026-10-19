@@ -1,6 +1,13 @@
 # 目标芯片：开发板主控 ESP32-S3
 CONFIG_IDF_TARGET="esp32s3"
 
-# Flash 大小：资料标称 32MB，但未经实测，保守按 16MB 配置。
-# M1 开发板到货后跑 esptool.py flash_id 实测，再复核本项与分区表。
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# Flash 大小：M1 实测 32MB（GigaDevice，esptool flash_id 确认）。
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+
+# 控制台：本板无 USB-UART 桥，USB-C 直连 S3 原生 USB，
+# 日志与烧录都走 USB Serial/JTAG（出厂固件会关闭 USB，故烧录需先进入下载模式）。
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# 分区表：32MB 自定义布局，见 partitions.csv。
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
