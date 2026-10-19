@@ -1,11 +1,13 @@
-// Beecord 录音采集任务（M2）：codec 读取 → L/R 混单声道 → WAV 写 TF 卡。
+// Beecord 录音采集任务（M2 建立，M3 双格式）：codec 读取 → L/R 混单声道 →
+// Opus+Ogg（.OGG）或 WAV（.WAV）写 TF 卡。
 //
-// 线程模型：本模块创建单个采集任务（prio 5 / 栈 6KB）长期运行；
+// 线程模型：本模块创建单个采集任务（prio 5 / 栈 8KB）长期运行；
 // REPL 任务经命令队列下发 start/stop，采集任务完成后经应答队列回报结果，
 // start/stop 为阻塞握手（带超时），控制台可同步打印录音文件路径与统计。
 // 静态缓冲、启动期建队列与任务，采集循环内零 malloc。
 //
-// 文件名 /sdcard/REC_%04d.WAV 递增：开录前扫目录取最大序号 +1（卡在他机写过不冲突）。
+// 文件名 /sdcard/REC_%04d.OGG 或 .WAV 递增：开录前扫目录同时认两种后缀
+// 取最大序号 +1（卡在他机写过不冲突）。
 #pragma once
 
 #include "esp_codec_dev.h"
@@ -14,6 +16,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// 录音封装格式：OGG 为 M3 起缺省（Opus 44kbps VBR），WAV 为 M2 原始 PCM 格式
+typedef enum {
+    BUZZ_REC_FMT_OGG = 0,
+    BUZZ_REC_FMT_WAV,
+} buzz_rec_fmt_t;
 
 typedef enum {
     BUZZ_REC_STATE_IDLE = 0,
@@ -25,9 +33,10 @@ typedef enum {
 // mic 为 NULL 返回 ESP_ERR_INVALID_ARG。
 esp_err_t buzz_recorder_init(esp_codec_dev_handle_t mic);
 
-// 开始录音：阻塞至采集任务完成开录握手（超时 10s，覆盖目录扫描与卡抖动）。
-// 成功返回 ESP_OK；已在录音中 / 任务未创建 / 文件打开失败返回相应错误码。
-esp_err_t buzz_recorder_start(void);
+// 开始录音（fmt 指定封装格式）：阻塞至采集任务完成开录握手（超时 10s，
+// 覆盖目录扫描与卡抖动）。成功返回 ESP_OK；已在录音中 / 任务未创建 /
+// 文件打开失败返回相应错误码。
+esp_err_t buzz_recorder_start(buzz_rec_fmt_t fmt);
 
 // 停止录音：阻塞至采集任务完成停录握手（WAV 长度回填 + fclose + 统计回报）。
 // 空闲态调用返回 ESP_ERR_INVALID_STATE（调用方应先行查状态给出友好提示）。

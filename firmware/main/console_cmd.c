@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
@@ -24,19 +25,36 @@ static bool s_repl_started;
 
 // ---------- rec ----------
 
+static void print_rec_usage(void)
+{
+    printf("Usage:\n  rec start [ogg|wav]  开始录音（缺省 ogg）\n  rec stop   停止录音\n");
+}
+
 static int cmd_rec(int argc, char **argv)
 {
     if (argc < 2 || (strcmp(argv[1], "start") != 0 && strcmp(argv[1], "stop") != 0)) {
-        printf("Usage:\n  rec start  开始录音\n  rec stop   停止录音\n");
+        print_rec_usage();
         return 1;
     }
 
     if (strcmp(argv[1], "start") == 0) {
+        buzz_rec_fmt_t fmt = BUZZ_REC_FMT_OGG;
+        if (argc >= 3) {
+            if (strcasecmp(argv[2], "ogg") == 0) {
+                fmt = BUZZ_REC_FMT_OGG;
+            } else if (strcasecmp(argv[2], "wav") == 0) {
+                fmt = BUZZ_REC_FMT_WAV;
+            } else {
+                printf("未知格式: %s\n", argv[2]);
+                print_rec_usage();
+                return 1;
+            }
+        }
         if (buzz_recorder_state() == BUZZ_REC_STATE_RECORDING) {
             printf("已在录音中，先 rec stop 再 start\n");
             return 1;
         }
-        esp_err_t ret = buzz_recorder_start();
+        esp_err_t ret = buzz_recorder_start(fmt);
         if (ret != ESP_OK) {
             printf("rec start 失败: %s\n", esp_err_to_name(ret));
             return 1;
@@ -228,7 +246,7 @@ esp_err_t console_cmd_start_repl(void)
     const esp_console_cmd_t rec_cmd = {
         .command = "rec",
         .help = "录音控制",
-        .hint = "start|stop",
+        .hint = "start [ogg|wav]|stop",
         .func = &cmd_rec,
     };
     const esp_console_cmd_t ls_cmd = {

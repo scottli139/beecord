@@ -1,4 +1,14 @@
 dependencies:
+  esphome/micro-opus:
+    component_hash: fa192a7bc21d7f3d2106c32a4273a2ccbee2840524eb5f98a79f984c7b7cbcab
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.3.6
   espressif/cmake_utilities:
     component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
     dependencies:
@@ -177,8 +187,9 @@ dependencies:
       type: service
     version: 2.0.0
 direct_dependencies:
+- esphome/micro-opus
 - espressif/esp_codec_dev
 - waveshare/esp32_s3_touch_amoled_2_06
-manifest_hash: 4d70c95a0e2ca107af64aeff06a84764e9c4c8ea92e8565089ec11f2c3fe9f29
+manifest_hash: b859670a08dec67279487f69bc25a0ab0953950bb630996c3df1f56a97117132
 target: esp32s3
 version: 2.0.0

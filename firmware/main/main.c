@@ -10,7 +10,7 @@
 
 static const char *TAG = "beecord";
 
-#define FW_VERSION "0.2.0-m2"
+#define FW_VERSION "0.3.0-m3"
 
 void app_main(void)
 {

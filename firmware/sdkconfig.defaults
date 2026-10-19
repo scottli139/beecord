@@ -11,3 +11,17 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 # 分区表：32MB 自定义布局，见 partitions.csv。
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# PSRAM（M3）：ESP32-S3R8 合封 8MB octal PSRAM。
+# Opus 编码器 state/pseudostack 经 CAPS 分配落 PSRAM；同时为 M4 BLE、
+# M5 LVGL framebuffer 预留内部 RAM。
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# Opus 定点模式（M3）：micro-opus 在 ESP32-S3 上默认启用浮点（有硬件 FPU），
+# 但其官方 benchmark 显示浮点 SILK 编码比定点慢 4~6 倍、最低复杂度也无法实时；
+# 定点才可实时，故显式关闭浮点走定点实现。编码器 state/pseudostack 分配
+# 走组件 Kconfig 默认（线程安全 pseudostack + PSRAM 优先），无需额外配置。
+CONFIG_OPUS_FLOATING_POINT=n

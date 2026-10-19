@@ -21,5 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # M3 rec_pipe roundtrip 宿主测试需真链接 libopus（Makefile 按 pkg-config 检测，
+      # 预装保证用例在 CI 真实执行，不静默跳过）
+      - name: Prepare host libopus
+        run: sudo apt-get update && sudo apt-get install -y libopus-dev pkg-config
+
       - name: Run host protocol tests
         run: make CC=gcc -C firmware/test_host test
