@@ -16,9 +16,9 @@ VECTOR_HDR  := $(GENERATED)/vectors_basic_session.h
 # Ogg 端到端对拍：测试落盘 .ogg 后由独立 Python 校验器复核（坏页文件必须被拒）
 OGG_CHECK := ../../tools/ogg_check.py
 
-SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(VECTOR_SRC)
-HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer
+SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(VECTOR_SRC)
+HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(VECTOR_HDR) test.h
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer
 
 .PHONY: test clean
 test: $(TESTS)
