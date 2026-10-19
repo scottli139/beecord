@@ -39,6 +39,23 @@ uint16_t buzz_ble_mtu(void);
 // Event Notify 特征是否被中心设备订阅。
 bool buzz_ble_notify_subscribed(void);
 
+// ---------- 事件订阅（M4.3：buzz_cmds 订阅连接生命周期事件） ----------
+
+typedef enum {
+    BUZZ_BLE_EVT_CONNECT = 0, // 已连接（状态变量已更新，可安全查询句柄/MTU 初值）
+    BUZZ_BLE_EVT_DISCONNECT,  // 已断开（查询接口已回落默认值）
+    BUZZ_BLE_EVT_MTU,         // ATT MTU 协商完成（新值经 buzz_ble_mtu() 查询）
+    BUZZ_BLE_EVT_SUBSCRIBE,   // Notify 订阅态变化（新态经 buzz_ble_notify_subscribed() 查询）
+} buzz_ble_evt_t;
+
+// 事件回调：在 NimBLE host 任务上下文同步执行（GAP 事件内）。
+// 回调内禁止做文件 I/O、禁止调用 buzz_server 任何 API——只许快速置标志/
+// 推队列；状态值用上方查询接口读取。仅支持单一订阅方（buzz_cmds）。
+typedef void (*buzz_ble_evt_cb_t)(buzz_ble_evt_t evt, void *ctx);
+
+// 注册事件回调（NULL 清除）；重复调用覆盖。可在 host 任务运行前/后调用。
+void buzz_ble_set_evt_cb(buzz_ble_evt_cb_t cb, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

@@ -41,8 +41,18 @@ static uint8_t s_own_addr_type = BLE_OWN_ADDR_PUBLIC;
 static uint16_t s_conn_handle = BUZZ_BLE_CONN_HANDLE_NONE;
 static uint16_t s_att_mtu = BLE_ATT_MTU_DFLT; // 23：BLE 默认值
 static bool s_notify_subscribed;
+static buzz_ble_evt_cb_t s_evt_cb; // M4.3：单一订阅方（buzz_cmds）
+static void *s_evt_cb_ctx;
 
 static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg);
+
+// 事件通知（状态变量更新后调用；回调在 host 任务上下文执行）
+static void buzz_ble_emit(buzz_ble_evt_t evt)
+{
+    if (s_evt_cb != NULL) {
+        s_evt_cb(evt, s_evt_cb_ctx);
+    }
+}
 
 // 启动可连接非定向广播；ble_gap_adv_start 注册的 gap event 回调即下方
 // buzz_ble_gap_event（sync 回调与连接事件上下文均可安全调用，同 bleprph 模式）。
@@ -127,6 +137,7 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
         if (rc != 0) {
             ESP_LOGI(TAG, "conn param update request rc=%d (peer may override)", rc);
         }
+        buzz_ble_emit(BUZZ_BLE_EVT_CONNECT);
         break;
     }
 
@@ -137,12 +148,14 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
         s_att_mtu = BLE_ATT_MTU_DFLT;
         s_notify_subscribed = false;
         start_advertising();
+        buzz_ble_emit(BUZZ_BLE_EVT_DISCONNECT);
         break;
 
     case BLE_GAP_EVENT_MTU:
         s_att_mtu = event->mtu.value;
         ESP_LOGI(TAG, "MTU updated handle=%" PRIu16 " mtu=%" PRIu16, event->mtu.conn_handle,
                  event->mtu.value);
+        buzz_ble_emit(BUZZ_BLE_EVT_MTU);
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
@@ -152,6 +165,7 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
                      "SUBSCRIBE handle=%" PRIu16 " notify cur=%" PRIu16 " prev=%" PRIu16,
                      event->subscribe.attr_handle, event->subscribe.cur_notify,
                      event->subscribe.prev_notify);
+            buzz_ble_emit(BUZZ_BLE_EVT_SUBSCRIBE);
         }
         break;
 
@@ -253,4 +267,10 @@ uint16_t buzz_ble_mtu(void)
 bool buzz_ble_notify_subscribed(void)
 {
     return s_notify_subscribed;
+}
+
+void buzz_ble_set_evt_cb(buzz_ble_evt_cb_t cb, void *ctx)
+{
+    s_evt_cb = cb;
+    s_evt_cb_ctx = ctx;
 }

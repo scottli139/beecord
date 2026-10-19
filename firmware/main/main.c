@@ -1,20 +1,20 @@
 // Beecord 固件入口（M0 骨架 + M1 自检探针 + M2 音频采集与 REPL 录控 +
-// M3 编码封装 + M4.1 BLE 基础设施）。
+// M3 编码封装 + M4.1 BLE 基础设施 + M4.3 控制通道命令）。
 // 启动序列：版本打印 → NVS 初始化 → TF 卡探测挂载 → 麦克风初始化（16kHz/16bit/双麦）
-// → BLE 初始化（BCD-XXXX 广播）→ USB 串口 REPL（rec/ls/get/gain/ble）。
+// → BLE 初始化（BCD-XXXX 广播）→ BLE 命令服务（buzz_cmds）→ USB 串口 REPL。
 // 各阶段失败降级：音频失败则 rec 命令提示不可用，BLE 失败仅失能同步功能，
 // REPL 始终启动保证可交互。
 #include "buzz_audio.h"
 #include "buzz_ble.h"
+#include "buzz_cmds.h"
 #include "buzz_recorder.h"
 #include "buzz_sdcard.h"
 #include "console_cmd.h"
 #include "esp_log.h"
+#include "fw_version.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "beecord";
-
-#define FW_VERSION "0.4.0-m4"
 
 void app_main(void)
 {
@@ -41,6 +41,14 @@ void app_main(void)
     ret = buzz_ble_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "BLE init failed (%s), sync disabled", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "BLE device: %s", buzz_ble_device_name());
+        // M4.3：控制通道命令服务（INFO/LIST/FILE_INFO）；失败仅失能 BLE 命令。
+        ret = buzz_cmds_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "BLE commands init failed (%s), sync disabled",
+                     esp_err_to_name(ret));
+        }
     }
 
     if (console_cmd_start_repl() != ESP_OK) {
