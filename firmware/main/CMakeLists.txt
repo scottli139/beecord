@@ -3,6 +3,8 @@ idf_component_register(SRCS "main.c"
                             "proto/buzz_proto.c"
                             "proto/buzz_reasm.c"
                             "audio/ogg_writer.c"
+                            "storage/buzz_sdcard.c"
                        INCLUDE_DIRS "."
                                     "proto"
-                                    "audio")
+                                    "audio"
+                                    "storage")

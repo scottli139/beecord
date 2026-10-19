@@ -55,7 +55,7 @@ firmware/
 │   │   └── crc16.h/.c            #   CRC-16/CCITT-FALSE（帧 CRC 与文件 CRC 共用）
 │   ├── audio/
 │   │   └── ogg_writer.h/.c       # Ogg 页封装（RFC 3533，硬件无关）；采集/编码随 M2/M3
-│   ├── storage/                  # 占位（M2~M3：TF 卡存储）
+│   ├── storage/                  # buzz_sdcard：TF 卡挂载/探测（M1 实测通过）；写入/索引随 M2~M3
 │   ├── ble/                      # 占位（M4：BuzzLink GATT 服务）
 │   └── ui/                       # 占位（M5：表盘与交互）
 └── test_host/                    # 宿主单测（详见下节）
@@ -86,7 +86,7 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 | UI | LVGL 9.6（经 `esp_lvgl_port` 2.9.0 传递引入） | ✅ 依赖锁定，M5 起使用 |
 | Ogg 封装 | 手写 `ogg_writer`（本仓 `main/audio/`，约 300 行） | ✅ 已实现 + 宿主单测 |
 | 音频编码 | Opus（esp-opus / libopus），16kHz 单声道 | 🔜 M3 引入 |
-| 存储 | FATFS + SDSPI（TF 卡） | 🔜 M2 引入（IDF 内置组件） |
+| 存储 | FATFS + SDMMC 1-bit（TF 卡，BSP 实现） | 🔧 M1 已验证挂载探测（16GB/128GB 卡），M2 起完整使用 |
 | BLE | NimBLE（MTU 247） | 🔜 M4 引入（IDF 内置组件） |
 
 ## 里程碑路线图
