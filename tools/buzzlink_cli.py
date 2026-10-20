@@ -44,15 +44,28 @@ FRAME_MAGIC = b"\xbe\xec"
 FRAME_VERSION = 0x01
 FLAG_FRAG = 0x01
 CHANNEL_CONTROL = 0x0001
+CHANNEL_FILE = 0x0002
 TYPE_INFO = 0x03
 TYPE_INFO_GET = 0x04
 TYPE_LIST_REQ = 0x10
 TYPE_LIST_RESP = 0x11
 TYPE_FILE_INFO_REQ = 0x20
 TYPE_FILE_INFO_RESP = 0x21
+TYPE_DL_BEGIN_REQ = 0x30
+TYPE_DL_BEGIN_RESP = 0x31
+TYPE_DL_CHUNK = 0x32
+TYPE_DL_END_REQ = 0x33
+TYPE_DL_END_RESP = 0x34
+TYPE_DL_ABORT = 0x35
 
 COMMAND_TIMEOUT_S = 5.0
+# Section 7: adjacent DL_CHUNK interval must not exceed 10 s.
+CHUNK_TIMEOUT_S = 10.0
 INFO_PUSH_TIMEOUT_S = 3.0
+
+# DL_BEGIN_RESP / DL_END_RESP status bytes (section 5.1).
+DL_STATUS_NAMES = {0: "ok", 1: "not_found", 2: "aborted", 3: "busy",
+                   4: "bad_request", 5: "storage_error", 6: "internal"}
 
 
 class ProtocolError(Exception):
@@ -150,6 +163,21 @@ class BuzzDevice:
         self._stream = FrameStream()
         self._session = 0
 
+    async def _wait_writable(self) -> None:
+        """CoreBluetooth drops write-without-response issued while its TX queue
+        is not ready (e.g. right after subscribing). Poll the platform gate
+        before every write; no-op on backends without it."""
+        backend = getattr(self._client, "_backend", None)
+        peripheral = getattr(backend, "_peripheral", None) if backend is not None else None
+        can_send = getattr(peripheral, "canSendWriteWithoutResponse", None)
+        if can_send is None:
+            return
+        for _ in range(300):  # up to ~3 s
+            if can_send():
+                return
+            await asyncio.sleep(0.01)
+        raise ProtocolError("peripheral not ready for write-without-response")
+
     async def __aenter__(self) -> "BuzzDevice":
         await self._client.start_notify(EVENT_NOTIFY_UUID, self._on_notify)
         return self
@@ -166,6 +194,39 @@ class BuzzDevice:
             self._session = 1
         return self._session
 
+    async def send_raw(self, ftype: int, channel: int, payload: bytes) -> int:
+        """Encode and write one frame; returns the fresh session number."""
+        await self._wait_writable()
+        session = self._next_session()
+        await self._client.write_gatt_char(
+            CMD_WRITE_UUID, encode_frame(ftype, session, channel, payload),
+            response=False)
+        return session
+
+    async def wait_message(self, want_type: int, session: int | None = None,
+                           timeout: float = COMMAND_TIMEOUT_S) -> bytes:
+        """Await one complete message of `want_type` (binary payload returned).
+
+        Raises ProtocolError on timeout. ERROR frames (0x7F) addressed to the
+        awaited session surface as an error instead of being swallowed.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            for msg in list(self._stream.messages):
+                mtype, msession, mchannel, mpayload = msg
+                if mtype == 0x7F and msession == session:
+                    self._stream.messages.remove(msg)
+                    err = decode_json(mpayload, "ERROR")
+                    raise ProtocolError(f"ERROR frame code={err.get('code')} "
+                                        f"message={err.get('message')!r}")
+                if mtype != want_type or (session is not None and msession != session):
+                    continue
+                self._stream.messages.remove(msg)
+                return mpayload
+            await asyncio.sleep(0.01)
+        raise ProtocolError(f"timeout {timeout}s waiting for type 0x{want_type:02X} "
+                            f"session={session}")
+
     async def command(self, ftype: int, channel: int, payload: bytes,
                       resp_type: int) -> tuple[dict, float]:
         """Send one control-channel command and await its JSON response.
@@ -173,10 +234,8 @@ class BuzzDevice:
         Returns (json_dict, elapsed_seconds). Raises ProtocolError on timeout
         or a malformed/ERROR answer.
         """
-        session = self._next_session()
+        session = await self.send_raw(ftype, channel, payload)
         deadline = time.monotonic() + COMMAND_TIMEOUT_S
-        await self._client.write_gatt_char(
-            CMD_WRITE_UUID, encode_frame(ftype, session, channel, payload), response=False)
         started = time.monotonic()
         while time.monotonic() < deadline:
             for msg in list(self._stream.messages):
@@ -274,7 +333,90 @@ async def cmd_fileinfo(dev: BuzzDevice, args: argparse.Namespace) -> None:
         check(key in info, f"missing field {key!r}")
 
 
-COMMANDS = {"info": cmd_info, "list": cmd_list, "fileinfo": cmd_fileinfo}
+def dl_id_payload(file_id: str) -> bytes:
+    raw = file_id.encode()
+    check(0 < len(raw) <= 32, f"file id must be 1..32 bytes, got {len(raw)}")
+    return bytes([len(raw)]) + raw
+
+
+def parse_begin_resp(payload: bytes) -> tuple[int, int, int, int]:
+    """DL_BEGIN_RESP 13B -> (chunkDataLen, totalChunks, size, fileCrc16)."""
+    check(len(payload) == 13, f"DL_BEGIN_RESP must be 13 bytes, got {len(payload)}")
+    chunk_len, total, size, crc16 = struct.unpack_from("<HIIH", payload, 1)
+    check(chunk_len >= 1, f"illegal chunkDataLen={chunk_len}")
+    check(total == (size + chunk_len - 1) // chunk_len,
+          f"totalChunks={total} inconsistent with size={size}/chunkDataLen={chunk_len}")
+    return chunk_len, total, size, crc16
+
+
+async def probe_mid_download(dev: BuzzDevice) -> None:
+    """Section 3.4: control channel must stay responsive during a download."""
+    pong_session = await dev.send_raw(0x01, 0x0000, b"") # PING on link channel
+    await dev.wait_message(0x02, pong_session)
+    info, ms = await dev.command(TYPE_INFO_GET, CHANNEL_CONTROL, b"", TYPE_INFO)
+    check(info.get("model") == "beecord-watch", "INFO_GET mid-download answered garbage")
+    print(f"probe mid-download: PONG + INFO_GET ok [{ms * 1000:.0f} ms]")
+
+
+async def cmd_download(dev: BuzzDevice, args: argparse.Namespace) -> None:
+    id_payload = dl_id_payload(args.id)
+    session = await dev.send_raw(TYPE_DL_BEGIN_REQ, CHANNEL_FILE, id_payload)
+    begin = await dev.wait_message(TYPE_DL_BEGIN_RESP, session)
+    status = begin[0]
+    check(status == 0,
+          f"DL_BEGIN_RESP status={status} ({DL_STATUS_NAMES.get(status, 'unknown')})")
+    chunk_len, total, size, crc_begin = parse_begin_resp(begin)
+    print(f"DL_BEGIN_RESP ok: size={size} chunks={total} chunkDataLen={chunk_len} "
+          f"fileCrc16={crc_begin}")
+
+    started = time.monotonic()
+    buf = bytearray()
+    expected_seq = 0
+    probe_at = total // 2 if args.probe else -1
+    while expected_seq < total:
+        if expected_seq == probe_at:
+            await probe_mid_download(dev)
+        data = await dev.wait_message(TYPE_DL_CHUNK, session, timeout=CHUNK_TIMEOUT_S)
+        (seq,) = struct.unpack_from("<H", data, 0)
+        check(seq == expected_seq, f"seq gap/dup: got {seq}, want {expected_seq}")
+        body = data[2:]
+        want_len = chunk_len if seq < total - 1 else size - (total - 1) * chunk_len
+        check(len(body) == want_len,
+              f"chunk {seq}: len={len(body)}, want {want_len}")
+        buf += body
+        expected_seq += 1
+        if args.abort_after is not None and expected_seq == args.abort_after:
+            abort_session = await dev.send_raw(TYPE_DL_ABORT, CHANNEL_FILE, id_payload)
+            end = await dev.wait_message(TYPE_DL_END_RESP, abort_session)
+            check(len(end) == 3 and end[0] == 2,
+                  f"abort expected status=2, got {end.hex() if end else 'empty'}")
+            print(f"ABORT after {expected_seq} chunks -> DL_END_RESP status=2 ok")
+            return
+
+    elapsed = time.monotonic() - started
+    crc_local = binascii.crc_hqx(bytes(buf), 0xFFFF)
+    check(crc_local == crc_begin,
+          f"CRC mismatch: local={crc_local}, BEGIN={crc_begin}")
+    check(len(buf) == size, f"size mismatch: got {len(buf)}, want {size}")
+
+    end_session = await dev.send_raw(TYPE_DL_END_REQ, CHANNEL_FILE, id_payload)
+    end = await dev.wait_message(TYPE_DL_END_RESP, end_session)
+    check(len(end) == 3, f"DL_END_RESP must be 3 bytes, got {len(end)}")
+    check(end[0] == 0, f"DL_END_RESP status={end[0]} ({DL_STATUS_NAMES.get(end[0])})")
+    (crc_end,) = struct.unpack_from("<H", end, 1)
+    check(crc_end == crc_local, f"CRC mismatch: local={crc_local}, END={crc_end}")
+
+    out_path = args.output or args.id
+    with open(out_path, "wb") as fh:
+        fh.write(buf)
+    kbs = (size / 1024.0) / elapsed if elapsed > 0 else 0.0
+    print(f"downloaded {args.id}: {size} bytes, {total} chunks, "
+          f"CRC {crc_local} three-way match, {elapsed:.2f}s ({kbs:.1f} KB/s)")
+    print(f"saved to {out_path}")
+
+
+COMMANDS = {"info": cmd_info, "list": cmd_list, "fileinfo": cmd_fileinfo,
+            "download": cmd_download}
 
 
 async def run(args: argparse.Namespace) -> None:
@@ -288,7 +430,24 @@ async def run(args: argparse.Namespace) -> None:
     async with BuzzDevice(client) as dev:
         # let the subscription settle so the device sees CCCD write before we talk
         await asyncio.sleep(0.3)
+        await handshake(dev)
         await COMMANDS[args.command](dev, args)
+
+
+async def handshake(dev: BuzzDevice) -> None:
+    """Verify the write path with PING before the real command.
+
+    CoreBluetooth can silently drop the first write-without-response after
+    subscribing; a verified PONG means the link is ready for commands.
+    """
+    for attempt in range(3):
+        try:
+            session = await dev.send_raw(0x01, 0x0000, b"") # PING, link channel
+            await dev.wait_message(0x02, session, timeout=2.0) # PONG
+            return
+        except ProtocolError as exc:
+            print(f"handshake attempt {attempt + 1}: {exc}")
+    raise ProtocolError("handshake failed after 3 attempts")
 
 
 def main(argv: list[str]) -> int:
@@ -304,6 +463,13 @@ def main(argv: list[str]) -> int:
     p_list.add_argument("--limit", type=int, default=None)
     p_info = sub.add_parser("fileinfo", help="query metadata of one recording")
     p_info.add_argument("id", help="file id, e.g. REC_0001.OGG")
+    p_dl = sub.add_parser("download", help="download one recording (section 6.2)")
+    p_dl.add_argument("id", help="file id, e.g. REC_0014.OGG")
+    p_dl.add_argument("-o", "--output", default=None, help="output path (default: ./<id>)")
+    p_dl.add_argument("--abort-after", type=int, default=None,
+                      help="send DL_ABORT after N chunks (expects status=2)")
+    p_dl.add_argument("--probe", action="store_true",
+                      help="send PING + INFO_GET mid-download (section 3.4)")
     args = parser.parse_args(argv[1:])
     try:
         asyncio.run(run(args))

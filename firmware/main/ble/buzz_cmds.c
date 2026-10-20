@@ -8,9 +8,11 @@
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h" // BSP_SD_MOUNT_POINT
 #include "buzz_ble.h"
+#include "buzz_dl.h"
 #include "buzz_gatt.h"
 #include "buzz_server.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_vfs_fat.h"
 #include "file_index.h"
 #include "freertos/FreeRTOS.h"
@@ -49,19 +51,21 @@ typedef struct {
 static buzz_server_t s_server; // 协议服务层实例（内嵌 ~5.5KB 缓冲）
 static QueueHandle_t s_queue;
 static TaskHandle_t s_task;
-static uint32_t s_idle_sec; // 空闲计时（服务任务上下文；入向流量复位，D10）
+static uint32_t s_idle_sec; // 空闲计时（服务任务上下文；入向流量/出向进度复位，D10）
 
 static int server_send_glue(void *ctx, const uint8_t *frame, size_t len);
 static int control_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
                            size_t resp_cap, int *err_code, const char **err_msg);
+static int file_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
+                        size_t resp_cap, int *err_code, const char **err_msg);
 
-// server IO 表：文件通道未注册（M4.4 接手 DL_BEGIN/DL_END/DL_ABORT）
+// server IO 表：文件通道 → buzz_dl（DL_BEGIN/DL_END/DL_ABORT，M4.4）
 static const buzz_server_io_t s_io = {
     .send = server_send_glue,
     .send_ctx = NULL,
     .control = control_handler,
     .control_ctx = NULL,
-    .file = NULL,
+    .file = file_handler,
     .file_ctx = NULL,
 };
 
@@ -250,8 +254,15 @@ static int handle_file_info(const char *json, char *resp, size_t resp_cap, int *
         return -1;
     }
 
+    const int64_t t0 = esp_timer_get_time();
     buzz_file_info_t info;
     const int irc = buzz_file_index_info(id, &info);
+    const int64_t took_ms = (esp_timer_get_time() - t0) / 1000;
+    if (took_ms > 500) {
+        // 慢路径诊断：冷算 CRC（无缓存）的大文件在此留痕；稳态应只有暖缓存
+        ESP_LOGI(TAG, "fileinfo id=%s took %u ms (size=%lu)", id, (unsigned)took_ms,
+                 (unsigned long)info.size);
+    }
     if (irc == BUZZ_INDEX_ERR_NOT_FOUND) {
         return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_NOT_FOUND,
                                      "file not found");
@@ -324,9 +335,17 @@ static int server_send_glue(void *ctx, const uint8_t *frame, size_t len)
     const int rc = buzz_gatt_notify_send(frame, (uint16_t)len);
     if (rc != 0) {
         ESP_LOGD(TAG, "notify failed rc=%d len=%u", rc, (unsigned)len);
-        return -1; // server 层据此报 BUZZ_SERVER_ERR_SEND（断连/背压等，归服务任务善后）
+        return -1; // server 层据此报 BUZZ_SERVER_ERR_SEND（断连/背压同型，pump 按连接态区分）
     }
     return 0;
+}
+
+// ---------- 文件通道（→ buzz_dl，M4.4） ----------
+
+static int file_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
+                        size_t resp_cap, int *err_code, const char **err_msg)
+{
+    return buzz_dl_handle_request(ctx, req, resp, resp_cap, err_code, err_msg);
 }
 
 // ---------- server 复位与事件处理（服务任务上下文） ----------
@@ -369,6 +388,7 @@ static void handle_event(buzz_ble_evt_t evt)
         ESP_LOGI(TAG, "peer connected, server state reset");
         break;
     case BUZZ_BLE_EVT_DISCONNECT:
+        buzz_dl_cancel(); // 断连立即作废未完成的传输（§7：全部未完成命令作废）
         server_reset();
         ESP_LOGI(TAG, "peer disconnected, server state reset");
         break;
@@ -433,20 +453,37 @@ static void buzz_cmds_task(void *arg)
     buzz_cmds_item_t item;
     ESP_LOGI(TAG, "service task started");
     for (;;) {
-        if (xQueueReceive(s_queue, &item, pdMS_TO_TICKS(1000)) == pdPASS) {
+        // 下载进行中用 2ms 短滴答做背压轮询续发（TX 池由控制器完成包释放后
+        // 重试入队）；平时 1s 滴答兼作空闲断开计时（D10）。
+        const TickType_t wait =
+            buzz_dl_busy() ? pdMS_TO_TICKS(2) : pdMS_TO_TICKS(1000);
+        if (xQueueReceive(s_queue, &item, wait) == pdPASS) {
             if (item.kind == BUZZ_CMDS_ITEM_CMD) {
                 s_idle_sec = 0; // 有入向流量即复位空闲计时（D10）
                 const int rc = buzz_server_feed(&s_server, item.data, item.len);
                 if (rc != BUZZ_OK) {
                     ESP_LOGW(TAG, "server feed rc=%d", rc);
                 }
+                // 命令处理完立即泵推流：DL_BEGIN 受理后马上出首块（流控在 pump 内）
+                const int sent = buzz_dl_pump();
+                if (sent != 0) {
+                    s_idle_sec = 0; // 出向进度同样复位空闲计时（D10）
+                }
             } else {
                 handle_event((buzz_ble_evt_t)item.data[0]);
             }
             continue;
         }
-        // 队列空转 1s：空闲断开计时（D10）。注意：M4.4 下载推流为纯出向流量，
-        // 届时须以 NOTIFY_TX/出向进度一并复位，避免长下载被误断。
+        if (buzz_dl_busy()) {
+            // 传输即活跃（D10）：不计空闲；泵一次尝试续发（ENOMEM 时本轮 0 进展，
+            // 下个 2ms 滴答再试）。
+            s_idle_sec = 0;
+            const int sent = buzz_dl_pump();
+            if (sent != 0) {
+                s_idle_sec = 0;
+            }
+            continue;
+        }
         if (!buzz_ble_is_connected()) {
             s_idle_sec = 0;
             continue;
@@ -477,6 +514,10 @@ esp_err_t buzz_cmds_init(void)
         return ESP_FAIL;
     }
     buzz_server_init(&s_server, &s_io);
+    if (buzz_dl_init(&s_server) != 0) {
+        ESP_LOGE(TAG, "buzz_dl init failed");
+        return ESP_FAIL;
+    }
 
     s_queue = xQueueCreate(BUZZ_CMDS_Q_LEN, sizeof(buzz_cmds_item_t));
     if (s_queue == NULL) {

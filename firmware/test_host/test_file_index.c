@@ -28,14 +28,26 @@ typedef struct {
 
 static fake_file_t g_fs[FAKE_FS_MAX];
 static int g_fs_count;
+static long g_read_calls; // read_at 调用计数（CRC 缓存行为断言用）
+static long g_read_bytes;
 
 static void fs_reset(void)
 {
     g_fs_count = 0;
+    g_read_calls = 0;
+    g_read_bytes = 0;
 }
 
+// 同名覆盖（构造"同名不同 size"场景的测试工具）
 static void fs_add(const char *name, const uint8_t *data, uint32_t size)
 {
+    for (int i = 0; i < g_fs_count; i++) {
+        if (strcmp(g_fs[i].name, name) == 0) {
+            g_fs[i].data = data;
+            g_fs[i].size = size;
+            return;
+        }
+    }
     if (g_fs_count >= FAKE_FS_MAX) {
         fprintf(stderr, "fake fs full\n");
         return;
@@ -61,6 +73,7 @@ static long fake_read_at(void *ctx, void *fh, uint32_t off, uint8_t *buf, uint32
 {
     (void)ctx;
     fake_file_t *f = fh;
+    g_read_calls++;
     if (off >= f->size) {
         return 0;
     }
@@ -68,6 +81,7 @@ static long fake_read_at(void *ctx, void *fh, uint32_t off, uint8_t *buf, uint32
     if (len > avail) {
         len = avail;
     }
+    g_read_bytes += (long)len;
     memcpy(buf, f->data + off, len);
     return (long)len;
 }
@@ -474,6 +488,102 @@ static void test_index_overflow_reports_true_total(void)
     CHECK_EQ_INT(count, 4u); // 可用条目截在 128：切片 [124,128)
 }
 
+// ---------- CRC 缓存（FILE_INFO / DL_BEGIN 共享） ----------
+
+// 冷查询（未命中）应读完整个文件；热查询（命中）只读解析所需窗口
+static void test_crc_cache_hit_skips_full_read(void)
+{
+    fixture();
+    make_wav(20000u);
+    fs_add("REC_0001.WAV", g_wav, g_wav_len);
+    buzz_file_info_t info;
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.WAV", &info), BUZZ_OK);
+    const long cold_bytes = g_read_bytes;
+    CHECK(cold_bytes >= (long)g_wav_len); // 冷 = 头窗口 + 全文件 CRC
+    const uint16_t crc_cold = info.crc16;
+    const long calls_cold = g_read_calls;
+
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.WAV", &info), BUZZ_OK);
+    CHECK_EQ_INT((int)info.crc16, (int)crc_cold); // 命中值一致
+    CHECK(g_read_bytes - cold_bytes < (long)g_wav_len); // 未再读全文件
+    CHECK(g_read_calls - calls_cold < calls_cold);      // 且读次数更少
+}
+
+static void test_crc_cache_size_change_invalidates(void)
+{
+    fixture();
+    make_wav(100u);
+    fs_add("REC_0001.WAV", g_wav, g_wav_len);
+    buzz_file_info_t info;
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.WAV", &info), BUZZ_OK); // 入缓存
+    const uint16_t crc_old = info.crc16;
+
+    static uint8_t wav2[44 + 5000];
+    CHECK_EQ_INT(buzz_wav_build_header(wav2, sizeof(wav2), 5000u), 44);
+    memset(wav2 + 44, 0x77, 5000u);
+    fs_add("REC_0001.WAV", wav2, sizeof(wav2)); // 同名不同 size（写一次不改性被破坏场景）
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.WAV", &info), BUZZ_OK);
+    CHECK_EQ_INT(info.size, sizeof(wav2));
+    CHECK((int)info.crc16 != (int)crc_old); // 缓存未误命中
+    CHECK_EQ_INT((int)info.crc16, (int)buzz_crc16(wav2, sizeof(wav2)));
+    // 新 key 已入库：再次查询只剩 ~1KB 头窗口读（无整文件 CRC 读）
+    const long bytes = g_read_bytes;
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.WAV", &info), BUZZ_OK);
+    CHECK_EQ_INT((int)info.crc16, (int)buzz_crc16(wav2, sizeof(wav2)));
+    CHECK(g_read_bytes - bytes <= 1024L);
+}
+
+static void test_crc_cache_shared_entry_point(void)
+{
+    fixture();
+    make_wav(50u);
+    fs_add("REC_0001.WAV", g_wav, g_wav_len);
+    uint16_t crc = 0;
+    CHECK_EQ_INT(buzz_file_index_crc16("REC_0001.WAV", g_wav_len, &crc), BUZZ_OK);
+    CHECK_EQ_INT((int)crc, (int)buzz_crc16(g_wav, g_wav_len));
+    CHECK(g_read_bytes >= (long)g_wav_len); // 冷：全读
+    const long bytes = g_read_bytes;
+    uint16_t crc2 = 0;
+    CHECK_EQ_INT(buzz_file_index_crc16("REC_0001.WAV", g_wav_len, &crc2), BUZZ_OK);
+    CHECK_EQ_INT((int)crc2, (int)crc);
+    CHECK_EQ_INT(g_read_bytes, bytes); // 热：零读
+    // size 参数与实不符 → NOT_FOUND（key 不成立）
+    CHECK_EQ_INT(buzz_file_index_crc16("REC_0001.WAV", g_wav_len + 1u, &crc2),
+                 BUZZ_INDEX_ERR_NOT_FOUND);
+    CHECK_EQ_INT(buzz_file_index_crc16("REC_9999.OGG", 0u, &crc2),
+                 BUZZ_INDEX_ERR_NOT_FOUND);
+    // io 访问器：buzz_dl 经此取注入表直接读文件（非空且回调可用）
+    const buzz_file_io_t *io = buzz_file_index_io();
+    CHECK(io != NULL);
+    if (io != NULL) {
+        void *fh = io->open(io->ctx, "REC_0001.WAV");
+        CHECK(fh != NULL);
+        if (fh != NULL) {
+            io->close(io->ctx, fh);
+        }
+    }
+}
+
+static void test_crc_cache_eviction_round_robin(void)
+{
+    static char names[33][13];
+    fixture();
+    make_wav(20u); // 共享内容即可：key 按名字区分
+    for (int i = 0; i < 33; i++) {
+        snprintf(names[i], sizeof(names[i]), "REC_%04d.WAV", i + 1);
+        fs_add(names[i], g_wav, g_wav_len);
+        uint16_t crc = 0;
+        CHECK_EQ_INT(buzz_file_index_crc16(names[i], g_wav_len, &crc), BUZZ_OK);
+    } // 容量 32：第 33 项覆盖最旧槽（name_0）
+    const long bytes = g_read_bytes;
+    uint16_t crc = 0;
+    CHECK_EQ_INT(buzz_file_index_crc16(names[0], g_wav_len, &crc), BUZZ_OK); // miss
+    CHECK(g_read_bytes > bytes);
+    const long bytes2 = g_read_bytes;
+    CHECK_EQ_INT(buzz_file_index_crc16(names[32], g_wav_len, &crc), BUZZ_OK); // hit
+    CHECK_EQ_INT(g_read_bytes, bytes2);
+}
+
 int main(void)
 {
     RUN_TEST(test_filters_prefix_and_ext);
@@ -495,5 +605,9 @@ int main(void)
     RUN_TEST(test_crc16_beecord_vector);
     RUN_TEST(test_corrupt_headers_tolerated);
     RUN_TEST(test_index_overflow_reports_true_total);
+    RUN_TEST(test_crc_cache_hit_skips_full_read);
+    RUN_TEST(test_crc_cache_size_change_invalidates);
+    RUN_TEST(test_crc_cache_shared_entry_point);
+    RUN_TEST(test_crc_cache_eviction_round_robin);
     return test_report();
 }

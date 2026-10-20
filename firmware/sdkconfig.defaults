@@ -1,6 +1,10 @@
 # 目标芯片：开发板主控 ESP32-S3
 CONFIG_IDF_TARGET="esp32s3"
 
+# CPU 240MHz（M1 定案；sdkconfig 重建后默认 160MHz，SD 1-bit 读与 Opus 定点
+# 编码实测明显劣化，M4.4 大文件 CRC 冷算 0.8MB/s → 恢复 240MHz）
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
 # Flash 大小：M1 实测 32MB（GigaDevice，esptool flash_id 确认）。
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
 
@@ -32,3 +36,12 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
+
+# BLE 下载吞吐（M4.4 实测定案）：控制器 ACL TX 缓冲全量静态化（默认 0 =
+# 全动态分配，notify 发送速率被压到 ~1.4 包/连接事件 ≈ 20 KB/s）；
+# CE 长度用乐鑫自定义算法（默认 ORIG 提前结束连接事件，空口填不满）；
+# msys mbuf 池加深（官方吞吐示例同款 50+8，抗突发排空）。
+# 依据：M4.4 报告吞吐实测与 ESP-IDF 吞吐调优指引。
+CONFIG_BT_CTRL_BLE_STATIC_ACL_TX_BUF_NB=12
+CONFIG_BT_CTRL_CE_LENGTH_TYPE_SD=y
+CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=50

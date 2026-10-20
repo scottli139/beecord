@@ -30,10 +30,10 @@ static const char *TAG = "buzz_ble";
 #define DEVICE_NAME_FMT "BCD-%02X%02X"
 static char s_device_name[sizeof("BCD-FFFF")];
 
-// 建议连接参数（BUZZLINK.md §2.1），1.25ms / 10ms 单位：
-// interval 15~30ms、latency 0、supervision timeout 2s。
-#define CONN_ITVL_MIN_1_25MS 12u // 15 ms
-#define CONN_ITVL_MAX_1_25MS 24u // 30 ms
+// 建议连接参数（BUZZLINK.md §2.1）；对端可拒绝/覆盖，不阻塞验收。
+// M4.4 实测：7.5ms 被 macOS 拒绝（维持 15ms），11.25ms 为 Apple 实际下限。
+#define CONN_ITVL_MIN_1_25MS 9u  // 11.25 ms
+#define CONN_ITVL_MAX_1_25MS 12u // 15 ms
 #define CONN_LATENCY 0u
 #define CONN_SUPERVISION_TIMEOUT_10MS 200u // 2 s
 
@@ -117,13 +117,21 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
         s_notify_subscribed = false;
         if (ble_gap_conn_find(s_conn_handle, &desc) == 0) {
             ESP_LOGI(TAG,
-                     "connected handle=%" PRIu16 " peer=%02X:%02X:%02X:%02X:%02X:%02X",
+                     "connected handle=%" PRIu16 " peer=%02X:%02X:%02X:%02X:%02X:%02X "
+                     "itvl=%.1fms latency=%u",
                      s_conn_handle, (unsigned)desc.peer_id_addr.val[5],
                      (unsigned)desc.peer_id_addr.val[4], (unsigned)desc.peer_id_addr.val[3],
                      (unsigned)desc.peer_id_addr.val[2], (unsigned)desc.peer_id_addr.val[1],
-                     (unsigned)desc.peer_id_addr.val[0]);
+                     (unsigned)desc.peer_id_addr.val[0], desc.conn_itvl * 1.25,
+                     (unsigned)desc.conn_latency);
         } else {
             ESP_LOGI(TAG, "connected handle=%" PRIu16, s_conn_handle);
+        }
+        uint8_t phy_tx = 0;
+        uint8_t phy_rx = 0;
+        if (ble_gap_read_le_phy(s_conn_handle, &phy_tx, &phy_rx) == 0) {
+            ESP_LOGI(TAG, "conn phy tx=%u rx=%u (2=2M)", (unsigned)phy_tx,
+                     (unsigned)phy_rx);
         }
 
         // 建议连接参数（BUZZLINK.md §2.1）；对端可拒绝/覆盖，不阻塞验收。
@@ -136,6 +144,13 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
         rc = ble_gap_update_params(s_conn_handle, &upd);
         if (rc != 0) {
             ESP_LOGI(TAG, "conn param update request rc=%d (peer may override)", rc);
+        }
+
+        // DLE（吞吐关键）：协商 LL PDU 至规范上限 251B/2120µs，否则大 notify
+        // 按默认 27B 碎片切分，空口效率掉一个数量级。
+        rc = ble_gap_set_data_len(s_conn_handle, 251, 2120);
+        if (rc != 0) {
+            ESP_LOGI(TAG, "set data len rc=%d (controller may reject)", rc);
         }
         buzz_ble_emit(BUZZ_BLE_EVT_CONNECT);
         break;
@@ -156,6 +171,12 @@ static int buzz_ble_gap_event(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "MTU updated handle=%" PRIu16 " mtu=%" PRIu16, event->mtu.conn_handle,
                  event->mtu.value);
         buzz_ble_emit(BUZZ_BLE_EVT_MTU);
+        break;
+
+    case BLE_GAP_EVENT_DATA_LEN_CHG:
+        ESP_LOGI(TAG, "data len changed tx=%u/%uus rx=%u/%uus",
+                 event->data_len_chg.max_tx_octets, event->data_len_chg.max_tx_time,
+                 event->data_len_chg.max_rx_octets, event->data_len_chg.max_rx_time);
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:

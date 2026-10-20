@@ -24,7 +24,11 @@ static buzz_file_entry_t s_ids[BUZZ_INDEX_MAX_FILES];
 
 static uint8_t s_chunk[4096];           // OGG 尾扫块
 static uint8_t s_page_hdr[27u + 255u]; // OGG 候选页头 + 段表
-static uint8_t s_io_buf[BUZZ_WAV_SCAN_CAP]; // 流式 CRC 块 / WAV 头扫描窗口
+
+// 流式 CRC 读缓冲：16 KB 大块读摊薄 FAT/SD 每簇开销（512B 实测 ~4 MB/s）。
+// 兼作 WAV 头扫描窗口（BUZZ_WAV_SCAN_CAP 仅取前 1 KB）。
+#define BUZZ_CRC_IO_BUF_LEN 16384u
+static uint8_t s_io_buf[BUZZ_CRC_IO_BUF_LEN];
 
 // ---------- 小端读取 ----------
 
@@ -217,6 +221,51 @@ static int file_crc16(void *fh, uint32_t fsize, uint16_t *out)
     return BUZZ_OK;
 }
 
+// ---------- RAM CRC 缓存（FILE_INFO 与 DL_BEGIN 共享） ----------
+//
+// 依据：录音文件写一次不改——recorder 只新建递增名文件、从不改写已有文件，
+// 同名同 size 即同内容，故 (id, size) 作 key 安全。容量 32 项静态小表，线性
+// 查找（N 小、调用低频）；写满后顺序覆盖最旧槽。M6 若引入文件修改/删除路径，
+// 须同步失效对应项（当前不存在该路径）。
+
+#define BUZZ_CRC_CACHE_CAP 32u
+
+typedef struct {
+    char id[BUZZ_FILE_ID_MAX_LEN + 1u];
+    uint32_t size;
+    uint16_t crc16;
+} buzz_crc_cache_slot_t;
+
+static buzz_crc_cache_slot_t s_crc_cache[BUZZ_CRC_CACHE_CAP];
+static uint32_t s_crc_cache_len; // 已占用槽数（顺序填充，写满后由 next 覆盖）
+static uint32_t s_crc_cache_next;
+
+static bool crc_cache_lookup(const char *id, uint32_t size, uint16_t *out)
+{
+    for (uint32_t i = 0; i < s_crc_cache_len; i++) {
+        if (s_crc_cache[i].size == size && strcmp(s_crc_cache[i].id, id) == 0) {
+            *out = s_crc_cache[i].crc16;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void crc_cache_store(const char *id, uint32_t size, uint16_t crc)
+{
+    uint32_t slot;
+    if (s_crc_cache_len < BUZZ_CRC_CACHE_CAP) {
+        slot = s_crc_cache_len++;
+    } else {
+        slot = s_crc_cache_next;
+        s_crc_cache_next = (s_crc_cache_next + 1u) % BUZZ_CRC_CACHE_CAP;
+    }
+    memset(&s_crc_cache[slot], 0, sizeof(s_crc_cache[slot]));
+    strncpy(s_crc_cache[slot].id, id, BUZZ_FILE_ID_MAX_LEN);
+    s_crc_cache[slot].size = size;
+    s_crc_cache[slot].crc16 = crc;
+}
+
 // ---------- 打开并解析（list 切片与 info 共用） ----------
 
 static void *open_by_id(const char *id)
@@ -299,6 +348,8 @@ int buzz_file_index_init(const buzz_file_io_t *io)
         return BUZZ_ERR_NULL;
     }
     s_io = *io;
+    s_crc_cache_len = 0; // init 复位缓存（启动期一次绑定；测试可确定性重放）
+    s_crc_cache_next = 0;
     s_ready = true;
     return BUZZ_OK;
 }
@@ -373,9 +424,12 @@ int buzz_file_index_info(const char *id, buzz_file_info_t *out)
         goto done;
     }
     out->size = (uint32_t)fsize;
-    ret = file_crc16(fh, (uint32_t)fsize, &out->crc16);
-    if (ret != BUZZ_OK) {
-        goto done;
+    if (!crc_cache_lookup(id, out->size, &out->crc16)) { // 命中零 IO，未命中流式算
+        ret = file_crc16(fh, (uint32_t)fsize, &out->crc16);
+        if (ret != BUZZ_OK) {
+            goto done;
+        }
+        crc_cache_store(id, out->size, out->crc16);
     }
     if (is_ogg_name(id)) {
         strcpy(out->format, "ogg-opus"); // Opus in Ogg（RFC 7845）
@@ -387,6 +441,42 @@ int buzz_file_index_info(const char *id, buzz_file_info_t *out)
         wav_meta(fh, (uint32_t)fsize, &out->sampleRate, &out->channels, &out->durationMs);
     }
 done:
+    s_io.close(s_io.ctx, fh);
+    return ret;
+}
+
+const buzz_file_io_t *buzz_file_index_io(void)
+{
+    return s_ready ? &s_io : NULL;
+}
+
+int buzz_file_index_crc16(const char *id, uint32_t size, uint16_t *out)
+{
+    if (!s_ready || id == NULL || out == NULL) {
+        return BUZZ_ERR_NULL;
+    }
+    if (strchr(id, '/') != NULL || strchr(id, '\\') != NULL) {
+        return BUZZ_ERR_ARG;
+    }
+    if (crc_cache_lookup(id, size, out)) {
+        return BUZZ_OK;
+    }
+    void *fh = open_by_id(id);
+    if (fh == NULL) {
+        return BUZZ_INDEX_ERR_NOT_FOUND;
+    }
+    int ret = BUZZ_OK;
+    const long fsize = s_io.size(s_io.ctx, fh);
+    if (fsize < 0) {
+        ret = BUZZ_INDEX_ERR_IO;
+    } else if ((uint32_t)fsize != size) {
+        ret = BUZZ_INDEX_ERR_NOT_FOUND; // size 与实不符：视为该 key 不存在
+    } else {
+        ret = file_crc16(fh, (uint32_t)fsize, out);
+        if (ret == BUZZ_OK) {
+            crc_cache_store(id, size, *out);
+        }
+    }
     s_io.close(s_io.ctx, fh);
     return ret;
 }

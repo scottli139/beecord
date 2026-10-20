@@ -106,6 +106,18 @@ int buzz_file_index_info(const char *id, buzz_file_info_t *out);
 // 扩展名（扩展名大小写不敏感）且长度 ≤ BUZZ_FILE_ID_MAX_LEN。
 bool buzz_file_index_id_match(const char *name);
 
+// 返回 init 时绑定的 io 表（指向模块静态存储）。buzz_dl 下载推流经此直接
+// 读文件，保持"所有文件访问注入"的单一来源；未 init 返回 NULL。
+const buzz_file_io_t *buzz_file_index_io(void);
+
+// 整文件 CRC 计算/取缓存（FILE_INFO 与 DL_BEGIN 共享入口）：
+// 先查 RAM 缓存（key = id + size，依据：录音文件写一次不改——recorder 只
+// 新建递增名文件、从不改写已有文件；同名同 size 即同内容），命中零 IO；
+// 未命中打开文件流式计算并入库。缓存容量 32 项（BUZZ_CRC_CACHE_CAP），
+// 写满后顺序覆盖最旧槽。
+// 返回 BUZZ_OK / BUZZ_ERR_NULL / BUZZ_INDEX_ERR_NOT_FOUND / BUZZ_INDEX_ERR_IO。
+int buzz_file_index_crc16(const char *id, uint32_t size, uint16_t *out);
+
 #ifdef __cplusplus
 }
 #endif
