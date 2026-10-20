@@ -45,3 +45,24 @@ CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
 CONFIG_BT_CTRL_BLE_STATIC_ACL_TX_BUF_NB=12
 CONFIG_BT_CTRL_CE_LENGTH_TYPE_SD=y
 CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=50
+
+# LVGL（M5.1）：
+# - 快照组件：REPL `ui snap` 截图手段（lv_snapshot_take）。
+# - malloc 走 C 库（esp heap）：IDF 在 PSRAM 启用时 malloc 优先内部 RAM、
+#   耗尽自动落 8MB PSRAM；避免 LVGL 内置 64KB 池与音频/BLE 争内部 RAM，
+#   快照 ~412KB 缓冲因此可落 PSRAM。
+# - LVGL 行缓冲 40 行（BSP 该板型未暴露 PSRAM 缓冲开关，缓冲在内部 RAM：
+#   100 行 ≈82KB → 40 行 ≈33KB，余量留给 BLE/音频）。
+CONFIG_LV_USE_SNAPSHOT=y
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_BSP_DISPLAY_LVGL_BUF_HEIGHT=40
+
+# LVGL 日志（M5.1 调试期临时开启：定位 ui snap 失败原因，定位后收回）
+# CONFIG_LV_USE_LOG is not set（M5.1 定位崩溃：疑似 LVGL 日志路径触发，二分中）
+# CONFIG_LV_LOG_LEVEL_WARN 暂不启用
+
+# 注：REPL 任务栈不能在 sdkconfig 调——ESP_CONSOLE_REPL_CONFIG_DEFAULT() 里
+# 写死 4096，已在 console_cmd.c 里显式覆盖为 16KB（`ui snap` 快照渲染需要）。
+
+# lv_font_conv 生成字体默认压缩位图，不开则全部文字不渲染（M5.1 实测）
+CONFIG_LV_USE_FONT_COMPRESSED=y

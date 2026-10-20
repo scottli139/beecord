@@ -2,4 +2,4 @@
 // 共用，避免两处漂移。
 #pragma once
 
-#define FW_VERSION "0.4.0-m4"
+#define FW_VERSION "0.5.0-m5"

@@ -1,0 +1,2 @@
+# 生成物与字体源文件均不入库（生成物在 main/ui/fonts/，源文件自动下载到 vendor/）
+vendor/

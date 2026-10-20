@@ -13,6 +13,7 @@
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
 #include "esp_check.h"
 #include "esp_console.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 
@@ -242,6 +243,16 @@ static int cmd_ble(int argc, char **argv)
     return 0;
 }
 
+static int cmd_heap(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    printf("internal free: %" PRIu32 " B\n", esp_get_free_internal_heap_size());
+    printf("total free:    %" PRIu32 " B (含 PSRAM)\n", esp_get_free_heap_size());
+    printf("min internal:  %" PRIu32 " B\n", esp_get_minimum_free_heap_size());
+    return 0;
+}
+
 // ---------- REPL 启动 ----------
 
 esp_err_t console_cmd_start_repl(void)
@@ -254,6 +265,9 @@ esp_err_t console_cmd_start_repl(void)
     // 不能自己先调（重复初始化返回 ESP_ERR_INVALID_STATE 导致 repl create failed）
     esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     repl_cfg.prompt = "beecord> ";
+    // M5.1：`ui snap` 的 LVGL 快照渲染（lv_draw_dispatch）在本任务上下文执行，
+    // 默认 4KB 栈溢出（实测 stack overflow in task console_repl）→ 16KB
+    repl_cfg.task_stack_size = 16384;
     esp_console_dev_usb_serial_jtag_config_t dev_cfg =
         ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
     esp_console_repl_t *repl = NULL;
@@ -290,11 +304,18 @@ esp_err_t console_cmd_start_repl(void)
         .hint = NULL,
         .func = &cmd_ble,
     };
+    const esp_console_cmd_t heap_cmd = {
+        .command = "heap",
+        .help = "堆余量（内部 RAM / 含 PSRAM / 历史最小内部）",
+        .hint = NULL,
+        .func = &cmd_heap,
+    };
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rec_cmd), TAG, "register rec failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ls_cmd), TAG, "register ls failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&get_cmd), TAG, "register get failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&gain_cmd), TAG, "register gain failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ble_cmd), TAG, "register ble failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&heap_cmd), TAG, "register heap failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

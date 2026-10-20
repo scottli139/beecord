@@ -15,9 +15,27 @@ idf_component_register(SRCS "main.c"
                             "ble/buzz_server.c"
                             "ble/buzz_cmds.c"
                             "ble/buzz_dl.c"
+                            "ui/theme.c"
+                            "ui/ui_task.c"
+                            "ui/scr_home.c"
+                            "ui/scr_shell.c"
+                            "ui/screen_pwr.c"
+                            "ui/ui_snapshot.c"
+                            "ui/ui_console.c"
+                            "ui/fonts/ui_font_cjk10.c"
+                            "ui/fonts/ui_font_cjk11.c"
+                            "ui/fonts/ui_font_cjk13.c"
+                            "ui/fonts/ui_font_cjk15b.c"
+                            "ui/fonts/ui_font_num56.c"
+                            "ui/fonts/ui_font_num64.c"
                             "console_cmd.c"
                        INCLUDE_DIRS "."
                                     "proto"
                                     "audio"
                                     "storage"
-                                    "ble")
+                                    "ble"
+                                    "ui")
+
+# lv_font_conv 生成字体按 LV_LVGL_H_INCLUDE_SIMPLE 选择 include 风格：
+# 定义后走 #include "lvgl.h"（本工程 LVGL 组件的 simple 风格，BSP/esp_lvgl_port 同款）
+target_compile_definitions(${COMPONENT_LIB} PUBLIC LV_LVGL_H_INCLUDE_SIMPLE)

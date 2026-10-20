@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "fw_version.h"
 #include "nvs_flash.h"
+#include "ui/ui_task.h"
 
 static const char *TAG = "beecord";
 
@@ -49,6 +50,13 @@ void app_main(void)
             ESP_LOGE(TAG, "BLE commands init failed (%s), sync disabled",
                      esp_err_to_name(ret));
         }
+    }
+
+    // M5.1：display + LVGL + 手表 UI 框架（失败仅无 UI，REPL 仍可用；
+    // SD 挂载失败现状行为不变——格式化弹窗是 M5.5 的事）
+    ret = ui_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "UI init failed (%s), headless mode", esp_err_to_name(ret));
     }
 
     if (console_cmd_start_repl() != ESP_OK) {
