@@ -180,6 +180,16 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
 同步 ≥ 3 个不同长度录音（含 >10min）→ CRC 全过 → 断连恢复 → 连续同步 30min 无异常 →
 记录吞吐（KB/s）与失败率到里程碑记录。
 
+实机联调工具（M4 落地，2026-10-20）：
+
+- `tools/ble_smoke.py`：BLE 冒烟（发现/三 UUID/写入/订阅，10 项 PASS）；
+- `tools/buzzlink_cli.py`：协议级验收一线手段——`info`/`list`/`fileinfo`/`download`
+  （三方 CRC 比对 + 落盘 + 吞吐打印，`--abort-after N` 异常路径，`--probe` 下载中并行 PING）；
+- Studio 真 BLE 模式：`defaults write com.beeuc.beecord.studio settings.transportMode ble`
+  （缺省 loopback 连 BuzzLinkSim）；实机验证后记得按需切回；
+- 串口 REPL `ble` 命令：设备侧连接态/MTU/订阅态查询；
+- 注意 macOS 终端/Studio 各自需已授蓝牙权限；串口脚本须 `dtr=False`（开port复位芯片）。
+
 ## 8. 测试数据纪律
 
 - 测试音频一律**合成样本**（脚本生成 16kHz 单声道 Ogg Opus：`tools/make_sim_samples.sh`，
