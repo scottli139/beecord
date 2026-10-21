@@ -244,9 +244,9 @@ static void test_decay_floors_at_zero(void)
     memset(s_pcm, 0, sizeof(s_pcm));
     for (int i = 0; i < 40; i++) {
         uint8_t lvl = rec_meter_feed(&m, s_pcm, FRAME_N);
-        CHECK((int)lvl >= 0); // 无符号下溢检查：恒 ≥0
+        CHECK(lvl <= REC_METER_LEVEL_MAX); // 下溢会绕回 255 超界（真 gcc 会报恒真比较，改正向断言）
     }
-    CHECK(m.level == 0);
+    CHECK(m.level == 0); // 贴底归零：过零下溢会绕回大数，这里必然不等于 0
 }
 
 static void test_negative_full_scale_energy(void)
