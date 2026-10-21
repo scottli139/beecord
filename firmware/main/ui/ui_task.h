@@ -42,6 +42,8 @@ void ui_debug_touch_dump(void);
 
 // 页面导航 API（供 scr_* / REPL 调试使用）
 void ui_nav_to_home(void);   // 回表盘主页（tile 0,0）
+// 调试导航（REPL `ui tile`）：跳到任意 tile（col 0..2，row 0 主页行 / 1 设置行）
+void ui_nav_to_tile(uint8_t col, uint8_t row);
 bool ui_is_main_screen_active(void);
 
 #ifdef __cplusplus

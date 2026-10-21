@@ -11,15 +11,19 @@
 #include <sys/stat.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
+#include "driver/i2c_master.h"
 #include "esp_check.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "audio/buzz_audio.h"
 #include "audio/buzz_recorder.h"
 #include "ble/buzz_ble.h"
+#include "sys/keyd_gpio.h"
 
 static const char *TAG = "console";
 
@@ -253,6 +257,78 @@ static int cmd_heap(int argc, char **argv)
     return 0;
 }
 
+// ---------- i2cscan（M5.2：PWR 键扩展器候选探测） ----------
+
+// 共享总线已知设备（HARDWARE.md）：触控 FT5x06、AXP2101、RTC PCF85063、
+// ES8311、ES7210、IMU；扫出表外未知地址即 PWR 扩展器候选。
+static const struct {
+    uint8_t addr;
+    const char *name;
+} s_i2c_known[] = {
+    {0x18, "ES8311?"}, // 0x18/0x30 为 ES8311 地址绑带两档（0x18 实测应答、0x30 无）
+    {0x30, "ES8311"},
+    {0x34, "AXP2101"},
+    {0x38, "FT5x06 触控"},
+    {0x40, "ES7210"},
+    {0x51, "PCF85063 RTC"},
+    {0x6A, "QMI8658C IMU?"},
+    {0x6B, "QMI8658C IMU?"},
+};
+
+static int cmd_i2cscan(int argc, char **argv)
+{
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    if (bus == NULL) {
+        printf("I2C 总线未初始化\n");
+        return 1;
+    }
+    // 单地址调试模式：`i2cscan <addr10>` 探单个地址并回显精确错误码
+    // （区分 NACK=未应答 / TIMEOUT=总线被拉死；PWR 验证排查用）
+    if (argc >= 2) {
+        int addr = atoi(argv[1]);
+        if (addr < 0x08 || addr > 0x77) {
+            printf("地址须为 0x08~0x77 的十进制数\n");
+            return 1;
+        }
+        esp_err_t ret = i2c_master_probe(bus, (uint8_t)addr, pdMS_TO_TICKS(200));
+        printf("probe 0x%02X → %s\n", addr, esp_err_to_name(ret));
+        return 0;
+    }
+    // i2c_master_probe 对每个无应答地址都会打一条 timeout 错误日志（刷屏），
+    // 扫描期间临时静音该组件日志，扫完恢复默认级别
+    esp_log_level_t saved = esp_log_level_get("i2c.master");
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+    printf("扫描共享 I2C 总线 (0x08-0x77)...\n");
+    int found = 0;
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+        if (i2c_master_probe(bus, addr, pdMS_TO_TICKS(200)) == ESP_OK) {
+            const char *name = NULL;
+            for (size_t i = 0; i < sizeof(s_i2c_known) / sizeof(s_i2c_known[0]); i++) {
+                if (s_i2c_known[i].addr == addr) {
+                    name = s_i2c_known[i].name;
+                    break;
+                }
+            }
+            printf("  0x%02X  %s%s\n", addr, name != NULL ? name : "未知设备",
+                   name != NULL ? "" : "  <-- 扩展器候选（PWR 检测备选路径）");
+            found++;
+        }
+    }
+    esp_log_level_set("i2c.master", saved);
+    printf("共 %d 个应答地址\n", found);
+    return 0;
+}
+
+// ---------- keylvl（M5.2：PWR 键 GPIO10 验证观测） ----------
+
+static int cmd_keylvl(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    keyd_gpio_dump_levels();
+    return 0;
+}
+
 // ---------- REPL 启动 ----------
 
 esp_err_t console_cmd_start_repl(void)
@@ -310,12 +386,26 @@ esp_err_t console_cmd_start_repl(void)
         .hint = NULL,
         .func = &cmd_heap,
     };
+    const esp_console_cmd_t i2cscan_cmd = {
+        .command = "i2cscan",
+        .help = "扫描共享 I2C 总线未知地址（PWR 扩展器候选探测）",
+        .hint = NULL,
+        .func = &cmd_i2cscan,
+    };
+    const esp_console_cmd_t keylvl_cmd = {
+        .command = "keylvl",
+        .help = "打印 BOOT/PWR 键当前电平（PWR 检测验证用）",
+        .hint = NULL,
+        .func = &cmd_keylvl,
+    };
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rec_cmd), TAG, "register rec failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ls_cmd), TAG, "register ls failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&get_cmd), TAG, "register get failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&gain_cmd), TAG, "register gain failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ble_cmd), TAG, "register ble failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&heap_cmd), TAG, "register heap failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&i2cscan_cmd), TAG, "register i2cscan failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&keylvl_cmd), TAG, "register keylvl failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

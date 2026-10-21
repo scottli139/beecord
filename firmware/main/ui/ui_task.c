@@ -3,6 +3,7 @@
 // 低于音频采集 5 与 buzz 服务 4，见 M5_PLAN §5.2）→ 建页面 → REPL 命令注册。
 #include "ui_task.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
@@ -17,7 +18,10 @@
 #include "screen_pwr.h"
 #include "scr_home.h"
 #include "scr_shell.h"
+#include "sys/keyd.h"
+#include "sys/keyd_gpio.h"
 #include "theme.h"
+#include "touch_indev.h"
 #include "ui_console.h"
 #include "ui_snapshot.h"
 
@@ -116,15 +120,20 @@ static void on_tile_changed(lv_event_t *e)
 
 // ---------- 导航 ----------
 
-void ui_nav_to_home(void)
+void ui_nav_to_tile(uint8_t col, uint8_t row)
 {
     if (!s_ready) {
         return;
     }
     bsp_display_lock(0);
-    lv_tileview_set_tile_by_index(s_tv, TILE_COL_HOME, TILE_ROW_MAIN, LV_ANIM_OFF);
-    dots_update(TILE_COL_HOME, true);
+    lv_tileview_set_tile_by_index(s_tv, col, row, LV_ANIM_OFF);
+    dots_update(col, row == TILE_ROW_MAIN);
     bsp_display_unlock();
+}
+
+void ui_nav_to_home(void)
+{
+    ui_nav_to_tile(TILE_COL_HOME, TILE_ROW_MAIN);
 }
 
 bool ui_is_main_screen_active(void)
@@ -149,6 +158,42 @@ esp_err_t ui_msg_post(const ui_msg_t *msg)
     return ESP_OK;
 }
 
+// 按键事件分发（LVGL 任务上下文，锁已持有；ux-device §1 映射）
+static void handle_key_msg(const ui_msg_t *msg)
+{
+    keyd_key_id_t key = (keyd_key_id_t)msg->code;
+    keyd_event_t ev = (keyd_event_t)msg->value;
+    switch (key) {
+    case KEYD_KEY_BOOT:
+        if (ev == KEYD_EVENT_CLICK) {
+            // 熄屏唤醒；亮屏重置无操作计时（M5.1 行为保持）
+            if (screen_pwr_is_off()) {
+                screen_pwr_set_on(true);
+            } else {
+                lv_display_trigger_activity(lv_display_get_default());
+            }
+        } else if (ev == KEYD_EVENT_DOUBLE_CLICK) {
+            // TODO(M5.3)：录音中双击 = 暂停/继续
+        } else if (ev == KEYD_EVENT_LONG_PRESS_1_5S) {
+            // TODO(M5.3)：录音中长按 1.5s = 打标记点
+        }
+        break;
+    case KEYD_KEY_PWR:
+        if (ev == KEYD_EVENT_CLICK) {
+            // 熄屏 ⇄ 亮屏
+            screen_pwr_set_on(screen_pwr_is_off());
+        } else if (ev == KEYD_EVENT_DOUBLE_CLICK) {
+            ui_nav_to_home(); // 回表盘主页
+        } else if (ev == KEYD_EVENT_LONG_PRESS_4_5S) {
+            // TODO(M5.4)：关机警告浮层（PWR ~6s 硬件断电前 ~1.5s 软件告警窗口）
+            ESP_LOGW(TAG, "PWR 长按 4.5s：关机警告事件（浮层 UI 待 M5.4）");
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 // 在 LVGL 任务上下文执行（lv_timer），天然持有 LVGL 锁
 static void msg_pump(lv_timer_t *timer)
 {
@@ -164,11 +209,14 @@ static void msg_pump(lv_timer_t *timer)
                 printf("ui msg: DEBUG code=%d value=%d\n", (int)msg.code, (int)msg.value);
             }
             break;
+        case UI_MSG_SRC_KEY:
+            handle_key_msg(&msg);
+            break;
         case UI_MSG_SRC_TIMER:
             // M5.1 定时类 UI 更新（如 REC pulse 心跳）在此扩展
             break;
         default:
-            // M5.2 keyd / M5.3 rec / M5.4 ble+pwr 接入前仅留痕
+            // M5.3 rec / M5.4 ble+pwr 接入前仅留痕
             ESP_LOGD(TAG, "msg src=%d code=%d value=%d pending", (int)msg.src,
                      (int)msg.code, (int)msg.value);
             break;
@@ -207,7 +255,9 @@ static lv_display_t *display_assemble(void)
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = io,
         .panel_handle = panel,
-        .buffer_size = BSP_LCD_H_RES * 100, // 410×100×2B=82KB 单缓冲落 PSRAM
+        // 40 行（410×40×2B=33KB）：DMA  capable 内部 RAM 池有限，
+        // M5.2 静态新增（beep PCM 等）后 82KB 实测分配失败——33KB 余量充足
+        .buffer_size = BSP_LCD_H_RES * 40,
         // 单缓冲：每次 flush 完成后 LVGL 才渲染下一区域，SPI io 串行化，
         // 与出厂示例同款配置（双缓冲 + 每 flush 提前 ready 会把 LVGL 9.6 的
         // flushing 状态机打爆——实机 taskLVGL 卡死 wait_for_flushing 实锤）
@@ -272,9 +322,11 @@ esp_err_t ui_init(void)
     ESP_RETURN_ON_ERROR(esp_lcd_touch_new_i2c_ft5x06(tp_io, &tp_cfg, &tp), TAG,
                         "ft5x06 init failed");
     s_tp = tp;
-    const lvgl_port_touch_cfg_t touch_cfg = {.disp = disp, .handle = tp};
-    lv_indev_t *indev = lvgl_port_add_touch(&touch_cfg);
-    ESP_RETURN_ON_FALSE(indev != NULL, ESP_FAIL, TAG, "lvgl_port_add_touch failed");
+    // M5.2 缺陷修复：弃 esp_lvgl_port 触摸胶层（其读回调对读错误 ESP_ERROR_CHECK，
+    // 共享 I2C 偶发 ESP_ERR_INVALID_STATE → abort 整机重启，实机两次实锤）——
+    // 原生 LVGL indev 自建读回调（touch_indev.c），读失败保留上次坐标仅计数告警。
+    lv_indev_t *indev = ui_touch_indev_create(disp, tp);
+    ESP_RETURN_ON_FALSE(indev != NULL, ESP_FAIL, TAG, "touch indev create failed");
     s_indev = indev;
 
     ESP_RETURN_ON_ERROR(bsp_display_brightness_init(), TAG, "brightness init failed");
@@ -332,6 +384,9 @@ esp_err_t ui_init(void)
     s_msg_q = xQueueCreate(UI_MSG_QUEUE_LEN, sizeof(ui_msg_t));
     ESP_RETURN_ON_FALSE(s_msg_q != NULL, ESP_ERR_NO_MEM, TAG, "msg queue create failed");
 
+    // M5.2：按键子系统（10ms 轮询 → keyd 状态机 → 本队列 → msg_pump 分发）
+    ESP_RETURN_ON_ERROR(keyd_gpio_init(), TAG, "keyd gpio init failed");
+
     // 消息泵跑在 LVGL 任务上下文，避免再引一把锁
     lv_timer_create(msg_pump, 50, NULL);
 
@@ -351,6 +406,9 @@ void ui_debug_touch_dump(void)
         return;
     }
     esp_err_t r1 = esp_lcd_touch_read_data(s_tp);
+    uint32_t t_total = 0, t_err = 0;
+    ui_touch_indev_stats(&t_total, &t_err);
+    printf("touch indev: reads=%" PRIu32 " errs=%" PRIu32 "\n", t_total, t_err);
     esp_lcd_touch_point_data_t td[2] = {0};
     uint8_t cnt = 0;
     esp_err_t r2 = esp_lcd_touch_get_data(s_tp, td, &cnt, 2);

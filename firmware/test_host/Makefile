@@ -28,7 +28,7 @@ PIPE_HDRS   := $(AUDIO)/opus_enc.h $(AUDIO)/rec_pipe.h
 
 SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(BLE)/buzz_server.c $(STORAGE)/file_index.c $(VECTOR_SRC)
 HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(BLE)/buzz_server.h $(STORAGE)/file_index.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep
 
 ifeq ($(HAVE_OPUS),1)
 TESTS += test_rec_pipe
@@ -50,6 +50,16 @@ endif
 		echo "反向验证通过：坏页被正确拒绝"; \
 	fi
 
+# keyd/beep（M5.2）：纯逻辑单测，仅链各自 sys 源码，独立显式规则
+SYS := ../main/sys
+test_keyd: test_keyd.c $(SYS)/keyd.c $(SYS)/keyd.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/keyd.c
+
+test_beep: test_beep.c $(SYS)/beep.c $(SYS)/beep.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/beep.c
+
 # test_rec_pipe 需额外 libopus 头/库与 -lm（数学库），独立显式规则，不走下方模式规则
 ifeq ($(HAVE_OPUS),1)
 test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
@@ -58,8 +68,8 @@ test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
 	    -o $(BUILD)/test_rec_pipe $< $(SRCS) $(PIPE_SRCS) $(OPUS_LIBS) -lm
 endif
 
-# test_rec_pipe 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
-$(filter-out test_rec_pipe,$(TESTS)): %: %.c $(SRCS) $(HDRS)
+# test_rec_pipe/keyd/beep 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
+$(filter-out test_rec_pipe test_keyd test_beep,$(TESTS)): %: %.c $(SRCS) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(STORAGE) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
 

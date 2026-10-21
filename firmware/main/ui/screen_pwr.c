@@ -12,7 +12,6 @@
 #include <stdio.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
-#include "driver/gpio.h"
 #include "esp_check.h"
 #include "esp_log.h"
 
@@ -20,10 +19,6 @@
 #include "ui_task.h"
 
 static const char *TAG = "screen_pwr";
-
-// BOOT 键轮询周期/消抖：10ms 采样，连续 2 次低电平判按下（20ms 消抖）
-#define KEY_POLL_MS 10
-#define KEY_DEBOUNCE_CNT 2
 
 static lv_obj_t *s_black;    // 熄屏黑层（z60：最后创建，位于指示点之上）
 static lv_indev_t *s_indev;
@@ -88,28 +83,6 @@ static void off_monitor(lv_timer_t *timer)
     }
 }
 
-// BOOT 键（GPIO0，低=按下）轮询唤醒。
-// 注：M5.1 临时方案——单击唤醒 + 重置无操作计时；M5.2 由 keyd 按键子系统
-// 事件替换（届时录音热键也挂在 keyd 上，本轮询任务撤除）。
-static void boot_key_poll(lv_timer_t *timer)
-{
-    (void)timer;
-    static uint8_t low_cnt;
-    static bool prev_pressed;
-    bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
-    low_cnt = pressed ? low_cnt + 1 : 0;
-    bool stable = low_cnt >= KEY_DEBOUNCE_CNT;
-    if (stable && !prev_pressed) {
-        // 单击沿：熄屏则唤醒；亮屏则重置无操作计时（相当于"有操作"）
-        if (s_off) {
-            screen_pwr_set_on(true);
-        } else {
-            lv_display_trigger_activity(lv_display_get_default());
-        }
-    }
-    prev_pressed = stable;
-}
-
 esp_err_t screen_pwr_init(lv_obj_t *screen, lv_indev_t *indev)
 {
     ESP_RETURN_ON_FALSE(screen != NULL && indev != NULL, ESP_ERR_INVALID_ARG, TAG,
@@ -128,20 +101,11 @@ esp_err_t screen_pwr_init(lv_obj_t *screen, lv_indev_t *indev)
     lv_obj_set_hidden(s_black, true); // 最后创建天然位于 z 序顶层，等价 z60
     s_indev = indev;
 
-    gpio_config_t io = {
-        .pin_bit_mask = 1ULL << GPIO_NUM_0,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE, // 悬空为高，按下接地
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    ESP_RETURN_ON_ERROR(gpio_config(&io), TAG, "gpio0 config failed");
+    // M5.2：BOOT 唤醒轮询已由 sys/keyd_gpio（keyd 状态机）接管并投递 UI 队列。
+    // 本模块只留无操作熄屏监视（LVGL timer 上下文）。
 
-    // 两个 timer 都跑在 LVGL 任务上下文，无需再加锁
     lv_timer_create(off_monitor, 500, NULL);
-    lv_timer_create(boot_key_poll, KEY_POLL_MS, NULL);
 
-    ESP_LOGI(TAG, "screen pwr manager up (off timeout %d ms, BOOT key poll %d ms)",
-             UI_SCREEN_OFF_MS, KEY_POLL_MS);
+    ESP_LOGI(TAG, "screen pwr manager up (off timeout %d ms)", UI_SCREEN_OFF_MS);
     return ESP_OK;
 }

@@ -28,8 +28,11 @@ lv_obj_t *scr_page_begin(lv_obj_t *tile)
 
 void scr_page_title(lv_obj_t *page, const char *title)
 {
+    // 居中（DESIGN_SYSTEM v1.9 §3）：全宽 + 文本居中，规避 r≈44 圆角弧左上角裁切
     lv_obj_t *lab = lv_label_create(page);
+    lv_obj_set_width(lab, LV_PCT(100));
     lv_label_set_text(lab, title);
+    lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
     ui_theme_apply_text(lab, FONT_TITLE, UI_COLOR_TEXT_PRIMARY);
 }
 
