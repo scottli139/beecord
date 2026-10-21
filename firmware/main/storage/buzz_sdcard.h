@@ -2,6 +2,8 @@
 // 当前为最小探测实现：挂载卡、打印卡信息与根目录列表——用于 M1 到货自检。
 #pragma once
 
+#include <stdbool.h>
+
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -11,6 +13,9 @@ extern "C" {
 // 探测 TF 卡：挂载（BSP SDMMC 1-bit）、打印卡信息、列根目录。
 // 成功返回 ESP_OK 且保持挂载（后续里程碑直接复用）；失败返回 BSP/FATFS 错误码。
 esp_err_t buzz_sdcard_probe(void);
+
+// M5.3：挂载状态查询（UI 无卡红条/禁录音用）。probe 成功前均为 false。
+bool buzz_sdcard_mounted(void);
 
 #ifdef __cplusplus
 }

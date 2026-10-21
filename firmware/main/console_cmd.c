@@ -22,6 +22,7 @@
 
 #include "audio/buzz_audio.h"
 #include "audio/buzz_recorder.h"
+#include "audio/rec_pipe.h"
 #include "ble/buzz_ble.h"
 #include "sys/keyd_gpio.h"
 
@@ -329,6 +330,49 @@ static int cmd_keylvl(int argc, char **argv)
     return 0;
 }
 
+// ---------- quality（M5.3：录音质量两档，设置页 UI 与 NVS 持久化 M5.4 接） ----------
+
+static int cmd_quality(int argc, char **argv)
+{
+    if (argc < 2) {
+        printf("当前: %s（%d bps）\n",
+               buzz_recorder_get_bitrate() == 0 ? "标准" : "省空间",
+               buzz_recorder_get_bitrate() == 0 ? BUZZ_REC_PIPE_BITRATE
+                                                : buzz_recorder_get_bitrate());
+        printf("Usage:\n  quality 0  标准 ~44kbps\n  quality 1  省空间 ~24kbps\n");
+        return 1;
+    }
+    int q = atoi(argv[1]);
+    if (q != 0 && q != 1) {
+        printf("仅支持 0（标准）/ 1（省空间）\n");
+        return 1;
+    }
+    buzz_recorder_set_bitrate(q == 0 ? 0 : 24000);
+    printf("已设置：%s（下次录音生效）\n", q == 0 ? "标准 ~44kbps" : "省空间 ~24kbps");
+    return 0;
+}
+
+// ---------- reclvl（M5.3：录音实时统计观测，电平条排查用） ----------
+
+static int cmd_reclvl(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    printf("state:    %d (0=idle 1=recording 2=paused)\n",
+           (int)buzz_recorder_state());
+    printf("elapsed:  %" PRIu32 " ms\n", buzz_recorder_elapsed_ms());
+    printf("level:    %u / 24\n", (unsigned)buzz_recorder_level());
+    printf("bytes:    %" PRIu64 "\n", buzz_recorder_bytes_written());
+    printf("marks:    %" PRIu32 "\n", buzz_recorder_mark_count());
+    printf("path:     %s\n", buzz_recorder_current_path());
+    uint32_t rms_last = 0, rms_min = 0, rms_max = 0;
+    buzz_recorder_meter_diag(&rms_last, &rms_min, &rms_max);
+    printf("raw rms:  last=%" PRIu32 " min=%" PRIu32 " max=%" PRIu32
+           "（满度 32767；3277=-20dB）\n",
+           rms_last, rms_min, rms_max);
+    return 0;
+}
+
 // ---------- REPL 启动 ----------
 
 esp_err_t console_cmd_start_repl(void)
@@ -398,6 +442,18 @@ esp_err_t console_cmd_start_repl(void)
         .hint = NULL,
         .func = &cmd_keylvl,
     };
+    const esp_console_cmd_t reclvl_cmd = {
+        .command = "reclvl",
+        .help = "录音实时统计（状态/时长/电平/字节/标记），电平条排查用",
+        .hint = NULL,
+        .func = &cmd_reclvl,
+    };
+    const esp_console_cmd_t quality_cmd = {
+        .command = "quality",
+        .help = "录音质量两档（0 标准 44kbps / 1 省空间 24kbps，下次录音生效）",
+        .hint = "0|1",
+        .func = &cmd_quality,
+    };
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rec_cmd), TAG, "register rec failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ls_cmd), TAG, "register ls failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&get_cmd), TAG, "register get failed");
@@ -406,6 +462,8 @@ esp_err_t console_cmd_start_repl(void)
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&heap_cmd), TAG, "register heap failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&i2cscan_cmd), TAG, "register i2cscan failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&keylvl_cmd), TAG, "register keylvl failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&quality_cmd), TAG, "register quality failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&reclvl_cmd), TAG, "register reclvl failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

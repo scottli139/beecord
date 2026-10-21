@@ -17,6 +17,13 @@ static void pipe_page_cb(const uint8_t *page, uint32_t page_len, void *ctx)
 int buzz_rec_pipe_init(buzz_rec_pipe_t *p, uint32_t serial, uint8_t *page_buf,
                        uint32_t page_cap, buzz_ogg_page_cb_t cb, void *ctx)
 {
+    return buzz_rec_pipe_init_ex(p, serial, 0, page_buf, page_cap, cb, ctx);
+}
+
+int buzz_rec_pipe_init_ex(buzz_rec_pipe_t *p, uint32_t serial, int bitrate_bps,
+                          uint8_t *page_buf, uint32_t page_cap,
+                          buzz_ogg_page_cb_t cb, void *ctx)
+{
     if (p == NULL) {
         return BUZZ_ERR_NULL;
     }
@@ -24,7 +31,9 @@ int buzz_rec_pipe_init(buzz_rec_pipe_t *p, uint32_t serial, uint8_t *page_buf,
     p->user_cb = cb;
     p->user_ctx = ctx;
 
-    p->enc = buzz_opus_enc_create(BUZZ_REC_PIPE_BITRATE, BUZZ_REC_PIPE_COMPLEXITY);
+    // M5.3 质量两档：bitrate_bps>0 用显式码率，否则默认 44kbps
+    const int bitrate = bitrate_bps > 0 ? bitrate_bps : BUZZ_REC_PIPE_BITRATE;
+    p->enc = buzz_opus_enc_create(bitrate, BUZZ_REC_PIPE_COMPLEXITY);
     if (p->enc == NULL) {
         return BUZZ_ERR_ARG; // 编码器创建失败（参数 / libopus / 内存）
     }

@@ -4,6 +4,7 @@
 // → BLE 初始化（BCD-XXXX 广播）→ BLE 命令服务（buzz_cmds）→ USB 串口 REPL。
 // 各阶段失败降级：音频失败则 rec 命令提示不可用，BLE 失败仅失能同步功能，
 // REPL 始终启动保证可交互。
+#include "audio/rec_journal_esp.h"
 #include "buzz_audio.h"
 #include "buzz_ble.h"
 #include "buzz_cmds.h"
@@ -13,6 +14,7 @@
 #include "esp_log.h"
 #include "fw_version.h"
 #include "nvs_flash.h"
+#include "ui/ui_rec.h"
 #include "ui/ui_task.h"
 
 static const char *TAG = "beecord";
@@ -30,6 +32,17 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     buzz_sdcard_probe();
+
+    // M5.3：断电恢复检测（journal 残留 → 截断收尾 + 置恢复标志，UI 起来后 toast）
+    {
+        char recovered[80] = { 0 };
+        bool was_recovered = false;
+        if (rec_journal_check_recovery(recovered, sizeof(recovered),
+                                       &was_recovered) == ESP_OK &&
+            was_recovered) {
+            ui_rec_set_recovered(recovered);
+        }
+    }
 
     esp_codec_dev_handle_t mic = NULL;
     if (buzz_audio_open_mic(&mic) != ESP_OK) {

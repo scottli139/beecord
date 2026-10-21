@@ -35,7 +35,10 @@ esp_err_t buzz_audio_open_mic(esp_codec_dev_handle_t *out_handle)
         return ESP_FAIL;
     }
 
-    ret = esp_codec_dev_set_in_gain(mic, BUZZ_AUDIO_IN_GAIN_DB);
+    // 生效路径说明：ES7210 PGA 寄存器经 I2C 直写，open 后设置即生效、运行期可再调；
+    // M5.3 实机曾观测"重启后默认增益偏低"，此处 open 成功后显式重申一次默认增益，
+    // 双保险（驱动若在上电序列里复位过 PGA 也不会漏）。
+    ret = esp_codec_dev_set_in_gain(mic, BUZA_MIC_GAIN_DEFAULT_DB);
     if (ret != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "esp_codec_dev_set_in_gain failed: %d", ret);
         esp_codec_dev_close(mic);
@@ -44,7 +47,7 @@ esp_err_t buzz_audio_open_mic(esp_codec_dev_handle_t *out_handle)
 
     ESP_LOGI(TAG, "mic ready: %uHz/%ubit/%uch gain=%.1fdB",
              BUZZ_AUDIO_SAMPLE_RATE, BUZZ_AUDIO_BITS, BUZZ_AUDIO_CHANNELS,
-             (double)BUZZ_AUDIO_IN_GAIN_DB);
+             (double)BUZA_MIC_GAIN_DEFAULT_DB);
     s_mic_handle = mic;
     *out_handle = mic;
     return ESP_OK;

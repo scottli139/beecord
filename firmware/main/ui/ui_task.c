@@ -15,15 +15,19 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
+#include "audio/buzz_recorder.h"
 #include "screen_pwr.h"
 #include "scr_home.h"
+#include "scr_rec.h"
 #include "scr_shell.h"
 #include "sys/keyd.h"
 #include "sys/keyd_gpio.h"
 #include "theme.h"
 #include "touch_indev.h"
 #include "ui_console.h"
+#include "ui_rec.h"
 #include "ui_snapshot.h"
+#include "ui_toast.h"
 
 static const char *TAG = "ui";
 
@@ -165,17 +169,15 @@ static void handle_key_msg(const ui_msg_t *msg)
     keyd_event_t ev = (keyd_event_t)msg->value;
     switch (key) {
     case KEYD_KEY_BOOT:
+        // M5.3 录音热键接管（ux-device §1 原则 1：任何状态含熄屏，
+        // 单击=开始/停止；双击=暂停/继续；长按 1.5s=标记。亮屏不再由 BOOT 负责，走 PWR）
         if (ev == KEYD_EVENT_CLICK) {
-            // 熄屏唤醒；亮屏重置无操作计时（M5.1 行为保持）
-            if (screen_pwr_is_off()) {
-                screen_pwr_set_on(true);
-            } else {
-                lv_display_trigger_activity(lv_display_get_default());
-            }
+            (void)ui_rec_request_toggle();
+            lv_display_trigger_activity(lv_display_get_default());
         } else if (ev == KEYD_EVENT_DOUBLE_CLICK) {
-            // TODO(M5.3)：录音中双击 = 暂停/继续
+            (void)ui_rec_request_pause_toggle();
         } else if (ev == KEYD_EVENT_LONG_PRESS_1_5S) {
-            // TODO(M5.3)：录音中长按 1.5s = 打标记点
+            (void)ui_rec_request_mark();
         }
         break;
     case KEYD_KEY_PWR:
@@ -212,6 +214,19 @@ static void msg_pump(lv_timer_t *timer)
         case UI_MSG_SRC_KEY:
             handle_key_msg(&msg);
             break;
+        case UI_MSG_SRC_REC: {
+            // 录音会话事件：录音页显隐 + 主页横幅（msg.code=buzz_rec_evt_t）
+            buzz_rec_evt_t evt = (buzz_rec_evt_t)msg.code;
+            scr_rec_on_rec_event(evt);
+            scr_home_show_rec_banner(evt == BUZZ_REC_EVT_STARTED ||
+                                     evt == BUZZ_REC_EVT_PAUSED ||
+                                     evt == BUZZ_REC_EVT_RESUMED ||
+                                     evt == BUZZ_REC_EVT_MARKED);
+            if (evt == BUZZ_REC_EVT_STOPPED) {
+                ui_toast_show("已保存", false);
+            }
+            break;
+        }
         case UI_MSG_SRC_TIMER:
             // M5.1 定时类 UI 更新（如 REC pulse 心跳）在此扩展
             break;
@@ -361,7 +376,8 @@ esp_err_t ui_init(void)
     scr_list_create(tile_list);
     scr_sync_create(tile_sync);
     scr_settings_create(tile_settings);
-    scr_rec_modal_create(); // 模态录音页（M5.1 空壳，不参与导航）
+    scr_rec_create();   // 模态录音页（M5.3）
+    ui_toast_init();    // toast（挂 layer_top，跨页面）
 
     lv_obj_add_event_cb(s_tv, on_tile_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -386,6 +402,8 @@ esp_err_t ui_init(void)
 
     // M5.2：按键子系统（10ms 轮询 → keyd 状态机 → 本队列 → msg_pump 分发）
     ESP_RETURN_ON_ERROR(keyd_gpio_init(), TAG, "keyd gpio init failed");
+    // M5.3：录音控制任务 + 事件回调（阻塞式 recorder API 与提示音都在该任务）
+    ESP_RETURN_ON_ERROR(ui_rec_init(), TAG, "ui_rec init failed");
 
     // 消息泵跑在 LVGL 任务上下文，避免再引一把锁
     lv_timer_create(msg_pump, 50, NULL);
@@ -394,6 +412,13 @@ esp_err_t ui_init(void)
 
     s_ready = true;
     ESP_LOGI(TAG, "UI up (LVGL task prio %d, tileview 3+1 pages)", UI_TASK_PRIO);
+
+    // M5.3：开机 journal 恢复 → toast（"已恢复未保存录音"）
+    char recovered[80];
+    if (ui_rec_take_recovered(recovered, sizeof(recovered))) {
+        // 重要级：开机时屏幕未亮，须唤醒后弹（M5.3 实机定案，ux-device §7）
+        ui_toast_show("已恢复未保存录音", true);
+    }
     return ESP_OK;
 }
 

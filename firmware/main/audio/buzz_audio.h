@@ -18,7 +18,10 @@ extern "C" {
 #define BUZZ_AUDIO_BITS 16u
 #define BUZZ_AUDIO_CHANNELS 2u
 // 实测定案（M2.4 上板扫频）：24dB 偏低、36dB 近讲削顶，33dB 远近兼顾零削顶
-#define BUZZ_AUDIO_IN_GAIN_DB 33.0f
+// 开机默认麦克风增益（M3 实机标定：36 近距离爆音、33 正常；M5.3 电平标定复确认）。
+// NVS 持久化归 M5.4（M5_PLAN §9 登记）；REPL `gain` 命令运行期可覆盖。
+#define BUZA_MIC_GAIN_DEFAULT_DB 33.0f
+#define BUZZ_AUDIO_IN_GAIN_DB BUZA_MIC_GAIN_DEFAULT_DB // 旧名别名，逐步收敛
 
 // 打开麦克风采集：BSP 初始化（幂等）+ esp_codec_dev_open + 设置输入增益。
 // 成功返回 ESP_OK 且 *out_handle 有效（应用生命周期内保持 open 直接读）；

@@ -19,9 +19,7 @@ void scr_list_create(lv_obj_t *tile);
 void scr_sync_create(lv_obj_t *tile);
 void scr_settings_create(lv_obj_t *tile);
 
-// 模态录音页：独立 screen，覆盖全屏（M5.1 空壳仅标题；M5.3 填内容）
-void scr_rec_modal_create(void);
-void scr_rec_modal_show(bool show);
+// 录音页已由 scr_rec.c 实现（M5.3 接管模态录音页）
 
 #ifdef __cplusplus
 }

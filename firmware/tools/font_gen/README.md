@@ -41,3 +41,9 @@ bash beecord/firmware/tools/font_gen/gen.sh
   许可：**SIL Open Font License 1.1**。
 
 两款字体均为 OFL，固件二进制嵌入与开源仓再分发无合规障碍。
+
+## 缺字防护（M5.3 起）
+
+`make -C test_host fontcheck`（已挂进 `make test`）扫描 `main/ui/scr_*.c` 与
+`ui_toast.c` 的字符串字面量中文字符，对 `charset.txt` 词表做比对，缺字报错。
+新增 UI 文案忘补词表会在构建期被拦下（DESIGN_SYSTEM 防跑偏规则 14）。

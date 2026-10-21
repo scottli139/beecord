@@ -9,6 +9,7 @@
 #include "sdmmc_cmd.h"
 
 static const char *TAG = "buzz_sdcard";
+static bool s_mounted;
 
 #define ROOT_LIST_MAX 20
 
@@ -20,6 +21,7 @@ esp_err_t buzz_sdcard_probe(void)
         return ret;
     }
 
+    s_mounted = true;
     const sdmmc_card_t *card = bsp_sdcard;
     uint64_t cap_mb = (uint64_t)card->csd.capacity * card->csd.sector_size / (1024 * 1024);
     ESP_LOGI(TAG, "mounted at %s: name=%s capacity=%" PRIu64 "MB max_freq=%" PRIu32 "kHz",
@@ -42,4 +44,9 @@ esp_err_t buzz_sdcard_probe(void)
     }
     closedir(dir);
     return ESP_OK;
+}
+
+bool buzz_sdcard_mounted(void)
+{
+    return s_mounted;
 }

@@ -55,6 +55,12 @@ typedef struct {
 int buzz_rec_pipe_init(buzz_rec_pipe_t *p, uint32_t serial, uint8_t *page_buf,
                        uint32_t page_cap, buzz_ogg_page_cb_t cb, void *ctx);
 
+// M5.3 质量两档：显式码率版（bitrate bps，传 0 用默认 BUZZ_REC_PIPE_BITRATE）。
+// 其余语义同 buzz_rec_pipe_init。
+int buzz_rec_pipe_init_ex(buzz_rec_pipe_t *p, uint32_t serial, int bitrate_bps,
+                          uint8_t *page_buf, uint32_t page_cap,
+                          buzz_ogg_page_cb_t cb, void *ctx);
+
 // 喂入单声道 int16 PCM 任意块：内部跨块攒满 320 采样即编码封帧，
 // granule 从 960 起逐帧 +960（48kHz 域）。返回 BUZZ_OK；编码失败返回负值
 // （stats.encode_errs 已计数，已封帧不受影响）。

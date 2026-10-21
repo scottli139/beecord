@@ -302,6 +302,10 @@ Mac 端系统语义色（label/secondaryLabel/tertiaryLabel 系）按 **R10 平�
 12. 布局/样式改动必须做 TESTING §4.5 截图自检并汇报对比结论；
     编译通过、AX 全绿均不代表布局正确。
 13. 手表等分栏布局：N 等分用「宽 0 + `flex_grow=1`」均分剩余宽，**禁止** `LV_PCT(33)` 这类
+14. 新增/修改手表 UI 文案（scr_*.c / ui_toast.c 的字符串字面量）必须同步
+    `firmware/tools/font_gen/charset.txt` 并重跑 `gen.sh` 重新生成字体子集；
+    `cd firmware/test_host && make fontcheck`（已挂进 `make test`）做构建期拦截——
+    缺字即报错（M5.3 实机"继续"豆腐块事故设立的防再发机制）。
     固定百分比 + 列间隙组合——LVGL flex 无 shrink，122×3+16=382>370 的 12px 溢出会被
     父边界硬裁（M5.1 主页右小件卡右圆角被裁的实机案例）。
 
