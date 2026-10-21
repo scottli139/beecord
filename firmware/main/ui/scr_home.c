@@ -189,7 +189,10 @@ static void widget_row_create(lv_obj_t *page)
 
     for (int i = 0; i < 3; i++) {
         lv_obj_t *card = lv_obj_create(row);
-        lv_obj_set_size(card, LV_PCT(33), UI_WIDGET_H);
+        // 宽 0 + flex_grow 均分剩余宽：LV_PCT(33) 会算成 122×3+间隙 16=382>370 溢出 12px，
+        // 右卡右缘被行边界硬裁（实机快照证实右圆角消失）
+        lv_obj_set_size(card, 0, UI_WIDGET_H);
+        lv_obj_set_flex_grow(card, 1);
         lv_obj_set_style_bg_color(card, UI_COLOR_CARD, 0);
         lv_obj_set_style_radius(card, UI_RADIUS_LG, 0);
         lv_obj_set_style_border_width(card, 0, 0);
