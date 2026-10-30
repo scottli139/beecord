@@ -138,6 +138,15 @@ final class DeviceSyncUITests: XCTestCase {
             app.typeKey("n", modifierFlags: .command)
             _ = waitForExistence("sidebar.navItem.devices", timeout: 5)
         }
+        // 前序设置用例可能被 macOS 恢复到本轮启动，遮住主窗控件（CI 复选框 Not hittable）。
+        // 设备流只使用主窗；关闭辅助设置窗并重新聚焦，保证用例间窗口状态隔离。
+        let restoredSettings = app.windows.matching(
+            NSPredicate(format: "identifier == 'settings' OR title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        if restoredSettings.exists {
+            restoredSettings.buttons.element(boundBy: 0).click()
+            app.activate()
+        }
         diag("after-window-recovery")
     }
 
