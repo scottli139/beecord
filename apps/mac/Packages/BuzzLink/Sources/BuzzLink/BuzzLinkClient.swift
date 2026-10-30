@@ -190,6 +190,44 @@ public actor BuzzLinkClient {
         return info
     }
 
+    /// 对时（TIME_SET，v0.2 §8.4）：下发 UTC Unix 毫秒与本地 UTC 偏移（分钟），
+    /// 设备换算本地日历写入 RTC。严格校验响应：type=0x43、`status=="ok"` 且
+    /// `epochMs` 回显与下发值一致；否则抛 protocolViolation/设备错误。
+    /// 旧设备（v0.1）忽略未知 type → 本命令超时（commandTimeout），
+    /// 调用方（SyncEngine）据此降级、不阻断后续流程。
+    public func setTime(epochMs: Int64, utcOffsetMin: Int) async throws {
+        guard utcOffsetMin >= -720, utcOffsetMin <= 840 else {
+            throw BuzzLinkError.invalidParameters
+        }
+        // epoch 预校验（BUZZLINK §8.4 窗口）：已知非法值直接本地拒绝，不上空口
+        guard epochMs >= 1_704_067_200_000, epochMs <= 4_102_444_799_999 else {
+            throw BuzzLinkError.invalidParameters
+        }
+        let response = try await runCommand(timeout: commandTimeout) { session in
+            let body = TimeSetRequestPayload(epochMs: epochMs, utcOffsetMin: utcOffsetMin)
+            let data = try JSONEncoder().encode(body)
+            return BuzzLinkFrame(
+                type: BuzzLinkFrameType.timeSetReq.rawValue,
+                session: session,
+                channel: BuzzLinkChannel.control.rawValue,
+                payload: data
+            )
+        }
+        try throwIfErrorResponse(response)
+        guard response.type == BuzzLinkFrameType.timeSetResp.rawValue else {
+            throw BuzzLinkError.protocolViolation("期望 TIME_SET_RESP，实际 type=0x\(String(response.type, radix: 16))")
+        }
+        let payload = try decodeJSON(TimeSetResponsePayload.self, from: response.payload,
+                                     context: "TIME_SET_RESP")
+        guard payload.status != "error" else {
+            throw BuzzLinkError.mapErrorCode(payload.code ?? 4_999,
+                                             message: payload.message ?? "unknown")
+        }
+        guard payload.epochMs == epochMs else {
+            throw BuzzLinkError.protocolViolation("TIME_SET_RESP 回显 epochMs=\(String(describing: payload.epochMs)) 与下发 \(epochMs) 不符")
+        }
+    }
+
     /// 拉取文件列表页（LIST_REQ，§5.1/§8.2；每页最多 16 条，超出按 offset 翻页）。
     /// - Parameters:
     ///   - offset: 起始下标（≥ 0）
@@ -848,6 +886,18 @@ public actor BuzzLinkClient {
 }
 
 // MARK: - JSON 数据模型（BUZZLINK.md §8；与 BuzzLinkSimCore 的输出同构）
+
+private struct TimeSetRequestPayload: Encodable {
+    let epochMs: Int64
+    let utcOffsetMin: Int
+}
+
+private struct TimeSetResponsePayload: Decodable {
+    let status: String
+    let epochMs: Int64?
+    let code: Int?
+    let message: String?
+}
 
 private struct InfoPayload: Decodable {
     let model: String

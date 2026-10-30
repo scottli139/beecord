@@ -126,6 +126,8 @@ public enum SyncEvent: Sendable, Equatable {
     case syncCompleted(newFiles: Int)
     /// 同步/连接失败（toast 文案）
     case syncFailed(String)
+    /// 自动对时失败（不阻断后续同步；v0.2 §6.1 step 3 降级语义）
+    case timeSetFailed(String)
     /// 意外断连（自动重连已开始）
     case disconnected
     /// 自动重连退避耗尽（需人工介入）

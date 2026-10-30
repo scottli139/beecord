@@ -22,6 +22,8 @@
 #include "scr_shell.h"
 #include "sys/keyd.h"
 #include "sys/keyd_gpio.h"
+#include "sys/power.h"
+#include "ui_shutdown.h"
 #include "theme.h"
 #include "touch_indev.h"
 #include "ui_console.h"
@@ -179,6 +181,8 @@ static void handle_key_msg(const ui_msg_t *msg)
         } else if (ev == KEYD_EVENT_LONG_PRESS_1_5S) {
             (void)ui_rec_request_mark();
         }
+        // 注：BOOT 的 LONG_PRESS_4_5S 事件刻意不处理——功能键无关机语义
+        //（ux-device §1：BOOT 4.5s 无映射），关机警告仅 PWR 触发。
         break;
     case KEYD_KEY_PWR:
         if (ev == KEYD_EVENT_CLICK) {
@@ -187,8 +191,10 @@ static void handle_key_msg(const ui_msg_t *msg)
         } else if (ev == KEYD_EVENT_DOUBLE_CLICK) {
             ui_nav_to_home(); // 回表盘主页
         } else if (ev == KEYD_EVENT_LONG_PRESS_4_5S) {
-            // TODO(M5.4)：关机警告浮层（PWR ~6s 硬件断电前 ~1.5s 软件告警窗口）
-            ESP_LOGW(TAG, "PWR 长按 4.5s：关机警告事件（浮层 UI 待 M5.4）");
+            // M5.4：关机警告层（z80，全屏纯黑"即将关机…"＋剩余秒数）。
+            // AXP2101 硬件 ~6s 断电不可取消；层在 6s 未断电（松手）时 ~2.5s 自消退
+            // （keyd 无释放通知的文档化短超时方案，ui_shutdown.h 有注记）。
+            ui_shutdown_warn_show();
         }
         break;
     default:
@@ -197,6 +203,22 @@ static void handle_key_msg(const ui_msg_t *msg)
 }
 
 // 在 LVGL 任务上下文执行（lv_timer），天然持有 LVGL 锁
+// M5.4：低电确认（power 纯逻辑已做连续样本+迟滞防抖）。未充电 <10% 且
+// 有活动会话（录音/暂停中）→ 显式停止请求（绝不误启动空闲态）+ 重要 toast。
+static void handle_low_battery(void)
+{
+    if (buzz_recorder_state() == BUZZ_REC_STATE_IDLE) {
+        ESP_LOGW(TAG, "低电确认但无活动会话，忽略");
+        return;
+    }
+    ui_toast_show("电量过低，已自动保存", true); // 重要级：熄屏先唤醒
+    esp_err_t ret = ui_rec_request_stop_low_battery();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "低电停止请求下发失败: %s（不静默）", esp_err_to_name(ret));
+        ui_toast_show("停止失败", true);
+    }
+}
+
 static void msg_pump(lv_timer_t *timer)
 {
     (void)timer;
@@ -230,6 +252,17 @@ static void msg_pump(lv_timer_t *timer)
         case UI_MSG_SRC_TIMER:
             // M5.1 定时类 UI 更新（如 REC pulse 心跳）在此扩展
             break;
+        case UI_MSG_SRC_PWR: {
+            // M5.4 电源轮询：code=显示百分比（0xFF 未知），value=充电位|事件位<<1
+            const uint8_t pct = (uint8_t)(msg.code & 0xFF);
+            const bool charging = (msg.value & 0x1) != 0;
+            const uint8_t events = (uint8_t)((msg.value >> 1) & 0xFF);
+            scr_home_set_power(pct, charging);
+            if ((events & POWER_EVT_LOW_ON) != 0u) {
+                handle_low_battery();
+            }
+            break;
+        }
         default:
             // M5.3 rec / M5.4 ble+pwr 接入前仅留痕
             ESP_LOGD(TAG, "msg src=%d code=%d value=%d pending", (int)msg.src,

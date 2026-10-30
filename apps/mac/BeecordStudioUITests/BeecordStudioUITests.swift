@@ -61,8 +61,19 @@ final class BeecordStudioUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// 打开设置窗。原实现 typeKey(⌘,) 在本机失效（canary 对照实验：注入的
+    /// 键事件全程未到达应用事件循环，macOS 26.5 + XCTest 环境问题，应用侧
+    /// 无法接不存在的事件）；改用应用菜单"设置…"AX 点击——与真实用户
+    /// 菜单路径一致，且不受键盘注入环境影响。⌘, 快捷键对真实键盘保留
+    /// （AppDelegate 事件监视器 + 菜单等价，见 App 文件头注记）。
     private func openSettings() {
-        app.typeKey(",", modifierFlags: .command)
+        let appMenu = app.menuBars.menuBarItems.element(boundBy: 1) // 应用菜单（0 是 Apple）
+        appMenu.click()
+        let item = appMenu.menuItems.matching(
+            NSPredicate(format: "title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "应用菜单应含设置项")
+        item.click()
     }
 
     /// 开关值断言：兼容 macOS AXValue 的 String/NSNumber 表示。

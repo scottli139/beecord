@@ -135,21 +135,73 @@ final class ConsoleUITests: XCTestCase {
     private func ensureSidebarVisible() {
         let sidebar = element("sidebar.navItem.devices")
         if sidebar.waitForExistence(timeout: 3) { return }
-        app.typeKey("s", modifierFlags: [.control, .command])
+        // 键盘注入在本机失效（canary 对照实验，见 BeecordStudioUITests.openSettings
+        // 注记）；改走 View 菜单位置等价路径
+        let viewMenu = app.menuBars.menuBarItems["显示"]
+        if viewMenu.exists {
+            viewMenu.click()
+            let toggle = viewMenu.menuItems.matching(
+                NSPredicate(format: "title CONTAINS '边栏' OR title CONTAINS 'Sidebar'")
+            ).firstMatch
+            if toggle.exists { toggle.click() }
+        }
         _ = sidebar.waitForExistence(timeout: 5)
+    }
+
+    /// 经系统粘贴写文本：本机中文拼音 IME 会让 typeText 弹候选栏吞键（日志实锤），
+    /// 且键盘注入本身不可靠（见 openSettingsViaMenu 注记）。路径：剪贴板写入 →
+    /// 目标 field 已点击聚焦 → 应用"编辑/Edit"菜单"粘贴/Paste"AX 点击。
+    /// 菜单项中英文 title 双匹配；不 typeKey(⌘V)。
+    private func pasteIntoFocusedField(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        let editMenu = app.menuBars.menuBarItems.matching(
+            NSPredicate(format: "title == '编辑' OR title == 'Edit'")
+        ).firstMatch
+        XCTAssertTrue(editMenu.waitForExistence(timeout: 5), "应用菜单栏应含编辑菜单")
+        editMenu.click()
+        let pasteItem = editMenu.menuItems.matching(
+            NSPredicate(format: "title CONTAINS '粘贴' OR title CONTAINS 'Paste'")
+        ).firstMatch
+        XCTAssertTrue(pasteItem.waitForExistence(timeout: 5), "编辑菜单应含粘贴项")
+        pasteItem.click()
+    }
+
+    /// 应用菜单"设置…"AX 点击（与 BeecordStudioUITests.openSettings 同款；
+    /// typeKey 键盘注入在 macOS 26.5 本机不到应用，见该处注记）
+    private func openSettingsViaMenu() {
+        let appMenu = app.menuBars.menuBarItems.element(boundBy: 1)
+        appMenu.click()
+        let item = appMenu.menuItems.matching(
+            NSPredicate(format: "title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "应用菜单应含设置项")
+        item.click()
+    }
+
+    /// 关闭设置窗（红绿灯左上关闭钮；替代注入失效的 ⌘W）
+    private func closeSettingsWindow() {
+        let win = app.windows.matching(
+            NSPredicate(format: "title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        if win.waitForExistence(timeout: 3) {
+            win.buttons.element(boundBy: 0).click()
+        }
     }
 
     /// 开启开发者模式（门控）并切到控制台页；等设备连接（发送门控解除）
     private func openConsoleConnected() throws {
         try startServerOrSkip()
         try launchWithSidebar()
-        // 设置 → 开发者模式 → 关窗（同 testDeveloperModeRevealsConsole）
-        app.typeKey(",", modifierFlags: .command)
+        // 设置 → 开发者模式 → 关窗（同 testDeveloperModeRevealsConsole；
+        // 菜单/关窗/切页均走 AX——键盘注入在本机失效，见 openSettingsViaMenu 注记）
+        openSettingsViaMenu()
         XCTAssertTrue(waitForExistence("settings.developerModeToggle", timeout: 10), "设置窗口打开")
         element("settings.developerModeToggle").click()
-        app.typeKey("w", modifierFlags: .command)
+        closeSettingsWindow()
         XCTAssertTrue(waitForExistence("sidebar.navItem.console", timeout: 10), "开发者模式后门控开启")
-        app.typeKey("3", modifierFlags: .command)
+        element("sidebar.navItem.console").click()
         XCTAssertTrue(waitForExistence("console.logTable", timeout: 10), "控制台页出现")
         // 等连接：发送门控提示消失（自动连接 loopback Sim 后 state ≠ idle）
         let connected = waitForElement(
@@ -212,7 +264,7 @@ final class ConsoleUITests: XCTestCase {
 
         // 文本过滤叠加 "dl"（type 名/注释/payload 子串）：行数进一步收敛或持平
         element("console.filterField").click()
-        element("console.filterField").typeText("dl")
+        pasteIntoFocusedField("dl")
         _ = waitForElement(
             "console.logTable",
             predicate: NSPredicate(block: { [weak self] _, _ in
@@ -257,7 +309,7 @@ final class ConsoleUITests: XCTestCase {
         // PING 整帧：beec | ver=01 | type=01 | session=2A | flags=00 | chan=0000 | len=0000 | crc=0000
         //（CRC 占位即可——控制台重建帧时重算；校验只看魔数/长度/hex 合法性）
         element("console.hexField").click()
-        element("console.hexField").typeText("beec01012a00000000000000")
+        pasteIntoFocusedField("beec01012a00000000000000")
         element("console.sendButton").click()
         XCTAssertTrue(
             waitForRowContaining("PING", timeout: 15),

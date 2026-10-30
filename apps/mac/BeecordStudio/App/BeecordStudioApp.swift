@@ -14,6 +14,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 已应用尺寸档的窗口（每窗口只校正一次；新窗口创建后为 nil）
     private weak var sizeCorrectedWindow: NSWindow?
 
+    /// ⌘, 直达设置窗：AppKit 事件监视器（macOS 26.5 实录——SwiftUI 侧
+    /// .keyboardShortcut 与 imperative keyEquivalent 在 CommandGroup(replacing:
+    /// .appSettings) 上均"显示但事件不派发"，SwiftUI 重渲染还会覆盖命令行补丁；
+    /// 监视器在应用事件派发内拦截真实键盘 ⌘, 直接 openWindow；XCTest 的键盘
+    /// 注入在本机不到达事件循环，因此 UI 测试统一走应用菜单的 AX 路径）。
+    private var settingsKeyMonitor: Any?
+
+    /// 注入 openWindow（App body 每次求值写入；监视器回调经此打开设置窗）。
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        settingsKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
+            [weak self] event in
+            guard let self,
+                  event.modifierFlags.contains(.command),
+                  event.charactersIgnoringModifiers == ",",
+                  !event.isARepeat else { return event }
+            self.openWindowAction?(id: "settings")
+            return nil // 事件已消费
+        }
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
         if NSApp.windows.isEmpty {
             openWindowAction?(id: "main")
@@ -36,7 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Beecord Studio 入口：主窗口（侧栏三页）+ 标准 Settings 窗口（⌘,）+ 页面快捷键 ⌘1/2/3。
+/// Beecord Studio 入口：主窗口（侧栏三页）+ 显式 settings 窗口（Window(id:"settings")，
+/// ⌘, 经 CommandGroup(replacing: .appSettings) 打开）+ 页面快捷键 ⌘1/2/3。
+/// 注（2026-10-30）：不再依赖自动 Settings 场景——macOS 26.5 实测 Window(id:"main") +
+/// Settings{} 组合下 ⌘, 不开设置窗（系统设置窗服务对单窗 App 的派发问题）；
+/// 显式 Window + openWindow 后 ⌘, 行为稳定，且 openWindow 对同 id 幂等不叠窗。
 @main
 struct BeecordStudioApp: App {
     @State private var appModel: AppModel
@@ -72,8 +96,6 @@ struct BeecordStudioApp: App {
 
     var body: some Scene {
         // 每次求值注入 openWindow 动作（幂等）；无恢复态冷启动时窗口补建靠 AppDelegate。
-        // 注意：SceneBuilder 体多语句时不可写 return——Settings 场景若在 return 之后
-        // 会成为不可达代码静默丢失（73cbe33 CI 骨架类 Settings 用例全挂实录）。
         let _ = appDelegate.openWindowAction = openWindow
         Window("Beecord Studio", id: "main") {
             MainWindow(
@@ -89,6 +111,14 @@ struct BeecordStudioApp: App {
         // （MainWindow.windowFitDefaultSize，含屏幕收缩）。
         .commands {
             SidebarCommands()  // 标准侧栏开关（⌃⌘S）：小屏下侧栏折叠时 UITest 可恢复
+            // 设置窗：替换系统 .appSettings 槽位，打开动作走显式 Window(id:"settings")。
+            // 菜单保留 ⌘, 展示；macOS 26.5 的派发问题由 AppDelegate 监视器兜底。
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") {
+                    openWindow(id: "settings")
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
             CommandMenu("视图") {
                 Button("设备") {
                     appModel.selectPage(.device)
@@ -105,8 +135,10 @@ struct BeecordStudioApp: App {
                 .disabled(!settingsModel.developerMode)
             }
         }
-        Settings {
+        // 显式设置窗（替代自动 Settings 场景；同 id 幂等聚焦，不叠窗）
+        Window("设置", id: "settings") {
             SettingsView(settingsModel: settingsModel)
         }
+        .windowResizability(.contentSize)
     }
 }

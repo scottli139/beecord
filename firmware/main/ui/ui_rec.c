@@ -32,7 +32,11 @@ typedef enum {
     UI_REC_CMD_TOGGLE = 0,
     UI_REC_CMD_PAUSE_TOGGLE,
     UI_REC_CMD_MARK,
+    UI_REC_CMD_STOP_LOW, // M5.4：低电自动停止（显式停止，空闲态不动作）
 } ui_rec_cmd_t;
+
+// 低电停止标记：STOPPED 事件反馈用三短音替代"滴滴"、并抑制重复 toast
+static bool s_stop_low_pending;
 
 typedef struct {
     uint8_t kind; // 0=命令 1=recorder 事件
@@ -171,6 +175,23 @@ static void do_pause_toggle(void)
     }
 }
 
+// M5.4：低电自动停止（ux-device §7：未充电 <10% 录音中自动保存停止 + 三短音）
+static void do_stop_low_battery(void)
+{
+    const buzz_rec_state_t st = buzz_recorder_state();
+    if (st == BUZZ_REC_STATE_IDLE) {
+        return; // 空闲态绝不动作（防止误启动录音）
+    }
+    s_stop_low_pending = true;
+    const esp_err_t ret = buzz_recorder_stop();
+    if (ret != ESP_OK) {
+        s_stop_low_pending = false;
+        ESP_LOGE(TAG, "低电自动停止失败: %s（不静默）", esp_err_to_name(ret));
+        ui_toast_show("停止失败", true); // 失败反馈，不静默
+    }
+    // 成功路径：STOPPED 事件分支按 s_stop_low_pending 给三短音
+}
+
 static void do_mark(void)
 {
     esp_err_t ret = buzz_recorder_mark();
@@ -197,6 +218,9 @@ static void ui_rec_task(void *arg)
             case UI_REC_CMD_MARK:
                 do_mark();
                 break;
+            case UI_REC_CMD_STOP_LOW:
+                do_stop_low_battery();
+                break;
             default:
                 break;
             }
@@ -204,6 +228,12 @@ static void ui_rec_task(void *arg)
         }
         // 事件分支：提示音 + 转发 UI
         ESP_LOGI(TAG, "evt=%d value=%d %s", (int)m.code, (int)m.value, m.message);
+        if ((buzz_rec_evt_t)m.code == BUZZ_REC_EVT_STOPPED && s_stop_low_pending) {
+            s_stop_low_pending = false;
+            (void)beep_play(BEEP_EVT_ERROR); // 低电停止 = 三短音（§8）
+            forward_to_ui((uint8_t)BUZZ_REC_EVT_STOPPED, m.value, m.message);
+            continue; // 抑制普通"滴滴"与"已保存"toast（低电文案由触发方弹）
+        }
         beep_for_event(m.code);
         if ((buzz_rec_evt_t)m.code == BUZZ_REC_EVT_AUTO_STOPPED) {
             ui_toast_show("存储已满，已自动保存", true);
@@ -238,6 +268,11 @@ esp_err_t ui_rec_request_pause_toggle(void)
 esp_err_t ui_rec_request_mark(void)
 {
     return post_cmd(UI_REC_CMD_MARK);
+}
+
+esp_err_t ui_rec_request_stop_low_battery(void)
+{
+    return post_cmd(UI_REC_CMD_STOP_LOW);
 }
 
 void ui_rec_set_recovered(const char *file)

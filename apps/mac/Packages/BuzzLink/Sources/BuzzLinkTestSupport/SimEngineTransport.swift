@@ -30,6 +30,11 @@ public final class SimEngineTransport: BuzzLinkTransport, @unchecked Sendable {
     /// 入站消息帧按 type 的计数（锁内维护，测试断言用）
     private var frameTypeCounts: [UInt8: Int] = [:]
 
+    /// 最后接受的 TIME_SET（v0.2 §8.4；透传引擎状态，测试断言用）
+    public var lastAcceptedTimeSet: (epochMs: Int64, utcOffsetMin: Int)? {
+        lock.withLock { engine.lastAcceptedTimeSet }
+    }
+
     /// 链路切片尺寸循环（模拟 notify/socket 任意切分）
     private static let splitPattern: [Int] = [251, 13, 1_024, 2]
 

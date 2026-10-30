@@ -36,6 +36,8 @@ bool buzz_type_is_known(uint8_t type)
     case BUZZ_TYPE_DL_ABORT:
     case BUZZ_TYPE_FILE_DELETE_REQ:
     case BUZZ_TYPE_FILE_DELETE_RESP:
+    case BUZZ_TYPE_TIME_SET_REQ:
+    case BUZZ_TYPE_TIME_SET_RESP:
     case BUZZ_TYPE_ERROR:
         return true;
     default:

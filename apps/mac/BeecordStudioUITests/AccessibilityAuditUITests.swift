@@ -73,26 +73,67 @@ final class AccessibilityAuditUITests: XCTestCase {
         app.launch()
         app.activate()
         if !element("sidebar.navItem.devices").waitForExistence(timeout: 10) {
+            // 原 ⌘N 兜底在 Window 单例场景下无效（无 New 命令），补窗由
+            // AppDelegate 激活钩子完成——再激活一次并放宽等待即可
             app.activate()
-            app.typeKey("n", modifierFlags: .command)
-            _ = element("sidebar.navItem.devices").waitForExistence(timeout: 5)
+            _ = element("sidebar.navItem.devices").waitForExistence(timeout: 10)
         }
         ensureSidebarVisible()
     }
 
+    /// 键盘注入在本机失效的 AX 等价路径（canary 对照实验：快捷键注入事件全程
+    /// 未到达应用；见 BeecordStudioUITests.openSettings 注记）。以下 helper
+    /// 与 ConsoleUITests 同款：只替换触发机制，audit 断言与场景不变。
+
+    /// ⌃⌘S 侧栏开关的等价路径：View/显示 菜单的边栏项
     private func ensureSidebarVisible() {
         let sidebar = element("sidebar.navItem.devices")
         if sidebar.waitForExistence(timeout: 3) { return }
-        app.typeKey("s", modifierFlags: [.control, .command])
+        let viewMenu = app.menuBars.menuBarItems["显示"]
+        if viewMenu.exists {
+            viewMenu.click()
+            let toggle = viewMenu.menuItems.matching(
+                NSPredicate(format: "title CONTAINS '边栏' OR title CONTAINS 'Sidebar'")
+            ).firstMatch
+            if toggle.exists { toggle.click() }
+        }
         _ = sidebar.waitForExistence(timeout: 5)
+    }
+
+    /// ⌘, 的等价路径：应用菜单"设置…"AX 点击
+    private func openSettingsViaMenu() {
+        let appMenu = app.menuBars.menuBarItems.element(boundBy: 1)
+        appMenu.click()
+        let item = appMenu.menuItems.matching(
+            NSPredicate(format: "title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "应用菜单应含设置项")
+        item.click()
+    }
+
+    /// ⌘W 的等价路径：设置窗红绿灯关闭钮
+    private func closeSettingsWindow() {
+        let win = app.windows.matching(
+            NSPredicate(format: "title CONTAINS '设置' OR title CONTAINS 'Settings'")
+        ).firstMatch
+        if win.waitForExistence(timeout: 3) {
+            win.buttons.element(boundBy: 0).click()
+        }
+    }
+
+    /// ⌘1/2/3 页切换的等价路径：侧栏导航项 AX 点击
+    private func selectPage(_ identifier: String, _ message: String) {
+        let nav = element(identifier)
+        XCTAssertTrue(nav.waitForExistence(timeout: 10), message)
+        nav.click()
     }
 
     /// 开发者模式门控（控制台入口前置；同 ConsoleUITests 现成路径）
     private func enableDeveloperMode() {
-        app.typeKey(",", modifierFlags: .command)
+        openSettingsViaMenu()
         XCTAssertTrue(waitForExistence("settings.developerModeToggle", timeout: 10), "设置窗口打开")
         element("settings.developerModeToggle").click()
-        app.typeKey("w", modifierFlags: .command)
+        closeSettingsWindow()
         XCTAssertTrue(waitForExistence("sidebar.navItem.console", timeout: 10), "开发者模式门控开启")
     }
 
@@ -254,7 +295,7 @@ final class AccessibilityAuditUITests: XCTestCase {
 
     func testAuditLibraryEmpty() throws {
         try launchWithSidebar()
-        app.typeKey("2", modifierFlags: .command)
+        selectPage("sidebar.navItem.library", "侧栏库项在场")
         XCTAssertTrue(waitForExistence("library.emptyState", timeout: 10), "库页空态在场")
         try audit("library-empty")
     }
@@ -264,7 +305,7 @@ final class AccessibilityAuditUITests: XCTestCase {
     func testAuditLibraryWithItems() throws {
         try startServerOrSkip()
         try launchWithSidebar()
-        app.typeKey("2", modifierFlags: .command)
+        selectPage("sidebar.navItem.library", "侧栏库项在场")
         XCTAssertTrue(
             waitForExistence("library.recordingTable.row.REC_20260103_074500", timeout: 30),
             "同步后库列表行出现"
@@ -277,7 +318,7 @@ final class AccessibilityAuditUITests: XCTestCase {
     func testAuditLibraryPlayer() throws {
         try startServerOrSkip()
         try launchWithSidebar()
-        app.typeKey("2", modifierFlags: .command)
+        selectPage("sidebar.navItem.library", "侧栏库项在场")
         let first = "REC_20260103_074500"
         XCTAssertTrue(
             waitForExistence("library.recordingTable.row.\(first)", timeout: 30),
@@ -314,7 +355,7 @@ final class AccessibilityAuditUITests: XCTestCase {
         try startServerOrSkip()
         try launchWithSidebar()
         enableDeveloperMode()
-        app.typeKey("3", modifierFlags: .command)
+        selectPage("sidebar.navItem.console", "开发者模式后门控开启")
         XCTAssertTrue(waitForExistence("console.logTable", timeout: 10), "控制台页出现")
         try audit("console")
     }
@@ -323,9 +364,9 @@ final class AccessibilityAuditUITests: XCTestCase {
 
     func testAuditSettingsWindow() throws {
         try launchWithSidebar()
-        app.typeKey(",", modifierFlags: .command)
+        openSettingsViaMenu()
         XCTAssertTrue(waitForExistence("settings.developerModeToggle", timeout: 10), "设置窗口打开")
         try audit("settings")
-        app.typeKey("w", modifierFlags: .command)
+        closeSettingsWindow()
     }
 }

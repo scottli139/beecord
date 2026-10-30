@@ -26,6 +26,10 @@ esp_err_t ui_rec_request_toggle(void);      // BOOT 单击：开始 ⇄ 停止
 esp_err_t ui_rec_request_pause_toggle(void); // BOOT 双击
 esp_err_t ui_rec_request_mark(void);         // BOOT 长按 1.5s
 
+// M5.4：显式停止（低电自动停止专用）。空闲态调用为空操作（绝不开始录音，
+// 因此不能复用 toggle）；录音中（含暂停中）请求停止，三短音 + "已保存"反馈。
+esp_err_t ui_rec_request_stop_low_battery(void);
+
 // 开机恢复（main.c 检测置标志，UI 起来后消费一次弹 toast）
 void ui_rec_set_recovered(const char *file);
 bool ui_rec_take_recovered(char *out_file, size_t cap);

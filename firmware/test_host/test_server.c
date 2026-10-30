@@ -34,6 +34,23 @@ static const uint8_t PING_ABC[] = {0xbe, 0xec, 0x01, 0x01, 0x05, 0x00, 0x00, 0x0
                                    0x03, 0x00, 0x61, 0x62, 0x63, 0xcb, 0x67};
 static const uint8_t PONG_ABC[] = {0xbe, 0xec, 0x01, 0x02, 0x05, 0x00, 0x00, 0x00,
                                    0x03, 0x00, 0x61, 0x62, 0x63, 0x04, 0xd6};
+// V5 TIME_SET_REQ（v0.2 §8.4；epochMs=1704067200000=2024-01-01T00:00:00Z，utcOffsetMin=480）
+static const uint8_t V5_TIME_SET_REQ[] = {
+    0xbe, 0xec, 0x01, 0x42, 0x2c, 0x00, 0x01, 0x00, 0x2c, 0x00, 0x7b, 0x22, 0x65,
+    0x70, 0x6f, 0x63, 0x68, 0x4d, 0x73, 0x22, 0x3a, 0x31, 0x37, 0x30, 0x34, 0x30,
+    0x36, 0x37, 0x32, 0x30, 0x30, 0x30, 0x30, 0x30, 0x2c, 0x22, 0x75, 0x74, 0x63,
+    0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x4d, 0x69, 0x6e, 0x22, 0x3a, 0x34, 0x38,
+    0x30, 0x7d, 0xb3, 0x69
+};
+
+// V6 TIME_SET_RESP（ok，回显 epochMs）
+static const uint8_t V6_TIME_SET_RESP[] = {
+    0xbe, 0xec, 0x01, 0x43, 0x2c, 0x00, 0x01, 0x00, 0x27, 0x00, 0x7b, 0x22, 0x73,
+    0x74, 0x61, 0x74, 0x75, 0x73, 0x22, 0x3a, 0x22, 0x6f, 0x6b, 0x22, 0x2c, 0x22,
+    0x65, 0x70, 0x6f, 0x63, 0x68, 0x4d, 0x73, 0x22, 0x3a, 0x31, 0x37, 0x30, 0x34,
+    0x30, 0x36, 0x37, 0x32, 0x30, 0x30, 0x30, 0x30, 0x30, 0x7d, 0xef, 0xab
+};
+
 // V1 PING 的期望 PONG（空 payload 回显，sess 0x2A）
 static const uint8_t PONG_V1[] = {0xbe, 0xec, 0x01, 0x02, 0x2a, 0x00, 0x00, 0x00,
                                   0x00, 0x00, 0x04, 0xa5};
@@ -247,6 +264,58 @@ static void test_v2_list_req_dispatched(void)
     long off = -1;
     CHECK(buzz_json_get_int((const char *)ctl_mock.req, "offset", &off) == BUZZ_OK);
     CHECK_EQ_INT(off, 0);
+}
+
+// V5 合法 TIME_SET_REQ 经服务层管线：parser 接受（type 已知）→ 分发 control handler
+// → 响应 type=0x43、session 回显；handler 返回 V6 响应体时组帧逐字节等于 V6 向量
+static void test_v5_time_set_dispatched_v6_response(void)
+{
+    fixture(true);
+    memcpy(ctl_mock.resp_body, V6_TIME_SET_RESP + BUZZ_FRAME_HEADER_LEN,
+           sizeof(V6_TIME_SET_RESP) - BUZZ_FRAME_HEADER_LEN - BUZZ_FRAME_CRC_LEN);
+    ctl_mock.resp_len = sizeof(V6_TIME_SET_RESP) - BUZZ_FRAME_HEADER_LEN -
+                        BUZZ_FRAME_CRC_LEN;
+    ctl_mock.ret = (int)ctl_mock.resp_len;
+
+    CHECK(buzz_type_is_known(0x42));
+    CHECK(buzz_type_is_known(0x43));
+    CHECK(!buzz_type_is_known(0x50)); // 未知 type 仍拒绝
+
+    CHECK_EQ_INT(buzz_server_feed(&srv, V5_TIME_SET_REQ, sizeof(V5_TIME_SET_REQ)),
+                 BUZZ_OK);
+    CHECK_EQ_INT(ctl_mock.calls, 1);
+    CHECK_EQ_INT(ctl_mock.req_type, BUZZ_TYPE_TIME_SET_REQ);
+    CHECK_EQ_INT(ctl_mock.session, 0x2c);
+    CHECK_EQ_INT(ctl_mock.channel, BUZZ_CHANNEL_CONTROL);
+    CHECK_EQ_INT(ctl_mock.req_len, 0x2c);
+    CHECK(memcmp(ctl_mock.req,
+                 "{\"epochMs\":1704067200000,\"utcOffsetMin\":480}",
+                 44) == 0);
+
+    fcap_t cap;
+    parse_txlog(&cap);
+    CHECK_EQ_INT(cap.count, 1);
+    CHECK_EQ_INT(cap.f[0].type, BUZZ_TYPE_TIME_SET_RESP);
+    CHECK_EQ_INT(cap.f[0].session, 0x2c);
+    CHECK_EQ_INT(cap.f[0].channel, BUZZ_CHANNEL_CONTROL);
+
+    // 组帧逐字节 = V6 向量（编码侧 CRC 与 §11 常量一致）
+    uint8_t out[sizeof(V6_TIME_SET_RESP)];
+    const int n = buzz_frame_encode(out, sizeof(out), BUZZ_TYPE_TIME_SET_RESP, 0x2c,
+                                    0, BUZZ_CHANNEL_CONTROL, ctl_mock.resp_body,
+                                    (uint16_t)ctl_mock.resp_len);
+    CHECK_EQ_INT(n, (int)sizeof(V6_TIME_SET_RESP));
+    CHECK(memcmp(out, V6_TIME_SET_RESP, sizeof(V6_TIME_SET_RESP)) == 0);
+
+    // i64 解析：epochMs 超出 32 位 long 范围也必须正确（regression 锚点）
+    int64_t epoch_ms = 0;
+    long off = 0;
+    CHECK(buzz_json_get_i64((const char *)ctl_mock.req, "epochMs", &epoch_ms) ==
+          BUZZ_OK);
+    CHECK_EQ_INT(epoch_ms, 1704067200000LL);
+    CHECK(buzz_json_get_int((const char *)ctl_mock.req, "utcOffsetMin", &off) ==
+          BUZZ_OK);
+    CHECK_EQ_INT(off, 480);
 }
 
 static void test_v3_dl_begin_dispatched_v4_response(void)
@@ -708,6 +777,7 @@ int main(void)
     RUN_TEST(test_interleaved_ping_during_frag_request);
     // 静默忽略/容错
     RUN_TEST(test_unknown_type_no_output);
+    RUN_TEST(test_v5_time_set_dispatched_v6_response);
     RUN_TEST(test_unknown_version_no_output);
     RUN_TEST(test_reserved_flags_no_output);
     RUN_TEST(test_bad_crc_no_output);

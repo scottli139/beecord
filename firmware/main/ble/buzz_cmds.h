@@ -1,6 +1,6 @@
 // BuzzLink BLE 命令服务（M4.3）：把 buzz_server 协议服务层接到设备侧——
 // GATT 写 → FreeRTOS 队列 → buzz 服务任务 → server 分发（控制通道 INFO_GET /
-// LIST_REQ / FILE_INFO_REQ 设备实现，FILE_DELETE_REQ 占位）→ 响应经
+// LIST_REQ / FILE_INFO_REQ / TIME_SET_REQ；FILE_DELETE_REQ 为 P1 占位）→ 响应经
 // buzz_gatt_notify_send 回推。含订阅主动 INFO（§6.1）、MTU 自适应分片上限
 // （D3：att_mtu-15）、空闲 60s 主动断开（D10）。
 //

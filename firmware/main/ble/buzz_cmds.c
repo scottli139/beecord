@@ -11,6 +11,9 @@
 #include "buzz_dl.h"
 #include "buzz_gatt.h"
 #include "buzz_server.h"
+#include "sys/power_axp.h"
+#include "sys/rtc.h"
+#include "sys/rtc_pcf.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
@@ -157,7 +160,7 @@ static const buzz_file_io_t s_file_io = {
 
 // ---------- 业务 JSON 组装 ----------
 
-// INFO（§8.1）：battery=-1 / charging=false 占位（D6，真电量计归 M5 直读 AXP2101）；
+// INFO（§8.1）：M5.4 起 battery/charging 取 AXP2101 平滑快照，未知电量报 -1；
 // 存储字节数经 esp_vfs_fat_info（内部 f_getfree × 扇区大小）获取，未挂载按 0 报告。
 static size_t build_info_json(char *buf, size_t cap)
 {
@@ -166,13 +169,29 @@ static size_t build_info_json(char *buf, size_t cap)
     if (esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &total_bytes, &free_bytes) != ESP_OK) {
         ESP_LOGW(TAG, "fat info failed, report storage 0");
     }
+    // 电量快照：power 任务 1Hz 写的静态瞬态值（字宽读，无锁；显示级精度，
+    // 单次撕裂读可容忍——刻意不引锁，避免与轮询任务互相拖住）
+    uint8_t pct = 0xFFu;
+    bool charging = false;
+    power_axp_get_debug(NULL, NULL, &pct, &charging, NULL, NULL);
+
     jbuf_t j = {.buf = buf, .cap = cap, .pos = 0, .overflow = false};
-    jput(&j,
-         "{\"model\":\"beecord-watch\",\"fwVersion\":\"%s\",\"protocol\":1,"
-         "\"deviceName\":\"%s\",\"battery\":-1,\"charging\":false,"
-         "\"storageTotal\":%llu,\"storageFree\":%llu}",
-         FW_VERSION, buzz_ble_device_name(), (unsigned long long)total_bytes,
-         (unsigned long long)free_bytes);
+    if (pct == 0xFFu) {
+        jput(&j,
+             "{\"model\":\"beecord-watch\",\"fwVersion\":\"%s\",\"protocol\":1,"
+             "\"deviceName\":\"%s\",\"battery\":-1,\"charging\":false,"
+             "\"storageTotal\":%llu,\"storageFree\":%llu}",
+             FW_VERSION, buzz_ble_device_name(), (unsigned long long)total_bytes,
+             (unsigned long long)free_bytes);
+    } else {
+        jput(&j,
+             "{\"model\":\"beecord-watch\",\"fwVersion\":\"%s\",\"protocol\":1,"
+             "\"deviceName\":\"%s\",\"battery\":%u,\"charging\":%s,"
+             "\"storageTotal\":%llu,\"storageFree\":%llu}",
+             FW_VERSION, buzz_ble_device_name(), (unsigned)pct,
+             charging ? "true" : "false", (unsigned long long)total_bytes,
+             (unsigned long long)free_bytes);
+    }
     return j.overflow ? 0u : j.pos;
 }
 
@@ -183,6 +202,52 @@ static size_t build_error_json(char *buf, size_t cap, int code, const char *mess
     jbuf_t j = {.buf = buf, .cap = cap, .pos = 0, .overflow = false};
     jput(&j, "{\"status\":\"error\",\"code\":%d,\"message\":\"%s\"}", code, message);
     return j.overflow ? 0u : j.pos;
+}
+
+// ---------- TIME_SET（§8.4 v0.2）：epochMs(UTC)+utcOffsetMin → 本地日历写 RTC ----------
+
+static int handle_time_set(const char *json, char *resp, size_t resp_cap, int *err_code,
+                           const char **err_msg)
+{
+    int64_t epoch_ms = 0;
+    long offset_min = 0;
+    int rc = buzz_json_get_i64(json, "epochMs", &epoch_ms);
+    if (rc == BUZZ_JSON_ERR_NOT_FOUND) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_BAD_REQUEST,
+                                     "missing epochMs");
+    }
+    if (rc != BUZZ_OK) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_BAD_REQUEST,
+                                     "invalid epochMs");
+    }
+    rc = buzz_json_get_int(json, "utcOffsetMin", &offset_min);
+    if (rc == BUZZ_JSON_ERR_NOT_FOUND) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_BAD_REQUEST,
+                                     "missing utcOffsetMin");
+    }
+    if (rc != BUZZ_OK) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_BAD_REQUEST,
+                                     "invalid utcOffsetMin");
+    }
+
+    rtc_datetime_t local;
+    if (!rtc_time_set_convert(epoch_ms, (int)offset_min, &local)) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_BAD_REQUEST,
+                                     "epochMs or utcOffsetMin out of range");
+    }
+    if (rtc_pcf_write(&local) != ESP_OK) {
+        return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_INTERNAL,
+                                     "rtc write failed");
+    }
+    const int n = snprintf(resp, resp_cap,
+                           "{\"status\":\"ok\",\"epochMs\":%lld}",
+                           (long long)epoch_ms);
+    if (n < 0 || (size_t)n >= resp_cap) {
+        *err_code = BUZZ_ERR_CODE_INTERNAL;
+        *err_msg = "time_set resp overflow";
+        return 0;
+    }
+    return n;
 }
 
 // ---------- 控制通道命令 ----------
@@ -310,6 +375,8 @@ static int control_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
         return handle_list(json, out, resp_cap, err_code, err_msg);
     case BUZZ_TYPE_FILE_INFO_REQ:
         return handle_file_info(json, out, resp_cap, err_code, err_msg);
+    case BUZZ_TYPE_TIME_SET_REQ:
+        return handle_time_set(json, out, resp_cap, err_code, err_msg);
     case BUZZ_TYPE_FILE_DELETE_REQ:
         // P1 命令，v1 不支持：ERROR 帧 4003（§9）
         *err_code = BUZZ_ERR_CODE_FORBIDDEN;

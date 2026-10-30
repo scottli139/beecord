@@ -14,7 +14,7 @@ extern "C" {
 #include "esp_err.h"
 #include "lvgl.h"
 
-// M5.1 固定 10s（设置项"熄屏时间"在 M5.4 接入）
+// 默认 10s；M5.4 启动时由 settings 载入持久值，运行期可经 screen_pwr_set_timeout_ms 修改
 #define UI_SCREEN_OFF_MS 10000
 
 // 初始化：创建熄屏黑层（叠加在最上层，z 序=创建顺序最后）+ 无操作监视 + BOOT 唤醒轮询。
@@ -24,6 +24,9 @@ esp_err_t screen_pwr_init(lv_obj_t *screen, lv_indev_t *indev);
 // 亮/熄屏（REPL `screen off|on` 与唤醒路径用）；返回当前是否已熄屏
 bool screen_pwr_set_on(bool on);
 bool screen_pwr_is_off(void);
+
+// M5.4：无操作熄屏超时设置（0=永不熄屏；持久化由 settings 负责，本函数只生效）
+void screen_pwr_set_timeout_ms(uint32_t ms);
 
 #ifdef __cplusplus
 }

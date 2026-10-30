@@ -319,6 +319,8 @@ final class SimDeviceModel {
         case .dlAbort: "DL_ABORT"
         case .fileDeleteReq: "FILE_DELETE_REQ"
         case .fileDeleteResp: "FILE_DELETE_RESP"
+        case .timeSetReq: "TIME_SET_REQ"
+        case .timeSetResp: "TIME_SET_RESP"
         case .error: "ERROR"
         case nil: String(format: "0x%02X", frame.type)
         }

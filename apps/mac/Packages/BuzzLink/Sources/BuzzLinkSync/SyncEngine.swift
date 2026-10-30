@@ -202,6 +202,42 @@ public actor SyncEngine {
         }
     }
 
+    /// 自动对时时间源（默认 Mac 当前时间 + 本机时区固定偏移，无 DST 语义——
+    /// 与 BUZZLINK §8.4 utcOffsetMin 约定一致）。公开可注入以便测试与
+    /// 宿主自定义时钟源。
+    public var timeSource: () -> (epochMs: Int64, utcOffsetMin: Int) = {
+        let now = Date()
+        return (Int64(now.timeIntervalSince1970 * 1000),
+                TimeZone.current.secondsFromGMT(for: now) / 60)
+    }
+
+    /// 注入对时时间源（actor 隔离赋值入口，供测试/宿主自定义时钟）。
+    public func setTimeSource(_ source: @escaping () -> (epochMs: Int64, utcOffsetMin: Int)) {
+        timeSource = source
+    }
+
+    /// TIME_SET 失败降级：旧固件（v0.1 忽略未知 type）→ commandTimeout 记 warning；
+    /// 设备拒绝/协议错 → warning + 可观测事件；两种都不阻断后续列表/下载。
+    private func performAutoTimeSet(flowEpoch: Int) async {
+        let t = timeSource()
+        do {
+            try await client.setTime(epochMs: t.epochMs, utcOffsetMin: t.utcOffsetMin)
+        } catch let error as BuzzLinkError {
+            guard flowEpoch == epoch else { return }
+            switch error {
+            case .commandTimeout:
+                logger.warning("自动对时：设备未响应 TIME_SET（旧固件 v0.1？），跳过对时")
+            default:
+                logger.warning("自动对时失败：\(error.localizedDescription)（不阻断同步）")
+                emitEvent(.timeSetFailed(error.localizedDescription))
+            }
+        } catch {
+            guard flowEpoch == epoch else { return }
+            logger.warning("自动对时失败：\(error.localizedDescription)（不阻断同步）")
+            emitEvent(.timeSetFailed(error.localizedDescription))
+        }
+    }
+
     private func runSessionFlow(epoch flowEpoch: Int) async {
         sessionRunning = true
         defer { sessionRunning = false }
@@ -210,6 +246,9 @@ public actor SyncEngine {
             let info = try await client.getDeviceInfo()
             try epochGuard(flowEpoch)
             setDeviceInfo(info)
+            // 自动对时（v0.2 §6.1 step 3）：INFO 成功后、LIST 前；失败不阻断
+            await performAutoTimeSet(flowEpoch: flowEpoch)
+            try epochGuard(flowEpoch)
             let entries = try await fetchAllFiles()
             try epochGuard(flowEpoch)
             let existing = try await store.existingSourceIDs()

@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "file_index.h"
+#include "sys/sync_marks.h"
 
 #include "audio/buzz_recorder.h" // D8：录音互斥
 
@@ -211,6 +212,18 @@ static int handle_end(const buzz_frame_t *req, uint8_t *resp, size_t resp_cap)
         return resp_end(resp, resp_cap, BUZZ_STATUS_BAD_REQUEST, 0u);
     }
     log_throughput("done");
+    // M5.4（M5_PLAN D3）：DL_END 推流完整结束 → 已同步标记持久化。
+    // ABORT / 断连 / 仅发完块未 DL_END 均不走此路径，天然不标记；
+    // 标记失败不影响下载响应（精度可容忍，重下后仍会标记）。
+    {
+        const int mark_rc = sync_marks_add(s_id);
+        if (mark_rc < 0) {
+            ESP_LOGW(TAG, "sync mark add failed (%d) for %s", mark_rc, s_id);
+        } else {
+            ESP_LOGI(TAG, "sync marked: %s (%s)", s_id,
+                     mark_rc == 0 ? "new" : "refreshed");
+        }
+    }
     const uint16_t crc16 = s_crc16;
     close_transfer();
     return resp_end(resp, resp_cap, BUZZ_STATUS_OK, crc16);

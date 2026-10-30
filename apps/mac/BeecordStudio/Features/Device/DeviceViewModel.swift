@@ -279,6 +279,9 @@ final class DeviceViewModel {
                 appModel.showToast(ToastMessage(kind: .error, text: message))
             }
             isAutoConnectAttempt = false
+        case .timeSetFailed:
+            // 对时失败不阻断同步（SDK 已记 warning）；UI 不打扰，仅事件可观测
+            break
         case .disconnected:
             isAutoConnectAttempt = false
             appModel.showToast(ToastMessage(kind: .info, text: "连接已断开，正在自动重连…"))

@@ -119,7 +119,7 @@ static esp_err_t play_tones(const beep_tone_t *tones, uint8_t tone_count, int vo
 esp_err_t beep_play(beep_event_t evt)
 {
     if (!beep_is_enabled()) {
-        return ESP_OK; // 全局关闭：静默（设置项 M5.4 接 NVS）
+        return ESP_OK; // 全局关闭：静默（M5.4 起经 settings NVS 持久化）
     }
     uint8_t tone_count = 0;
     const beep_tone_t *tones = beep_get_sequence(evt, &tone_count);

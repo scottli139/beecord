@@ -26,7 +26,7 @@ typedef enum {
 // 多键实例的键位标识（keyd_gpio 绑定与 UI 分发用）
 typedef enum {
     KEYD_KEY_BOOT = 0, // 功能键（GPIO0，低=按下）
-    KEYD_KEY_PWR,      // 电源键（检测方式待验证：GPIO10 / I2C 扩展器）
+    KEYD_KEY_PWR,      // 电源键（GPIO10，高=按下，M5.2 实机验证）
     KEYD_KEY_COUNT,
 } keyd_key_id_t;
 

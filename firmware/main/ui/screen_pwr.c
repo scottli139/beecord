@@ -23,6 +23,7 @@ static const char *TAG = "screen_pwr";
 static lv_obj_t *s_black;    // 熄屏黑层（z60：最后创建，位于指示点之上）
 static lv_indev_t *s_indev;
 static bool s_off;
+static uint32_t s_off_timeout_ms = UI_SCREEN_OFF_MS; // M5.4：可经 settings 配置
 
 // 熄屏三件套：纯黑覆盖 + 触摸停用 + 亮度 0。
 // 内部自获取 LVGL 锁：lv_indev_enable/对象操作是 LVGL API；且亮度命令走 SPI 面板 io，
@@ -77,8 +78,11 @@ static void off_monitor(lv_timer_t *timer)
     if (s_off || s_black == NULL) {
         return;
     }
+    if (s_off_timeout_ms == 0u) {
+        return; // 0=永不熄屏（设置项）
+    }
     uint32_t idle = lv_display_get_inactive_time(lv_display_get_default());
-    if (idle >= UI_SCREEN_OFF_MS) {
+    if (idle >= s_off_timeout_ms) {
         screen_pwr_set_on(false);
     }
 }
@@ -108,4 +112,9 @@ esp_err_t screen_pwr_init(lv_obj_t *screen, lv_indev_t *indev)
 
     ESP_LOGI(TAG, "screen pwr manager up (off timeout %d ms)", UI_SCREEN_OFF_MS);
     return ESP_OK;
+}
+
+void screen_pwr_set_timeout_ms(uint32_t ms)
+{
+    s_off_timeout_ms = ms;
 }

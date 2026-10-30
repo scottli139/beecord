@@ -4,8 +4,9 @@
 M0（骨架/协议层/宿主单测）、M1（到货自检：Flash 实测 32MB、自定义分区表、USB 控制台、
 SDMMC 双卡实测）、M2（音频采集：ES7210 → 混单声道 → WAV 写 TF 卡 + 串口 REPL 录控）、
 M3（编码封装：Opus 定点编码 → Ogg 写卡，8MB PSRAM 启用）、M4（BuzzLink BLE 服务：
-NimBLE GATT + 全命令 + 下载流，Beecord Studio 端到端验收通过）已完成；
-表盘 UI（M5）等随后续里程碑落地。
+NimBLE GATT + 全命令 + 下载流，Beecord Studio 端到端验收通过）已完成。M5 已落地
+表盘与录音 UI、按键/提示音、现场保护、设置与同步标记持久化、电源/RTC 和自动对时；
+四页数据接真/格式化（M5.5）与端到端收官（M5.6）随后续里程碑完成。
 
 ## 构建前提
 
@@ -50,29 +51,18 @@ Flash 实测 **32MB**。自定义分区表 `partitions.csv`：
 firmware/
 ├── CMakeLists.txt / sdkconfig.defaults / partitions.csv / dependencies.lock
 ├── main/                         # 固件应用（idf.py build 的 main 组件）
-│   ├── main.c                    # 启动入口：版本日志 → NVS → SD 探测 → 音频初始化 → 采集器 → BLE → REPL
+│   ├── main.c                    # 启动入口：NVS/设置 → SD/音频 → RTC → BLE → UI/电源 → REPL
 │   ├── fw_version.h              # FW_VERSION 单点定义（main 与 INFO 应答共用）
-│   ├── console_cmd.c             # USB 串口 REPL（esp_console）：rec/ls/get/gain/ble 命令
+│   ├── console_cmd.c             # USB REPL：rec/ls/get/gain/quality/settings/pwr/rtc/ble 等
 │   ├── proto/                    # BuzzLink 协议层：硬件无关纯 C，宿主可测
 │   │   ├── buzz_proto.h/.c       #   帧格式常量 + 编解码 + 字节流解析
 │   │   ├── buzz_reasm.h/.c       #   FRAG 分片重组
 │   │   └── crc16.h/.c            #   CRC-16/CCITT-FALSE（帧 CRC 与文件 CRC 共用）
-│   ├── audio/
-│   │   ├── ogg_writer.h/.c       # Ogg 页封装（RFC 3533，硬件无关）+ OpusHead/Tags 头包生成
-│   │   ├── opus_enc.h/.c         # Opus 薄包装（opaque 句柄）：目标链 micro-opus，宿主链系统 libopus
-│   │   ├── rec_pipe.h/.c         # 录音管线（硬件无关）：帧切片 320 采样 → Opus → Ogg 会话 → 页回调
-│   │   ├── buzz_audio.h/.c       # ES7210 采集封装：BSP 初始化 + 16k/16bit/双声道 + 33dB 增益
-│   │   ├── wav_writer.h/.c       # WAV 封装（纯 stdio 硬件无关，宿主可测）：占位头 + 收尾回填
-│   │   └── buzz_recorder.h/.c    # 采集任务（prio5/栈8K/4KB 缓冲）：读→混单声道→Ogg/WAV 双格式写卡
-│   ├── storage/                  # buzz_sdcard：TF 卡挂载/探测（M1 实测 16GB/128GB 通过）；
-│   │                             # file_index：录音枚举/分页/元数据/流式 CRC（硬件无关，宿主可测）
-│   ├── ble/                      # BuzzLink BLE 服务（M4，详见下文"BLE 服务实现"）
-│   │   ├── buzz_ble.h/.c         #   NimBLE 初始化/广播（BCD-XXXX）/GAP 事件/连接参数/状态查询
-│   │   ├── buzz_gatt.h/.c        #   GATT 服务表（三 UUID）/写回调/notify 发送
-│   │   ├── buzz_server.h/.c      #   协议服务层（硬件无关，宿主可测）：分发/分片/ERROR/极简 JSON
-│   │   ├── buzz_cmds.h/.c        #   胶合层：服务任务/队列/控制通道命令/空闲 60s 断开
-│   │   └── buzz_dl.h/.c          #   下载状态机 + 推流泵（流控）
-│   └── ui/                       # 占位（M5：表盘与交互）
+│   ├── audio/                    # ES7210 采集、Opus/Ogg/WAV、录音控制、电平与断电 journal
+│   ├── storage/                  # TF 卡挂载 + file_index 枚举/分页/元数据/流式 CRC
+│   ├── sys/                      # 按键/提示音、settings+sync_marks（NVS）、AXP2101、PCF85063
+│   ├── ble/                      # NimBLE/GATT、协议服务、控制命令（含 TIME_SET）、下载推流
+│   └── ui/                       # LVGL 表盘/录音页/浮层、主题字体、熄屏与快照测试
 └── test_host/                    # 宿主单测（详见下节）
 ```
 
@@ -82,13 +72,12 @@ firmware/
 make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`（ubuntu）
 ```
 
-- **98 用例 / 1752 断言**：帧编解码（§11 向量 V1~V4 往返）、字节流重组（重同步/容错）、
-  分片重组（乱序/丢片/超上限）、CRC16、Ogg 页结构 + 每页 CRC32、Opus 头包、
-  WAV 头字段逐字节（小端序/回填长度/落盘复读/空文件/API 守卫）、
-  **rec_pipe 全链路 roundtrip**（真 libopus 编解码：granule 序列/头页独占/EOS/尾帧丢弃/静音能量隔离）、
-  **buzz_server 服务层**（§11 向量行为级比对/响应分片/重组请求/未知帧静默/ERROR 封装/
-  会话回显/JSON 助手，25 用例）、**file_index**（内存假文件系统注入：枚举排序/分页边界/
-  双格式 durationMs/流式 CRC/CRC 缓存行为/0 字节与损坏头容错，23 用例）
+- 覆盖帧编解码与协议向量、字节流/分片重组、CRC16、Ogg/Opus/WAV、rec_pipe 真编解码
+  roundtrip、buzz_server、file_index；M5 新增 keyd/beep、rec_meter/journal、settings/
+  sync_marks（值域/损坏数据/写失败/LRU）、power（平滑/迟滞/阈值）与 rtc（BCD/闰年/
+  epoch/时区/本地窗口）硬件无关用例，另有全量 UI 字体字符门禁。
+- 本机除默认 clang 外，可用 `make -C firmware/test_host CC=gcc-16 test` 跑真 GCC；
+  macOS 名为 `gcc` 的命令通常是 Apple clang 别名，不能当作 GCC 回归。
 - **会话向量回放**：与 Mac 侧 XCTest 共享同一份 JSON（`buzzlink-vector/1` schema），
   由 `tools/vector2c.py` 生成 C 表对拍——机制见 [TESTING.md](TESTING.md) §3
 - **Ogg 对拍**：测试产出的 `.ogg` 由独立校验器 `tools/ogg_check.py` 逐页复核
@@ -124,9 +113,17 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 | **M5 端到端联调** | 录音→同步→Studio 全链路 + 表盘 UI | 一场真实录音完整同步回 Mac |
 | **M6 打磨** | 电源管理、吞吐与稳定性调优 | 视情况 |
 
-## 架构详述（占位）
+## 里程碑补充（M5.4，2026-10-30）
 
-以下内容随 M2~M5 实现后以实际代码为准补写，避免文档超前于实现：
+- settings NVS：质量/增益/提示音/熄屏时间启动应用并持久化，亮度仅存值待背光方案；非法值回默认。已同步标记在 DL_END 成功后写入，256 项 LRU，重启保留。
+- AXP2101 1Hz 采样：EMA 显示平滑、真实电量/充电态上表盘和 INFO；未充电且原始样本连续 3 次 <10% 时停止活动录音并反馈；PWR 4.5s 显示关机警告层。
+- 协议 v0.2：TIME_SET（0x42/0x43，`epochMs`+`utcOffsetMin` → 本地日历写 RTC，frame version 不变）；PCF85063 驱动（OS 标志防御、写后读回校验、失败尽力恢复起振）；REPL `rtc` / `rtc set`；`tools/buzzlink_cli.py time` 独立对时验收。
+- RTC 初始化在 BLE 之前（客户端连接窗口内 TIME_SET 无竞态）；表盘真实时钟（1Hz 时钟服务 + HH:MM/基线秒/月日周几；未对时显 "--:-- --"+"未对时"）。
+- Studio：连接 INFO 后、LIST 前自动对时（失败降级不阻断同步）。
+
+## 架构详述
+
+以下按已落地实现记录；未完成的 M5.5/M5.6 能力不作超前承诺：
 
 ### 录音管线（采集 → Opus → Ogg → TF 卡）
 
@@ -162,8 +159,8 @@ WAV 格式保留并存（`rec start wav`）。
 - **M2.4 实测修正**：①REPL 创建前不能再调 `esp_console_init`（`esp_console_new_repl_*` 内部
   已含，重复初始化报 `ESP_ERR_INVALID_STATE`）；②串口脚本须 `dtr=False` 并等待提示符同步，
   否则开端口触发的复位会吞掉命令。
-- **M3.4 实测补充**：串口会话中途断开（host 侧 close/复位）会打断录音并留下不完整文件
-  （无 EOS 页，极端情况 0 字节）——属已接受的"断电丢尾"范畴，周期 flush 与现场保护列 M6 候选。
+- **现场保护（M5.3）**：录音中每 5s flush 并写 journal，异常断电后开机检查并修复可恢复的
+  未闭合文件；首个 journal 落盘前断电仍可能留下 0 字节孤儿文件，其清理/列表过滤归 M5.5。
 
 ### BuzzLink BLE 服务实现
 
@@ -193,13 +190,19 @@ WAV 格式保留并存（`rec start wav`）。
   ~80s，故 `file_index` 带 RAM CRC 缓存（32 项，key=id+size——录音文件写后不改）；
   产品路径（FILE_INFO 一次→DL_BEGIN 命中）稳态 ~47ms。持久化索引列 M6。
 - **决策落地**（M4_BLE_PLAN D1~D10）：id = 文件名含扩展名（`REC_0014.OGG`）；
-  INFO battery=-1（未知，电量计随 M5）；录音中 DL_BEGIN 回 busy；空闲 60s 主动断开
-  （推流期间按出向进度复位计时）；0 字节文件下载合法（totalChunks=0，CRC=0xFFFF）。
+  录音中 DL_BEGIN 回 busy；空闲 60s 主动断开（推流期间按出向进度复位计时）；
+  0 字节文件下载合法（totalChunks=0，CRC=0xFFFF）。M5.4 起 INFO 电量取真实 AXP 快照，
+  仅未知时 battery=-1；DL_END 完整结束后写入持久化已同步标记。
 - **FILE_DELETE**：v1 未实现，应答 ERROR 帧 `{"code":4003,"message":"delete not supported in v1"}`。
 - **已知客户端兼容注记**：macOS CoreBluetooth 偶发丢失订阅后首帧 write-without-response
   （~1/4 概率）；`tools/buzzlink_cli.py` 以 `canSendWriteWithoutResponse` 轮询 + PING 握手
   重试规避。
 
-### 电源管理
+### 电源与 RTC
 
-*随 M5~M6 落地后补写。*
+- `power_axp` 复用 BSP I2C，以 1Hz 读取 AXP2101 电量百分比、电池电压和充放电态；
+  EMA(α=0.2) 只用于显示。低电判定使用原始样本，严格 <10% 连续 3 次触发、≥13%
+  连续 5 次解除，充电中不触发；确认低电后通过录音控制任务显式停止活动会话。
+- `rtc_pcf` 复用同一总线，PCF85063 存本地日历。TIME_SET 将 UTC epoch 与 Mac 当前
+  UTC 偏移换算后写入，STOP 后任何失败都尽力恢复起振，成功起振再读回对拍（±1s）。
+  独立 1Hz 时钟任务维护快照，LVGL 只读快照，避免在渲染任务里阻塞 I2C。

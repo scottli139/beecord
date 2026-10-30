@@ -28,7 +28,7 @@ PIPE_HDRS   := $(AUDIO)/opus_enc.h $(AUDIO)/rec_pipe.h
 
 SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(BLE)/buzz_server.c $(STORAGE)/file_index.c $(VECTOR_SRC)
 HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(BLE)/buzz_server.h $(STORAGE)/file_index.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc
 
 ifeq ($(HAVE_OPUS),1)
 TESTS += test_rec_pipe
@@ -75,6 +75,26 @@ test_rec_journal: test_rec_journal.c $(AUDIO)/rec_journal.c $(AUDIO)/rec_journal
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(AUDIO) -I$(PROTO) -o $(BUILD)/$@ $< $(AUDIO)/rec_journal.c $(PROTO)/crc16.c
 
+# settings / sync_marks（M5.4）：设置框架与已同步标记纯逻辑（存储回调注入）
+test_settings: test_settings.c $(SYS)/settings.c $(SYS)/settings.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/settings.c
+
+test_sync_marks: test_sync_marks.c $(SYS)/sync_marks.c $(SYS)/sync_marks.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/sync_marks.c
+
+# power（M5.4 二阶段）：电量平滑/低电阈值纯逻辑（-lm 数学库）
+test_power: test_power.c $(SYS)/power.c $(SYS)/power.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/power.c -lm
+
+# rtc（M5.4 三阶段，v0.2 TIME_SET）：BCD/日历/epoch+时区换算纯逻辑；
+# json i64 用例链 buzz_server.c（宿主全量 SRCS 已含）
+test_rtc: test_rtc.c $(SYS)/rtc.c $(SYS)/rtc.h $(BLE)/buzz_server.c test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SYS) -I$(BLE) -I$(PROTO) -o $(BUILD)/$@ $< $(SYS)/rtc.c $(BLE)/buzz_server.c $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c
+
 # test_rec_pipe 需额外 libopus 头/库与 -lm（数学库），独立显式规则，不走下方模式规则
 ifeq ($(HAVE_OPUS),1)
 test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
@@ -84,7 +104,7 @@ test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
 endif
 
 # test_rec_pipe/keyd/beep 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
-$(filter-out test_rec_pipe test_keyd test_beep test_rec_meter test_rec_journal,$(TESTS)): %: %.c $(SRCS) $(HDRS)
+$(filter-out test_rec_pipe test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc,$(TESTS)): %: %.c $(SRCS) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(STORAGE) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
 

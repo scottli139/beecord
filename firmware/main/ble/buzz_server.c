@@ -22,6 +22,8 @@ static uint8_t response_type(uint16_t channel, uint8_t req_type)
             return BUZZ_TYPE_FILE_INFO_RESP;
         case BUZZ_TYPE_FILE_DELETE_REQ:
             return BUZZ_TYPE_FILE_DELETE_RESP;
+        case BUZZ_TYPE_TIME_SET_REQ:
+            return BUZZ_TYPE_TIME_SET_RESP;
         default:
             return 0;
         }
@@ -350,6 +352,33 @@ int buzz_json_get_int(const char *json, const char *key, long *out)
     const char *d = json_skip_ws(end);
     if (*d != ',' && *d != '}') {
         return BUZZ_JSON_ERR_MALFORMED; // 数字后必须跟合法分隔（拒 3.14/12x）
+    }
+    *out = val;
+    return BUZZ_OK;
+}
+
+int buzz_json_get_i64(const char *json, const char *key, int64_t *out)
+{
+    if (json == NULL || key == NULL || out == NULL) {
+        return BUZZ_ERR_NULL;
+    }
+    bool malformed = false;
+    const char *v = json_find_value(json, key, &malformed);
+    if (v == NULL) {
+        return malformed ? BUZZ_JSON_ERR_MALFORMED : BUZZ_JSON_ERR_NOT_FOUND;
+    }
+    if (*v == '"' || *v == '{' || *v == '[') {
+        return BUZZ_JSON_ERR_MALFORMED; // 值类型不符
+    }
+    errno = 0;
+    char *end = NULL;
+    const int64_t val = strtoll(v, &end, 10);
+    if (end == v || errno == ERANGE) {
+        return BUZZ_JSON_ERR_MALFORMED;
+    }
+    const char *d = json_skip_ws(end);
+    if (*d != ',' && *d != '}') {
+        return BUZZ_JSON_ERR_MALFORMED;
     }
     *out = val;
     return BUZZ_OK;

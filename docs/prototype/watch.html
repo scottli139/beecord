@@ -158,7 +158,7 @@
             <span class="ble" id="h-ble"><i></i>BLE</span>
             <span class="batt"><span id="h-batt">68%</span><span class="shell"><i id="h-batt-i" style="width:68%"></i></span></span>
           </div>
-          <div class="h-time" id="h-time">14:05</div>
+          <div class="h-time" id="h-time">14:05<span id="h-sec" style="font-size:15px;font-weight:400;color:var(--text2);margin-left:4px;">:42</span></div>
           <div class="h-date" id="h-date">10月14日 周二</div>
           <div class="h-recb" id="h-recb"><i></i><span id="h-recb-t">录音中 00:00</span><span style="margin-left:auto;color:var(--text2)">查看 ›</span></div>
           <div class="h-comps">
@@ -685,8 +685,12 @@ function updStatus(){
 /* ---------- 主循环 ---------- */
 setInterval(()=>{
   const now=Date.now(), d=new Date();
+  // 表盘时间：HH:MM（主）+ 基线右侧小号秒（固件 M5.4 收尾形态）；未对时态原型不模拟
   const hm=p2(d.getHours())+":"+p2(d.getMinutes());
-  if($("h-time").textContent!==hm) $("h-time").textContent=hm;
+  const timeEl=$("h-time");
+  if(timeEl.childNodes[0].textContent!==hm) timeEl.childNodes[0].textContent=hm;
+  const sec=":"+p2(d.getSeconds());
+  if($("h-sec").textContent!==sec) $("h-sec").textContent=sec;
   if(S.power&&!S.screenOff&&now-lastAct>S.set.timeout*1000) setOff(true);
   if(S.rec&&!S.rec.paused){
     S.rec.t+=0.25;

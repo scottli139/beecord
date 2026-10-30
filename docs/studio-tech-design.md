@@ -44,7 +44,7 @@
 apps/mac/
 ├── BeecordStudio.xcodeproj          # 原生工程，入库
 ├── BeecordStudio/                   # App target（SwiftUI）
-│   ├── App/                         # 入口、NavigationSplitView、Settings 场景、
+│   ├── App/                         # 入口、NavigationSplitView、显式 settings Window、
 │   │                                #   LaunchOptions/LaunchTrace、LibraryRootResolver
 │   ├── Common/                      # DesignTokens / Toast / EmptyState / KeychainStore / 安全书签
 │   ├── Features/{Device,Library,Console,Settings}/
@@ -196,6 +196,8 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
 暴露，另提供 `snapshot` 只读当前值）。同步流程：
 
 - 自动同步**默认开启**（ux 已决）：连接 ready → `getDeviceInfo()`（存储告警判定）→
+  **自动对时 `setTime`（BuzzLink v0.2 TIME_SET，INFO 后、LIST 前；失败降级不阻断：
+  旧设备超时仅 warning，设备拒绝发 `timeSetFailed` 事件）** →
   分页拉全设备列表 → 与库 diff → 队列化下载 → CRC 校验 → **入库（`audio.ogg` + `meta.json`）
   → 清理 `.partial`**；ogg→m4a 转码随 T6 已交付（入库即转 + 存量补转，见 §5.3）；
 - 中断恢复：`.partial` 存在即未完成（启动 `purgeStalePartials()` 清理，P0 无断点续传，

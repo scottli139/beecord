@@ -25,6 +25,10 @@
 #include "audio/rec_pipe.h"
 #include "ble/buzz_ble.h"
 #include "sys/keyd_gpio.h"
+#include "sys/power_axp.h"
+#include "sys/rtc.h"
+#include "sys/rtc_pcf.h"
+#include "sys/settings.h"
 
 static const char *TAG = "console";
 
@@ -128,7 +132,9 @@ static int cmd_ls(int argc, char **argv)
 static int cmd_gain(int argc, char **argv)
 {
     if (argc < 2) {
-        printf("Usage:\n  gain <dB>  设置麦克风增益（0~37.5，3dB 步进就近取档）\n");
+        printf("当前增益: %.1f dB\n",
+               (double)settings_get_float(SETTINGS_MIC_GAIN_DB));
+        printf("Usage:\n  gain <dB>  设置麦克风增益（0~37.5，3dB 步进就近取档，持久化）\n");
         return 1;
     }
     char *end = NULL;
@@ -141,6 +147,10 @@ static int cmd_gain(int argc, char **argv)
     if (ret != ESP_OK) {
         printf("gain 设置失败: %s\n", esp_err_to_name(ret));
         return 1;
+    }
+    settings_set_float(SETTINGS_MIC_GAIN_DB, db); // M5.4：持久化（写失败仅告警）
+    if (!settings_last_save_ok()) {
+        printf("警告: 增益持久化失败（运行值已生效；重启回上次成功保存值）\n");
     }
     printf("增益已设为 %.1f dB\n", (double)db);
     return 0;
@@ -330,7 +340,7 @@ static int cmd_keylvl(int argc, char **argv)
     return 0;
 }
 
-// ---------- quality（M5.3：录音质量两档，设置页 UI 与 NVS 持久化 M5.4 接） ----------
+// ---------- quality（录音质量两档；M5.4 起 NVS 持久化，设置页 UI 归 M5.5） ----------
 
 static int cmd_quality(int argc, char **argv)
 {
@@ -348,7 +358,31 @@ static int cmd_quality(int argc, char **argv)
         return 1;
     }
     buzz_recorder_set_bitrate(q == 0 ? 0 : 24000);
-    printf("已设置：%s（下次录音生效）\n", q == 0 ? "标准 ~44kbps" : "省空间 ~24kbps");
+    settings_set_u8(SETTINGS_REC_QUALITY, (uint8_t)q); // M5.4：持久化
+    if (!settings_last_save_ok()) {
+        printf("警告: 质量档持久化失败（运行值已生效；重启回上次成功保存值）\n");
+    }
+    printf("已设置：%s（下次录音生效，已持久化）\n",
+           q == 0 ? "标准 ~44kbps" : "省空间 ~24kbps");
+    return 0;
+}
+
+// M5.4：设置项总览（亮度为持久化值，当前无应用路径——背光命令与 LVGL flush
+// 并发有卡死前科，M5_PLAN §9 登记，不接应用）
+static int cmd_settings(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    printf("rec_quality : %u（0 标准44k / 1 省空间24k）\n",
+           (unsigned)settings_get_u8(SETTINGS_REC_QUALITY));
+    printf("mic_gain    : %.1f dB\n", (double)settings_get_float(SETTINGS_MIC_GAIN_DB));
+    printf("beep        : %s\n",
+           settings_get_u8(SETTINGS_BEEP_ENABLED) != 0u ? "on" : "off");
+    printf("brightness  : %u（仅存值未应用）\n",
+           (unsigned)settings_get_u8(SETTINGS_BRIGHTNESS));
+    printf("screen_off  : %u s（0=永不）\n",
+           (unsigned)settings_get_u8(SETTINGS_SCREEN_OFF_S));
+    printf("last save   : %s\n", settings_last_save_ok() ? "ok" : "FAILED");
     return 0;
 }
 
@@ -370,6 +404,87 @@ static int cmd_reclvl(int argc, char **argv)
     printf("raw rms:  last=%" PRIu32 " min=%" PRIu32 " max=%" PRIu32
            "（满度 32767；3277=-20dB）\n",
            rms_last, rms_min, rms_max);
+    return 0;
+}
+
+// ---------- pwr（M5.4：电源状态查询） ----------
+
+static int cmd_pwr(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    float vbat_mv = 0.0f;
+    uint8_t raw_pct = 0;
+    uint8_t smoothed_pct = 0xFFu;
+    bool charging = false;
+    uint32_t ok = 0;
+    uint32_t errs = 0;
+    power_axp_get_debug(&vbat_mv, &raw_pct, &smoothed_pct, &charging, &ok, &errs);
+    printf("vbat:     %.0f mV\n", (double)vbat_mv);
+    printf("raw pct:  %u%%\n", (unsigned)raw_pct);
+    printf("smoothed: %s\n",
+           smoothed_pct == 0xFFu ? "unknown" : "ok");
+    if (smoothed_pct != 0xFFu) {
+        printf("smoothed: %u%%\n", (unsigned)smoothed_pct);
+    }
+    printf("charging: %s\n", charging ? "yes" : "no");
+    printf("reads:    %" PRIu32 " ok / %" PRIu32 " err\n", ok, errs);
+    return 0;
+}
+
+// ---------- rtc（M5.4 三阶段：RTC 状态查询 / 调试设置；正常验收走 BLE TIME_SET） ----------
+
+static int cmd_rtc(int argc, char **argv)
+{
+    // rtc set <epochMs> <utcOffsetMin>：严格解析与范围校验（同 §8.4）
+    if (argc >= 2 && strcmp(argv[1], "set") == 0) {
+        if (argc < 4) {
+            printf("用法: rtc set <epochMs> <utcOffsetMin>\n");
+            return 1;
+        }
+        char *end = NULL;
+        const long long epoch_ms = strtoll(argv[2], &end, 10);
+        if (end == argv[2] || *end != '\0') {
+            printf("epochMs 须为整数\n");
+            return 1;
+        }
+        const long off = strtol(argv[3], &end, 10);
+        if (end == argv[3] || *end != '\0') {
+            printf("utcOffsetMin 须为整数\n");
+            return 1;
+        }
+        rtc_datetime_t local;
+        if (!rtc_time_set_convert((int64_t)epoch_ms, (int)off, &local)) {
+            printf("越界：epochMs ∈ [1704067200000, 4102444799999]，"
+                   "utcOffsetMin ∈ [-720, 840]\n");
+            return 1;
+        }
+        if (rtc_pcf_write(&local) != ESP_OK) {
+            printf("RTC 写入失败\n");
+            return 1;
+        }
+        printf("已设置本地时间 %04u-%02u-%02u %02u:%02u:%02u（UTC%+ldmin）\n",
+               (unsigned)local.year, (unsigned)local.month, (unsigned)local.day,
+               (unsigned)local.hour, (unsigned)local.minute, (unsigned)local.second,
+               off);
+        return 0;
+    }
+
+    // rtc：查询
+    rtc_datetime_t dt;
+    bool os_stopped = false;
+    esp_err_t ret = rtc_pcf_read(&dt, &os_stopped);
+    if (ret != ESP_OK) {
+        printf("RTC 无效：%s（OS=%d）——未对时或振荡器停过，不当真时间\n",
+               ret == ESP_ERR_INVALID_RESPONSE ? "时钟完整性不足" : "读取失败",
+               (int)os_stopped);
+        return 0;
+    }
+    printf("本地时间: %04u-%02u-%02u %02u:%02u:%02u（UTC+offset）\n",
+           (unsigned)dt.year, (unsigned)dt.month, (unsigned)dt.day,
+           (unsigned)dt.hour, (unsigned)dt.minute, (unsigned)dt.second);
+    printf("OS=%d（0=时钟完整）  weekday=%u\n", (int)os_stopped,
+           (unsigned)rtc_weekday(&dt));
     return 0;
 }
 
@@ -442,6 +557,24 @@ esp_err_t console_cmd_start_repl(void)
         .hint = NULL,
         .func = &cmd_keylvl,
     };
+    const esp_console_cmd_t settings_cmd = {
+        .command = "settings",
+        .help = "设置项总览（NVS 持久化：质量/增益/提示音/亮度/熄屏时间）",
+        .hint = NULL,
+        .func = &cmd_settings,
+    };
+    const esp_console_cmd_t rtc_cmd = {
+        .command = "rtc",
+        .help = "RTC 状态查询 / rtc set <epochMs> <utcOffsetMin> 调试设置",
+        .hint = "[set <epochMs> <offsetMin>]",
+        .func = &cmd_rtc,
+    };
+    const esp_console_cmd_t pwr_cmd = {
+        .command = "pwr",
+        .help = "电源状态（电压/原始与平滑百分比/充电态/读取健康）",
+        .hint = NULL,
+        .func = &cmd_pwr,
+    };
     const esp_console_cmd_t reclvl_cmd = {
         .command = "reclvl",
         .help = "录音实时统计（状态/时长/电平/字节/标记），电平条排查用",
@@ -464,6 +597,9 @@ esp_err_t console_cmd_start_repl(void)
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&keylvl_cmd), TAG, "register keylvl failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&quality_cmd), TAG, "register quality failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&reclvl_cmd), TAG, "register reclvl failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&settings_cmd), TAG, "register settings failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&pwr_cmd), TAG, "register pwr failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rtc_cmd), TAG, "register rtc failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

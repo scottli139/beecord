@@ -31,6 +31,8 @@ def ui_chars():
     # 调用方（ui_rec/ui_task 里的 ui_toast_show 字符串同样上屏——M5.3 漏扫
     # ui_rec.c 导致"无存储卡，无法录音"的"，"缺字形）。printf/ESP_LOG 串口
     # 输出不上屏，但多收进词表无害，不再做文件级排除。
+    # 全量扫 main/ui/*.c（M5.3 教训：ui_rec/ui_task 内联调 ui_toast_show 的
+    # 中文字符串会漏扫——宁可日志/printf 过度包含，不漏上屏文案）
     for f in sorted(UI_DIR.glob("*.c")):
         text = f.read_text(encoding="utf-8")
         found = set()

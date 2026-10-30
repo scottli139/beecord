@@ -47,6 +47,8 @@ CHANNEL_CONTROL = 0x0001
 CHANNEL_FILE = 0x0002
 TYPE_INFO = 0x03
 TYPE_INFO_GET = 0x04
+TYPE_TIME_SET_REQ = 0x42   # BUZZLINK v0.2 §8.4
+TYPE_TIME_SET_RESP = 0x43
 TYPE_LIST_REQ = 0x10
 TYPE_LIST_RESP = 0x11
 TYPE_FILE_INFO_REQ = 0x20
@@ -305,6 +307,22 @@ async def cmd_info(dev: BuzzDevice, _args: argparse.Namespace) -> None:
               f"field {key!r} differs: push={pushed[key]!r} get={got[key]!r}")
 
 
+async def cmd_time(dev: BuzzDevice, _args: argparse.Namespace) -> None:
+    now_ms = int(time.time() * 1000)
+    if time.localtime().tm_isdst > 0:
+        offset_s = time.altzone
+    else:
+        offset_s = time.timezone
+    offset_min = int(-offset_s // 60)  # 本地 = UTC + offset
+    req = json.dumps({"epochMs": now_ms, "utcOffsetMin": offset_min},
+                     separators=(",", ":")).encode()
+    print(f"TIME_SET epochMs={now_ms} utcOffsetMin={offset_min}")
+    resp, elapsed = await dev.command(TYPE_TIME_SET_REQ, CHANNEL_CONTROL, req,
+                                      TYPE_TIME_SET_RESP)
+    print_json(resp, elapsed)
+    check(resp.get("status") == "ok", f"TIME_SET failed: {resp!r}")
+    check(resp.get("epochMs") == now_ms, f"epochMs echo mismatch: {resp!r}")
+
 async def cmd_list(dev: BuzzDevice, args: argparse.Namespace) -> None:
     req: dict[str, int] = {"offset": args.offset}
     if args.limit is not None:
@@ -415,7 +433,7 @@ async def cmd_download(dev: BuzzDevice, args: argparse.Namespace) -> None:
     print(f"saved to {out_path}")
 
 
-COMMANDS = {"info": cmd_info, "list": cmd_list, "fileinfo": cmd_fileinfo,
+COMMANDS = {"info": cmd_info, "time": cmd_time, "list": cmd_list, "fileinfo": cmd_fileinfo,
             "download": cmd_download}
 
 
@@ -458,6 +476,7 @@ def main(argv: list[str]) -> int:
                         help="expected device name prefix (default: BCD-)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("info", help="await proactive INFO and compare with INFO_GET")
+    sub.add_parser("time", help="send Mac epoch + local UTC offset (TIME_SET, §8.4)")
     p_list = sub.add_parser("list", help="list one page of recordings")
     p_list.add_argument("--offset", type=int, default=0)
     p_list.add_argument("--limit", type=int, default=None)

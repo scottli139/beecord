@@ -105,6 +105,8 @@ public enum BuzzLinkFrameType: UInt8, Sendable, CaseIterable {
     case dlAbort = 0x35
     case fileDeleteReq = 0x40
     case fileDeleteResp = 0x41
+    case timeSetReq = 0x42   // v0.2 §8.4：C→D 对时
+    case timeSetResp = 0x43  // v0.2 §8.4：D→C
     case error = 0x7F
 }
 

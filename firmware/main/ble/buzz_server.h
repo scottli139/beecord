@@ -137,6 +137,10 @@ int buzz_server_set_max_payload(buzz_server_t *s, uint16_t n);
 // BUZZ_JSON_ERR_MALFORMED。
 int buzz_json_get_int(const char *json, const char *key, long *out);
 
+// M5.4（v0.2 TIME_SET）：int64 解析（epochMs 超 32 位 long 范围）。
+// 返回码同 buzz_json_get_int。
+int buzz_json_get_i64(const char *json, const char *key, int64_t *out);
+
 // 提取字符串（容忍 \\ 与 \" 转义；cap 含 NUL）。buf 在成功时必定 NUL 结尾。
 // 返回 BUZZ_OK / BUZZ_ERR_NULL / BUZZ_ERR_SIZE（cap 不足）/
 // BUZZ_JSON_ERR_NOT_FOUND / BUZZ_JSON_ERR_MALFORMED。

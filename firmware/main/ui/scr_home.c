@@ -3,12 +3,68 @@
 // 页面 padding 16/16/30，上安全区 14；所有颜色/间距/圆角取 theme.h 令牌。
 #include "scr_home.h"
 
+#include <stdio.h>
+
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
 #include "scr_shell.h"
+#include "sys/rtc_pcf.h"
 #include "theme.h"
 
 // 状态栏：BLE 空心点 8px + "BLE"，右侧 电量% + 电池壳 20×10 + REC 点（默认隐藏）
 static lv_obj_t *s_rec_dot;
+static lv_obj_t *s_pct_label;
+static lv_obj_t *s_time_label;
+static lv_obj_t *s_sec_label;
+static lv_obj_t *s_date_label;
+static lv_obj_t *s_batt_fill;
+static lv_obj_t *s_bolt_canvas;
+
+// 充电闪电位图（10×14 I1，行起止列；DESIGN §3 状态图标·充电加闪电·的等效小图标）
+#define BOLT_W 10u
+#define BOLT_H 14u
+static uint8_t s_bolt_buf[((BOLT_W + 7u) / 8u) * BOLT_H];
+static const uint8_t s_bolt_rows[BOLT_H][2] = {
+    { 5, 7 }, { 5, 7 }, { 5, 7 }, { 4, 7 }, { 4, 6 }, { 4, 6 },
+    { 3, 5 }, { 3, 5 }, { 2, 4 }, { 2, 4 }, { 3, 4 }, { 3, 4 }, { 0xFF, 0 }, { 0xFF, 0 },
+};
+
+static void draw_bolt(void)
+{
+    lv_color_t on = { .blue = 1 }; // I1：color.blue 为 palette 索引
+    for (uint32_t y = 0; y < BOLT_H; y++) {
+        const uint8_t x0 = s_bolt_rows[y][0];
+        const uint8_t x1 = s_bolt_rows[y][1];
+        if (x0 == 0xFFu) {
+            continue;
+        }
+        for (uint32_t x = x0; x <= x1 && x < BOLT_W; x++) {
+            lv_canvas_set_px(s_bolt_canvas, (int32_t)x, (int32_t)y, on, LV_OPA_COVER);
+        }
+    }
+}
+
+// M5.4：状态栏电量接真（UI 消息队列/LVGL 上下文调用；pct=0xFF 未知态）。
+// 视觉：pct 文本 + 填充宽 = 百分比；<15% 橙（§3）；充电态显琥珀闪电。
+void scr_home_set_power(uint8_t pct, bool charging)
+{
+    bsp_display_lock(0);
+    if (pct == 0xFFu) {
+        lv_label_set_text(s_pct_label, "--%");
+        lv_obj_set_width(s_batt_fill, 0);
+        lv_obj_set_hidden(s_bolt_canvas, true);
+        bsp_display_unlock();
+        return;
+    }
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%u%%", (unsigned)pct);
+    lv_label_set_text(s_pct_label, buf);
+    const int32_t fill_w = (int32_t)((UI_BATTERY_W - 2) * pct / 100u);
+    lv_obj_set_width(s_batt_fill, fill_w);
+    lv_obj_set_style_bg_color(s_batt_fill,
+                              pct < 15u ? UI_COLOR_WARNING : UI_COLOR_SUCCESS, 0);
+    lv_obj_set_hidden(s_bolt_canvas, !charging);
+    bsp_display_unlock();
+}
 
 static void status_bar_create(lv_obj_t *page)
 {
@@ -24,7 +80,7 @@ static void status_bar_create(lv_obj_t *page)
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollable(bar, false);
 
-    // 左：BLE 状态（M5.4 接连接态；空心=未连接）
+    // 左：BLE 状态（M5.5 接连接态；当前静态空心=未连接）
     lv_obj_t *ble = lv_obj_create(bar);
     lv_obj_set_size(ble, 48, UI_STATUS_BAR_H); // 触控目标 ≥48
     lv_obj_set_style_bg_opa(ble, 0, 0);
@@ -47,7 +103,7 @@ static void status_bar_create(lv_obj_t *page)
     lv_label_set_text(ble_txt, "BLE");
     ui_theme_apply_text(ble_txt, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
 
-    // 右：电量（M5.4 接 AXP2101；静态 68%）+ 电池壳 + REC 点
+    // 右：电量（M5.4 接 AXP2101：未知 "--%"+空壳，不伪造值）+ 电池壳 + 充电闪电 + REC 点
     lv_obj_t *pwr = lv_obj_create(bar);
     lv_obj_set_size(pwr, 72, UI_STATUS_BAR_H);
     lv_obj_set_style_bg_opa(pwr, 0, 0);
@@ -58,9 +114,26 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_flex_align(pwr, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollable(pwr, false);
-    lv_obj_t *pct = lv_label_create(pwr);
-    lv_label_set_text(pct, "68%");
-    ui_theme_apply_text(pct, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
+    s_pct_label = lv_label_create(pwr);
+    lv_label_set_text(s_pct_label, "--%"); // 未读到有效数据的未知态
+    ui_theme_apply_text(s_pct_label, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
+
+    // 充电闪电（§3：充电加闪电；2px 圆头线性小图标等效——I1 canvas 位图）
+    s_bolt_canvas = lv_canvas_create(pwr);
+    lv_obj_set_size(s_bolt_canvas, BOLT_W, BOLT_H);
+    lv_obj_set_style_pad_all(s_bolt_canvas, 0, 0);
+    lv_obj_set_scrollable(s_bolt_canvas, false);
+    lv_obj_set_clickable(s_bolt_canvas, false);
+    lv_canvas_set_buffer(s_bolt_canvas, s_bolt_buf, BOLT_W, BOLT_H,
+                         LV_COLOR_FORMAT_I1);
+    // palette[0]=透明底 [1]=琥珀；set_px 对 I1 取 color.blue 作索引（LVGL 9 实现）
+    lv_canvas_set_palette(s_bolt_canvas, 0, (lv_color32_t){ .alpha = 0 });
+    lv_canvas_set_palette(s_bolt_canvas, 1,
+                          (lv_color32_t){ .red = 0xF5, .green = 0xA6, .blue = 0x23,
+                                          .alpha = 0xFF });
+    draw_bolt();
+    lv_obj_set_hidden(s_bolt_canvas, true);
+
     lv_obj_t *batt = lv_obj_create(pwr);
     lv_obj_set_size(batt, UI_BATTERY_W, UI_BATTERY_H);
     lv_obj_set_style_radius(batt, 2, 0); // §3 电池壳 20×10 图版实测圆角（≈2px）
@@ -69,14 +142,14 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_style_border_width(batt, 1, 0);
     lv_obj_set_style_pad_all(batt, 0, 0);
     lv_obj_set_scrollable(batt, false);
-    lv_obj_t *fill = lv_obj_create(batt);
-    lv_obj_set_size(fill, (UI_BATTERY_W - 2) * 68 / 100, UI_BATTERY_H - 2);
-    lv_obj_align(fill, LV_ALIGN_LEFT_MID, 1, 0);
-    lv_obj_set_style_radius(fill, 1, 0);
-    lv_obj_set_style_bg_color(fill, UI_COLOR_SUCCESS, 0);
-    lv_obj_set_style_border_width(fill, 0, 0);
-    lv_obj_set_style_pad_all(fill, 0, 0);
-    lv_obj_set_scrollable(fill, false);
+    s_batt_fill = lv_obj_create(batt);
+    lv_obj_set_size(s_batt_fill, 0, UI_BATTERY_H - 2); // 未知态：空壳无填充
+    lv_obj_align(s_batt_fill, LV_ALIGN_LEFT_MID, 1, 0);
+    lv_obj_set_style_radius(s_batt_fill, 1, 0);
+    lv_obj_set_style_bg_color(s_batt_fill, UI_COLOR_SUCCESS, 0);
+    lv_obj_set_style_border_width(s_batt_fill, 0, 0);
+    lv_obj_set_style_pad_all(s_batt_fill, 0, 0);
+    lv_obj_set_scrollable(s_batt_fill, false);
     s_rec_dot = lv_obj_create(pwr);
     lv_obj_set_size(s_rec_dot, UI_STATUS_DOT, UI_STATUS_DOT);
     lv_obj_set_style_radius(s_rec_dot, UI_RADIUS_FULL, 0);
@@ -212,6 +285,32 @@ static void widget_row_create(lv_obj_t *page)
     }
 }
 
+// 1Hz 时钟渲染（LVGL 任务上下文）：拉 RTC 服务快照（低频任务维护，不在此做 I2C）
+static const char *s_weekday_cn[] = { "周日", "周一", "周二", "周三",
+                                      "周四", "周五", "周六" };
+
+static void clock_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    rtc_datetime_t dt;
+    bool valid = false;
+    rtc_pcf_clock_snapshot(&dt, &valid);
+    if (!valid) {
+        lv_label_set_text(s_time_label, "--:--");
+        lv_label_set_text(s_sec_label, "--");
+        lv_label_set_text(s_date_label, "未对时");
+        return;
+    }
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%02u:%02u", (unsigned)dt.hour, (unsigned)dt.minute);
+    lv_label_set_text(s_time_label, buf);
+    snprintf(buf, sizeof(buf), ":%02u", (unsigned)dt.second);
+    lv_label_set_text(s_sec_label, buf);
+    snprintf(buf, sizeof(buf), "%u月%u日 %s", (unsigned)dt.month, (unsigned)dt.day,
+             s_weekday_cn[rtc_weekday(&dt)]);
+    lv_label_set_text(s_date_label, buf);
+}
+
 void scr_home_create(lv_obj_t *tile)
 {
     lv_obj_t *page = scr_page_begin(tile);
@@ -223,18 +322,36 @@ void scr_home_create(lv_obj_t *tile)
 
     status_bar_create(page);
 
-    // 大时间（display 64/300 tabular；M5.4 RTC 对时后接真）
-    lv_obj_t *time = lv_label_create(page);
-    lv_label_set_text(time, "14:05");
-    ui_theme_apply_text(time, FONT_DISPLAY, UI_COLOR_TEXT_PRIMARY);
-    lv_obj_set_style_text_align(time, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_margin_top(time, UI_SPACE_8, 0);
+    // 大时间（M5.4 收尾接真：display64 HH:MM + 基线右侧小号秒 :SS；未对时 --:-- --）。
+    // 秒对齐：行容器底对齐 + 秒标签底部内缩（display 数字基线以下的下沉量）。
+    lv_obj_t *time_row = lv_obj_create(page);
+    lv_obj_set_size(time_row, LV_SIZE_CONTENT, 84);
+    lv_obj_set_style_bg_opa(time_row, 0, 0);
+    lv_obj_set_style_border_width(time_row, 0, 0);
+    lv_obj_set_style_pad_all(time_row, 0, 0);
+    lv_obj_set_flex_flow(time_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(time_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(time_row, 2, 0);
+    lv_obj_set_scrollable(time_row, false);
+    lv_obj_align(time_row, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_margin_top(time_row, UI_SPACE_8, 0);
 
-    lv_obj_t *date = lv_label_create(page);
-    lv_label_set_text(date, "10月20日 周二");
-    ui_theme_apply_text(date, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
-    lv_obj_set_style_text_align(date, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_margin_top(date, UI_SPACE_2, 0);
+    s_time_label = lv_label_create(time_row);
+    ui_theme_apply_text(s_time_label, FONT_DISPLAY, UI_COLOR_TEXT_PRIMARY);
+    lv_label_set_text(s_time_label, "--:--");
+
+    s_sec_label = lv_label_create(time_row);
+    ui_theme_apply_text(s_sec_label, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
+    lv_label_set_text(s_sec_label, "--");
+    lv_obj_set_style_margin_bottom(s_sec_label, 8, 0); // 秒贴 display 基线
+
+    s_date_label = lv_label_create(page);
+    ui_theme_apply_text(s_date_label, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
+    lv_label_set_text(s_date_label, "未对时");
+    lv_obj_set_style_text_align(s_date_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_date_label, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_margin_top(s_date_label, UI_SPACE_2, 0);
 
     banner_create(page);
 
@@ -257,4 +374,6 @@ void scr_home_create(lv_obj_t *tile)
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_margin_top(hint, UI_SPACE_4, 0);
     lv_obj_set_style_margin_bottom(hint, UI_SPACE_1, 0);
+
+    lv_timer_create(clock_timer_cb, 1000, NULL); // 表盘时钟 1Hz 渲染
 }

@@ -24,6 +24,9 @@ public struct SimFaults: Equatable, Sendable {
     public var hostileFileNames: Bool
     /// 存储将满：INFO 上报剩余 5%（>90% 占用，触发客户端同步前警告条）
     public var storageNearlyFull: Bool
+    /// 忽略 TIME_SET（v0.2 §8.4）：不响应 0x42——模拟旧固件 v0.1 对未知 type
+    /// 的忽略行为（§10 兼容语义），用于客户端对时降级路径测试
+    public var ignoreTimeSet: Bool
 
     public init(
         dropChunkProbability: Double = 0,
@@ -33,7 +36,8 @@ public struct SimFaults: Equatable, Sendable {
         corruptFinalChunkCRC: Bool = false,
         emptyFileList: Bool = false,
         hostileFileNames: Bool = false,
-        storageNearlyFull: Bool = false
+        storageNearlyFull: Bool = false,
+        ignoreTimeSet: Bool = false
     ) {
         self.dropChunkProbability = dropChunkProbability
         self.throttleBytesPerSecond = throttleBytesPerSecond
@@ -43,6 +47,7 @@ public struct SimFaults: Equatable, Sendable {
         self.emptyFileList = emptyFileList
         self.hostileFileNames = hostileFileNames
         self.storageNearlyFull = storageNearlyFull
+        self.ignoreTimeSet = ignoreTimeSet
     }
 }
 

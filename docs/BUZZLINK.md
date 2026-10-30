@@ -1,6 +1,9 @@
 # BuzzLink 协议规范
 
-> 版本：**v0.1 草案 → 实现基线**（2026-10-14）。本文是 Beecord 设备（Peripheral）与客户端
+> 版本：**v0.2**（2026-10-30，M5.4 三阶段）：新增 TIME_SET 对时命令（0x42/0x43）。
+> **frame version 保持 0x01 不变**——新增 type 属后向兼容扩展（§10 兼容语义：
+> 接收方忽略未知 type），升 version 仅留给不兼容变更。
+> 历史：v0.1 草案 → 实现基线（2026-10-14）。本文是 Beecord 设备（Peripheral）与客户端
 > （Central，如 Beecord Studio）之间 BLE 文件同步协议的**唯一实现依据**；
 > 协议常量（魔数/UUID/命令字/块大小）以本文为准，实现中集中于
 > `BuzzLinkConstants`（Swift）/ `buzz_proto.h`（C）单点定义。
@@ -110,6 +113,8 @@
 | `0x35` | DL_ABORT | C→D | 0x0002 | `[idLen u8][id…]`；设备停止推流并应回 DL_END_RESP(status=2) |
 | `0x40` | FILE_DELETE_REQ | C→D | 0x0001 | （P1 可选）`{"id":"REC_…"}` |
 | `0x41` | FILE_DELETE_RESP | D→C | 0x0001 | （P1 可选）`{"status":"ok"}` |
+| `0x42` | TIME_SET_REQ | C→D | 0x0001 | `{"epochMs":N,"utcOffsetMin":M}` 对时（§8.4，v0.2） |
+| `0x43` | TIME_SET_RESP | D→C | 0x0001 | `{"status":"ok","epochMs":N}` 或错误形态（§8.4） |
 | `0x7F` | ERROR | D→C | 0x0001 | `{"code":4004,"message":"file not found"}`（§9） |
 
 status 字节：`0` ok / `1` not_found / `2` aborted / `3` busy / `4` bad_request / `5` storage_error / `6` internal。
@@ -129,7 +134,11 @@ UTF-8 不透明字符串，≤ 32 字节；固件命名 `REC_YYYYMMDD_HHMMSS`（
 
 1. Central 按 Service UUID 扫描 → 连接 → 发现服务/特征 → 请求 MTU 247 → 订阅 Notify；
 2. 设备可在订阅后 1 s 内主动推 INFO（session=0x00）；客户端也可随时 INFO_GET；
-3. 空闲保活：下载/同步进行中流量即保活；空闲时客户端可每 15 s 发 PING，
+3. **自动对时（v0.2）**：客户端获取 INFO 成功后、LIST 前，应自动 TIME_SET
+   （Mac 时间 + 本机时区，见 §8.4）；首连/刷新/自动重连共用此路径。
+   旧设备（v0.1，未实现 0x42）会忽略未知 type（§10）→ 客户端超时降级：
+   记 warning 并继续列表/下载，**不得阻断同步**；
+4. 空闲保活：下载/同步进行中流量即保活；空闲时客户端可每 15 s 发 PING，
    设备可在空闲 60 s 后主动断开（客户端应能自动重连）。
 
 ### 6.2 文件下载
@@ -181,8 +190,8 @@ P0 不实现，type 已预留。
 
 `storageTotal/Free` 单位字节；`protocol` = 协议版本号（对应 frame version）。
 
-> 实现注记（2026-10-20，v1 固件）：`battery` 取值 -1 表示"未知"（电量计未启用时如此上报），
-> 客户端应按"无电量信息"展示；`charging` 在电量计启用前恒为 false。
+> 实现注记（2026-10-30，M5.4 固件）：`battery` 取 AXP2101 平滑百分比，-1 表示"未知"
+> （尚未取得有效样本或读取不可用）；`charging` 取同时刻充电状态。客户端应按未知态展示。
 
 ### 8.2 LIST_RESP（type 0x11）
 
@@ -207,6 +216,33 @@ P0 不实现，type 已预留。
 ```
 
 `crc16` 为十进制整数（0–65535）。
+
+### 8.4 TIME_SET（type 0x42/0x43，v0.2）
+
+REQ（C→D）：
+
+```json
+{ "epochMs": 1704067200000, "utcOffsetMin": 480 }
+```
+
+- `epochMs`：UTC Unix 毫秒（int64）。**有效范围 2024-01-01T00:00:00.000Z
+  （1704067200000）～2099-12-31T23:59:59.999Z（4102444799999）**——覆盖
+  PCF85063 年份能力与产品寿命；
+- `utcOffsetMin`：本地 = UTC + 偏移（分钟，int）。**范围 -720～+840**
+  （-12h～+14h，覆盖全部现行时区；不带 DST——用固定当前偏移即可）；
+- 语义：设备按 `epochMs + utcOffsetMin` 换算**本地日历时间**写入 RTC。
+  RTC 存本地时间，因此设备重启后无需另存时区即可正确显示（D2 决策补充）；
+- **本地落点窗口**：换算结果的日历年份也须落在 2000..2099（PCF85063 能力窗口）——
+  如 2024-01-01T00:00Z 配 -720min，本地落点为 2023-12-31，属非法请求（4000）。
+
+RESP（D→C）成功：`{ "status": "ok", "epochMs": 1704067200000 }`（回显接受值）。
+
+失败统一错误形态（§8.2 同款）：非法 JSON / 缺字段 / 类型错 /
+`epochMs` 越界或 `utcOffsetMin` 越界 → `{"status":"error","code":4000,"message":"…"}`；
+RTC 写入失败 → `{"status":"error","code":4999,"message":"rtc write failed"}`。
+
+设备侧对时前的垃圾态防御：RTC 振荡器停止标志（OS）未清或从未对过时，
+设备应报"时间无效"而不把 2000/1970 之类默认值当真时间（实现见固件 rtc 模块）。
 
 ## 9. 错误码
 
@@ -241,6 +277,15 @@ be ec 01 30 31 00 02 00 14 00 13 52 45 43 5f 32 30 32 36 31 30 31 34 5f 30 39 31
 
 # V4 DL_BEGIN_RESP（ok, chunkDataLen=224, totalChunks=4518, size=1011372, fileCrc16=0x6F3A）
 be ec 01 31 31 00 02 00 0d 00 00 e0 00 a6 11 00 00 ac 6e 0f 00 3a 6f 02 47
+
+# V5 TIME_SET_REQ（v0.2；epochMs=1704067200000=2024-01-01T00:00:00Z，utcOffsetMin=480=UTC+8）
+be ec 01 42 2c 00 01 00 2c 00 7b 22 65 70 6f 63 68 4d 73 22 3a 31 37 30 34 30 36 37 32 30 30 30 30 30 2c 22 75 74 63 4f 66 66 73 65 74 4d 69 6e 22 3a 34 38 30 7d b3 69
+
+# V6 TIME_SET_RESP（ok，回显 epochMs）
+be ec 01 43 2c 00 01 00 27 00 7b 22 73 74 61 74 75 73 22 3a 22 6f 6b 22 2c 22 65 70 6f 63 68 4d 73 22 3a 31 37 30 34 30 36 37 32 30 30 30 30 30 7d ef ab
+
+# V7 TIME_SET_REQ（epochMs=9999999999999 越界 → 设备回 4000；帧本身可解析）
+be ec 01 42 2c 00 01 00 2c 00 7b 22 65 70 6f 63 68 4d 73 22 3a 39 39 39 39 39 39 39 39 39 39 39 39 39 2c 22 75 74 63 4f 66 66 73 65 74 4d 69 6e 22 3a 34 38 30 7d de fc
 ```
 
 分片示例（500 字节 JSON 消息分 3 片）：片 0/1 各 228 字节数据，片 2 为 44 字节；

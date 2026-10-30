@@ -43,6 +43,8 @@ extern "C" {
 #define BUZZ_TYPE_DL_ABORT 0x35u      // C→D 中止 [idLen u8][id…]
 #define BUZZ_TYPE_FILE_DELETE_REQ 0x40u  // P1 可选
 #define BUZZ_TYPE_FILE_DELETE_RESP 0x41u // P1 可选
+#define BUZZ_TYPE_TIME_SET_REQ 0x42u  // C→D 对时 JSON（v0.2，§8.4）
+#define BUZZ_TYPE_TIME_SET_RESP 0x43u // D→C {"status":"ok","epochMs":N} 或错误形态
 #define BUZZ_TYPE_ERROR 0x7Fu         // D→C 异步错误 JSON
 
 // 通道（§4）

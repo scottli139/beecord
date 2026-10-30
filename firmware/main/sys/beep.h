@@ -47,7 +47,7 @@ const beep_tone_t *beep_get_sequence(beep_event_t evt, uint8_t *out_count);
 // 该预算只描述音序列表本身。
 uint32_t beep_sequence_duration_ms(beep_event_t evt);
 
-// 全局开关（设置项 M5.4 接 NVS；默认开）。关闭时播放层静默。
+// 全局开关（M5.4 起经 settings NVS 持久化；默认开）。关闭时播放层静默。
 void beep_set_enabled(bool enabled);
 bool beep_is_enabled(void);
 

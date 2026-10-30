@@ -56,6 +56,9 @@ public struct SimEngine: Sendable {
     /// 故障注入累计丢弃的块数
     public private(set) var droppedChunkCount = 0
 
+    /// 最后接受的 TIME_SET（v0.2 §8.4）；nil = 尚未对时。测试断言用。
+    public private(set) var lastAcceptedTimeSet: (epochMs: Int64, utcOffsetMin: Int)?
+
     /// 中途静默触发点：推流进度达到该比例后进入静默
     private static let silenceTriggerPercent = 30
 
@@ -125,6 +128,9 @@ public struct SimEngine: Sendable {
             return listResponse(frame)
         case .fileInfoReq:
             return fileInfoResponse(frame)
+        case .timeSetReq:
+            // 故障注入：模拟旧固件忽略未知 type（§10）；正常路径不应答之外
+            return faults.ignoreTimeSet ? [] : handleTimeSet(frame)
         case .dlBeginReq:
             return beginDownload(frame)
         case .dlEndReq:
@@ -234,6 +240,52 @@ public struct SimEngine: Sendable {
             channels: 1
         )
         return emitJSON(FileInfoJSON.self, value: json, type: .fileInfoResp, session: frame.session)
+    }
+
+    // MARK: - 对时（v0.2 §8.4）
+
+    /// TIME_SET：解析+校验（epoch 2024-01-01..2099-12-31、offset -720..840）→
+    /// 记录 lastAcceptedTimeSet → 回显 {"status":"ok","epochMs":N}；
+    /// 非法/越界 → TIME_SET_RESP 上回错误 JSON（同固件行为）。
+    private mutating func handleTimeSet(_ frame: BuzzLinkFrame) -> [SimOutboundFrame] {
+        struct TimeSetJSON: Decodable {
+            let epochMs: Int64
+            let utcOffsetMin: Int
+        }
+        guard let req = try? JSONDecoder().decode(TimeSetJSON.self,
+                                                  from: Data(frame.payload)) else {
+            return emitJSON(TimeSetErrorJSON.self,
+                            value: TimeSetErrorJSON(status: "error", code: 4000,
+                                                    message: "missing or invalid fields"),
+                            type: .timeSetResp, session: frame.session)
+        }
+        let epochMin = 1_704_067_200_000  // 2024-01-01T00:00:00Z
+        let epochMax = 4_102_444_799_999  // 2099-12-31T23:59:59.999Z
+        guard req.epochMs >= epochMin, req.epochMs <= epochMax,
+              req.utcOffsetMin >= -720, req.utcOffsetMin <= 840 else {
+            return emitJSON(TimeSetErrorJSON.self,
+                            value: TimeSetErrorJSON(status: "error", code: 4000,
+                                                    message: "out of range"),
+                            type: .timeSetResp, session: frame.session)
+        }
+        // 本地落点窗口（BUZZLINK §8.4）：epoch+offset 换算的年份须落 2000..2099
+        let localMs = req.epochMs + Int64(req.utcOffsetMin) * 60_000
+        let localYear = Calendar(identifier: .gregorian)
+            .component(.year, from: Date(timeIntervalSince1970: TimeInterval(localMs) / 1000.0))
+        guard (2000...2099).contains(localYear) else {
+            return emitJSON(TimeSetErrorJSON.self,
+                            value: TimeSetErrorJSON(status: "error", code: 4000,
+                                                    message: "local landing out of 2000-2099"),
+                            type: .timeSetResp, session: frame.session)
+        }
+        lastAcceptedTimeSet = (req.epochMs, req.utcOffsetMin)
+        struct TimeSetOKJSON: Encodable {
+            let status: String
+            let epochMs: Int64
+        }
+        return emitJSON(TimeSetOKJSON.self,
+                        value: TimeSetOKJSON(status: "ok", epochMs: req.epochMs),
+                        type: .timeSetResp, session: frame.session)
     }
 
     private mutating func infoFrames(session: UInt8) -> [SimOutboundFrame] {
@@ -428,6 +480,12 @@ public struct SimEngine: Sendable {
 }
 
 // MARK: - JSON 数据模型（BUZZLINK.md §8）
+
+private struct TimeSetErrorJSON: Encodable {
+    let status: String
+    let code: Int
+    let message: String
+}
 
 private struct InfoJSON: Encodable {
     let model: String

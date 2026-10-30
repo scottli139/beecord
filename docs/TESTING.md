@@ -32,8 +32,8 @@ cd firmware/test_host && make test
 ```
 
 本地 SwiftPM 包的测试 target 不属于 xcodeproj scheme，故 L1 与 L2/L3 分两条命令；
-三个命令都必须在提交前本地通过；CI 门禁工作流 `mac-test`（`.github/workflows/mac-test.yml`）
-执行前两条（固件宿主单测待 M0 后接入）。
+三个命令都必须在提交前本地通过；CI 的 `mac-test` 执行前两条，`firmware-host-test`
+与 `firmware-build` 覆盖固件宿主测试和目标构建。
 
 > 调试附记：`swift test` 输出重定向到文件/管道时 XCTest stdout 为块缓冲，
 > 不可流式观察（T2 调试期实测）；需要实时输出时直接前台跑。
@@ -74,6 +74,11 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
      仅在 `-libraryRoot` 注入时写 `<libraryRoot>/uitest-launch-trace.log`，用例失败时
      回读进失败信息；工作流失败时自动上传 xcresult（截图/AX 树/屏幕录像）为 artifact。
      启动后若主窗口未随启动出现，用例兜底 `activate + ⌘N` 强制新建主窗口。
+     **键盘注入与系统审计环境**（2026-10-30，macOS 26.5 实录）：本机 XCUITest `typeKey`
+     可不进入应用事件循环，设置/切页/关窗等回归一律走应用菜单、侧栏与窗口按钮的 AX 路径；
+     真实键盘 ⌘, 由 AppDelegate 监视器保留，不能据 typeKey 失败判产品快捷键失效。
+     Accessibility Audit 的 `Code=-56` 统一超时发生在系统 `audit()` API 内，导航与前置断言
+     全部通过时应登记为本机环境限制并交 CI 复核，不得删场景或放宽豁免凑绿。
      **CI 环境三条认知**（2026-10-17 固化，排障先核对）：
      1. CI runner 屏幕恒 **1024×768**、可视区约 **1024×674**（菜单栏 + Dock 占用）——
         任何"窗口大于可视区导致控件被推出屏外/侧栏被折叠"的表象先查这一条
@@ -167,6 +172,7 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
 | 空文件列表 | 设备页空态文案 |
 | 超长文件名 / 非法字符 | UI 截断不溢出；入库文件名安全化 |
 | 存储将满（>90%） | 同步前警告条 |
+| 忽略 TIME_SET（旧固件兼容，v0.2） | 客户端对时超时 → 降级继续同步，仅 warning 无失败事件 |
 
 每条注入场景至少有一个 L2/L3 自动化用例或 AI 手工测试脚本。
 

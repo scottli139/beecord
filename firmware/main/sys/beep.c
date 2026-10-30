@@ -38,7 +38,7 @@ static const beep_seq_entry_t s_table[BEEP_EVT_COUNT] = {
     [BEEP_EVT_CONNECTED] = {s_seq_connected, 2},
 };
 
-static bool s_enabled = true; // 默认开（NVS 设置项 M5.4 接入）
+static bool s_enabled = true; // 默认开（M5.4 启动时由 settings 载入持久值）
 
 const beep_tone_t *beep_get_sequence(beep_event_t evt, uint8_t *out_count)
 {

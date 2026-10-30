@@ -51,7 +51,7 @@ void scr_sync_create(lv_obj_t *tile)
 void scr_settings_create(lv_obj_t *tile)
 {
     lv_obj_t *page = scr_page_begin(tile);
-    scr_page_title(page, "设置"); // 内容 M5.4 接
+    scr_page_title(page, "设置"); // 内容 M5.5 接
 }
 
 // ---------- 模态录音页：M5.3 起由 scr_rec.c 实现 ----------
