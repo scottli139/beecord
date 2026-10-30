@@ -75,10 +75,10 @@ test_rec_journal: test_rec_journal.c $(AUDIO)/rec_journal.c $(AUDIO)/rec_journal
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(AUDIO) -I$(PROTO) -o $(BUILD)/$@ $< $(AUDIO)/rec_journal.c $(PROTO)/crc16.c
 
-# settings / sync_marks（M5.4）：设置框架与已同步标记纯逻辑（存储回调注入）
+# settings / sync_marks（M5.4）：设置框架与已同步标记纯逻辑（存储回调注入；settings 校验用 sqrtf，Linux 需 -lm）
 test_settings: test_settings.c $(SYS)/settings.c $(SYS)/settings.h test.h
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/settings.c
+	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/settings.c -lm
 
 test_sync_marks: test_sync_marks.c $(SYS)/sync_marks.c $(SYS)/sync_marks.h test.h
 	@mkdir -p $(BUILD)
