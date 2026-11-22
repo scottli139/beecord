@@ -33,23 +33,15 @@ public struct FileLibraryStore: LibraryStore {
     // MARK: - LibraryStore
 
     public func existingSourceIDs() throws -> Set<String> {
-        let fileManager = FileManager.default
-        guard let dirs = try? fileManager.contentsOfDirectory(at: libraryURL, includingPropertiesForKeys: nil) else {
-            return []
+        Set(try listRecordings().map(\.source.fileID))
+    }
+
+    public func existingSourceKeys() throws -> Set<String> {
+        var keys = Set<String>()
+        for meta in try listRecordings() {
+            keys.formUnion(meta.sourceKeys)
         }
-        var ids = Set<String>()
-        for dir in dirs {
-            let name = dir.lastPathComponent
-            guard name != ".partial" else { continue }
-            let metaURL = dir.appendingPathComponent("meta.json")
-            guard fileManager.fileExists(atPath: metaURL.path) else { continue }
-            do {
-                ids.insert(try readMeta(in: dir).source.fileID)
-            } catch {
-                logger.error("跳过损坏的 meta.json（\(name)）：\(error.localizedDescription)")
-            }
-        }
-        return ids
+        return keys
     }
 
     public func preparePartial(for fileID: String) throws -> URL {
@@ -68,14 +60,15 @@ public struct FileLibraryStore: LibraryStore {
     public func commitPartial(from partial: URL, meta: RecordingMeta) throws -> String {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: libraryURL, withIntermediateDirectories: true)
-        let base = Self.sanitizedRecordingID(for: meta.source.fileID)
+        let base = Self.sanitizedRecordingID(for: meta.source.recordingID ?? meta.source.fileID)
         var suffix = 1
         while true {
             let candidate = suffix == 1 ? base : "\(base)-\(suffix)"
             let dir = libraryURL.appendingPathComponent(candidate, isDirectory: true)
             if fileManager.fileExists(atPath: dir.path) {
                 // 同源幂等复用目录；异源冲突加短后缀
-                if let existing = try? readMeta(in: dir), existing.source.fileID == meta.source.fileID {
+                if let existing = try? readMeta(in: dir),
+                   !existing.sourceKeys.isDisjoint(with: meta.sourceKeys) {
                     try commitInto(directory: dir, recordingID: candidate, partial: partial, meta: meta)
                     return candidate
                 }

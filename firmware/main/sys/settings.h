@@ -26,8 +26,15 @@ typedef enum {
     SETTINGS_BEEP_ENABLED,    // u8 bool：提示音开关（默认 1=开）
     SETTINGS_BRIGHTNESS,      // u8 0~100：亮度持久化值（默认 100；应用路径未接，见头注）
     SETTINGS_SCREEN_OFF_S,    // u8 秒：无操作自动熄屏（默认 10；0=永不）
+    SETTINGS_TIME_CONTEXT,    // 起录元数据用：最近一次成功 TIME_SET 的偏移与有效标志
     SETTINGS_ID_COUNT
 } settings_id_t;
+
+typedef struct {
+    int16_t utc_offset_min;
+    uint8_t synced;
+    uint8_t reserved;
+} settings_time_context_t;
 
 // 存储后端注入：load 返回实际字节数（<0 = 无此键/读错误，保持默认）；
 // save 返回 0 成功 / <0 失败。key = settings_id_t。
@@ -46,6 +53,10 @@ uint8_t settings_get_u8(settings_id_t id);
 float settings_get_float(settings_id_t id);
 void settings_set_u8(settings_id_t id, uint8_t value);
 void settings_set_float(settings_id_t id, float value);
+
+// 成功 TIME_SET 后一次性持久化；非法偏移拒绝。默认 synced=false、offset=0。
+settings_time_context_t settings_get_time_context(void);
+void settings_set_time_context(int utc_offset_min);
 
 // 最近一次 set 的持久化是否成功（false 时运行值仍已生效；上层可告警/重试）
 bool settings_last_save_ok(void);

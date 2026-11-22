@@ -48,11 +48,8 @@ void app_main(void)
     }
 
     buzz_sdcard_probe();
-    if (buzz_sdcard_mounted()) {
-        (void)buzz_sdcard_cleanup_orphans();
-    }
 
-    // M5.3：断电恢复检测（journal 残留 → 截断收尾 + 置恢复标志，UI 起来后 toast）
+    // 先按 journal 恢复活动录音，再清理无 journal 的 0 字节孤儿；顺序反了会误删可恢复文件。
     {
         char recovered[80] = { 0 };
         bool was_recovered = false;
@@ -61,6 +58,9 @@ void app_main(void)
             was_recovered) {
             ui_rec_set_recovered(recovered);
         }
+    }
+    if (buzz_sdcard_mounted()) {
+        (void)buzz_sdcard_cleanup_orphans();
     }
 
     esp_codec_dev_handle_t mic = NULL;

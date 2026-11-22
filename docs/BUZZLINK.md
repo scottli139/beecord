@@ -1,9 +1,9 @@
 # BuzzLink 协议规范
 
-> 版本：**v0.2**（2026-10-30，M5.4 三阶段）：新增 TIME_SET 对时命令（0x42/0x43）。
-> **frame version 保持 0x01 不变**——新增 type 属后向兼容扩展（§10 兼容语义：
-> 接收方忽略未知 type），升 version 仅留给不兼容变更。
-> 历史：v0.1 草案 → 实现基线（2026-10-14）。本文是 Beecord 设备（Peripheral）与客户端
+> 版本：**v0.3**（2026-11-22）：新增录音逻辑身份与起录元数据，INFO 增加完整设备 ID。
+> **frame version 保持 0x01 不变**——新增 JSON 可选字段属后向兼容扩展（§10）。
+> 历史：v0.2 新增 TIME_SET 对时命令（0x42/0x43）；v0.1 草案 → 实现基线（2026-10-14）。
+> 本文是 Beecord 设备（Peripheral）与客户端
 > （Central，如 Beecord Studio）之间 BLE 文件同步协议的**唯一实现依据**；
 > 协议常量（魔数/UUID/命令字/块大小）以本文为准，实现中集中于
 > `BuzzLinkConstants`（Swift）/ `buzz_proto.h`（C）单点定义。
@@ -119,14 +119,20 @@
 
 status 字节：`0` ok / `1` not_found / `2` aborted / `3` busy / `4` bad_request / `5` storage_error / `6` internal。
 
-### 5.2 文件 ID
+### 5.2 文件 ID 与录音身份
 
-UTF-8 不透明字符串，≤ 32 字节；固件命名 `REC_YYYYMMDD_HHMMSS`（设备本地时间）。
-列表按起录时间**新→旧**排序；每页最多 16 条（超出用 offset 翻页）。
+**文件 ID**（JSON `id`、下载请求中的 id）是 UTF-8 不透明字符串，≤ 32 字节，用于定位设备上的
+一个文件；客户端不得解析其语义。当前固件使用卡上文件名（含扩展名），旧记录形如
+`REC_0014.OGG`，新记录形如 `REC_20261122_191221_A1B2.OGG`；排序按起录时间新→旧，未知时间
+按文件名字典序排在已知时间之后。每页最多 16 条（超出用 offset 翻页）。
 
-> 实现注记（2026-10-20，v1 固件）：当前固件文件 id 为卡上文件名（含扩展名），
-> 形如 `REC_0014.OGG`（`REC_%04d` 序号 + `.OGG`/`.WAV`）；排序按 id 字典序降序（同义于新→旧）。
-> 时间命名待 RTC 对时能力落地后切换，客户端不得解析 id 语义。
+**录音身份**（v0.3 可选 `recordingID`）是录音会话的逻辑身份，与卡、文件名和设备文件 ID 分离：
+新固件在起录时生成 UUIDv4，编码为 32 个小写 hex 字符。同一录音重传保持不变；不同会话即使
+换卡后文件名相同，也必须有不同 recordingID。客户端入库和跨卡/跨设备去重应优先使用
+recordingID，不得再单独用文件 ID 做全局去重。旧记录没有该字段，按 §8.5 的兼容来源键处理。
+
+新固件在 RTC 有效时使用时间戳加 UUID 派生后缀的文件名，RTC 无效时使用无日期的 UUID 派生名；
+文件名只便于浏览，不承担唯一身份或时间元数据语义。任何文件名冲突都不得覆盖已有录音。
 
 ## 6. 会话流程
 
@@ -181,6 +187,7 @@ P0 不实现，type 已预留。
   "fwVersion": "0.1.0",
   "protocol": 1,
   "deviceName": "BCD-1A2B",
+  "deviceID": "A1B2C3D4E5F6",
   "battery": 87,
   "charging": false,
   "storageTotal": 31000000,
@@ -189,6 +196,8 @@ P0 不实现，type 已预留。
 ```
 
 `storageTotal/Free` 单位字节；`protocol` = 协议版本号（对应 frame version）。
+`deviceID`（v0.3 可选）是完整 BT MAC 的 12 位大写 hex，不带分隔符，供旧格式来源键消歧；
+`deviceName` 只是广播短名，不得当作全局唯一设备身份。
 
 > 实现注记（2026-10-30，M5.4 固件）：`battery` 取 AXP2101 平滑百分比，-1 表示"未知"
 > （尚未取得有效样本或读取不可用）；`charging` 取同时刻充电状态。客户端应按未知态展示。
@@ -201,17 +210,28 @@ P0 不实现，type 已预留。
   "total": 42,
   "offset": 0,
   "files": [
-    { "id": "REC_20261014_091533", "durationMs": 58213, "size": 320012 }
+    { "id": "REC_20261122_191221_A1B2.OGG",
+      "recordingID": "0123456789abcdef0123456789abcdef",
+      "startedAtEpochMs": 1795345941000, "startedAtUtcOffsetMin": 480,
+      "timeQuality": "synced", "durationMs": 58213, "size": 320012 }
   ]
 }
 ```
 
 错误时：`{"status":"error","code":4000,"message":"bad offset"}`。
 
+v0.3 元数据字段均为可选；旧文件或无有效 sidecar 的文件省略这些字段。`timeQuality` 取值：
+`synced`（对时后 RTC 有效）、`unsynced`（本地日历有效但无完整 UTC 上下文）、`unknown`。
+`startedAtEpochMs` 为 UTC Unix 毫秒，`startedAtUtcOffsetMin` 为**起录时**固定 UTC 偏移；
+只有二者均有值时，客户端才可构造可信的绝对起录时刻。录音中对时不回改已冻结值。
+
 ### 8.3 FILE_INFO_RESP（type 0x21）
 
 ```json
-{ "status": "ok", "id": "REC_20261014_091533", "size": 1011372, "crc16": 28474,
+{ "status": "ok", "id": "REC_20261122_191221_A1B2.OGG",
+  "recordingID": "0123456789abcdef0123456789abcdef",
+  "startedAtEpochMs": 1795345941000, "startedAtUtcOffsetMin": 480,
+  "timeQuality": "synced", "size": 1011372, "crc16": 28474,
   "durationMs": 58213, "format": "ogg-opus", "sampleRate": 16000, "channels": 1 }
 ```
 
@@ -232,6 +252,7 @@ REQ（C→D）：
   （-12h～+14h，覆盖全部现行时区；不带 DST——用固定当前偏移即可）；
 - 语义：设备按 `epochMs + utcOffsetMin` 换算**本地日历时间**写入 RTC。
   RTC 存本地时间，因此设备重启后无需另存时区即可正确显示（D2 决策补充）；
+  v0.3 起，成功对时还应持久化 UTC 偏移和已对时标志，供后续录音生成 UTC 起录元数据；
 - **本地落点窗口**：换算结果的日历年份也须落在 2000..2099（PCF85063 能力窗口）——
   如 2024-01-01T00:00Z 配 -720min，本地落点为 2023-12-31，属非法请求（4000）。
 
@@ -243,6 +264,36 @@ RTC 写入失败 → `{"status":"error","code":4999,"message":"rtc write failed"
 
 设备侧对时前的垃圾态防御：RTC 振荡器停止标志（OS）未清或从未对过时，
 设备应报"时间无效"而不把 2000/1970 之类默认值当真时间（实现见固件 rtc 模块）。
+
+### 8.5 录音 sidecar 与客户端来源键（v0.3）
+
+新固件在起录时、采集音频前写入与音频同主文件名的 `.json` sidecar，schema 为
+`beecord-recording/1`。字段与 LIST/FILE_INFO 的可选元数据一致：
+
+```json
+{
+  "schema": "beecord-recording/1",
+  "recordingID": "0123456789abcdef0123456789abcdef",
+  "startedAtEpochMs": 1795345941000,
+  "startedAtUtcOffsetMin": 480,
+  "timeQuality": "synced"
+}
+```
+
+sidecar 必须在起录时创建并 flush，不能等正常停止才生成；写入失败优先保全录音，并把该文件
+按旧格式降级。缺失、损坏或未知 schema 的 sidecar 不得导致音频消失，也不得产生伪造元数据。
+录音 journal 负责异常断电后的音频恢复，sidecar 提供恢复后不变的身份与起录时间。
+
+客户端来源键规则：
+
+| 记录 | 来源键 | 说明 |
+|---|---|---|
+| 有 recordingID | `rid:<recordingID>` | 跨卡、跨设备去重；不随文件名变化 |
+| 旧记录 | `legacy:<deviceID>:<fileID>` | 新固件完整设备 ID + 旧文件 ID |
+| 已保存的旧 meta | `legacy:<deviceName>:<fileID>` | 无 deviceID 时的读取兼容别名 |
+
+客户端可同时识别两种 legacy 键，避免升级后重复下载；旧固件没有完整 deviceID，其历史记录跨设备
+绝对消歧无法事后补足，不得猜测合并。`importedAt` 只表示入库时间，不能代替 `startedAtEpochMs`。
 
 ## 9. 错误码
 
@@ -286,6 +337,9 @@ be ec 01 43 2c 00 01 00 27 00 7b 22 73 74 61 74 75 73 22 3a 22 6f 6b 22 2c 22 65
 
 # V7 TIME_SET_REQ（epochMs=9999999999999 越界 → 设备回 4000；帧本身可解析）
 be ec 01 42 2c 00 01 00 2c 00 7b 22 65 70 6f 63 68 4d 73 22 3a 39 39 39 39 39 39 39 39 39 39 39 39 39 2c 22 75 74 63 4f 66 66 73 65 74 4d 69 6e 22 3a 34 38 30 7d de fc
+
+# V8 FILE_INFO_RESP（v0.3；recordingID + 起录 UTC 毫秒/偏移 + timeQuality）
+be ec 01 21 2d 00 01 00 ce 00 7b 22 73 74 61 74 75 73 22 3a 22 6f 6b 22 2c 22 69 64 22 3a 22 52 45 43 5f 30 30 30 31 2e 4f 47 47 22 2c 22 72 65 63 6f 72 64 69 6e 67 49 44 22 3a 22 30 31 32 33 34 35 36 37 38 39 61 62 63 64 65 66 30 31 32 33 34 35 36 37 38 39 61 62 63 64 65 66 22 2c 22 73 74 61 72 74 65 64 41 74 45 70 6f 63 68 4d 73 22 3a 31 37 30 34 30 36 37 32 30 30 30 30 30 2c 22 73 74 61 72 74 65 64 41 74 55 74 63 4f 66 66 73 65 74 4d 69 6e 22 3a 34 38 30 2c 22 74 69 6d 65 51 75 61 6c 69 74 79 22 3a 22 73 79 6e 63 65 64 22 2c 22 73 69 7a 65 22 3a 31 2c 22 63 72 63 31 36 22 3a 36 35 35 33 35 2c 22 64 75 72 61 74 69 6f 6e 4d 73 22 3a 30 7d cb 25
 ```
 
 分片示例（500 字节 JSON 消息分 3 片）：片 0/1 各 228 字节数据，片 2 为 44 字节；

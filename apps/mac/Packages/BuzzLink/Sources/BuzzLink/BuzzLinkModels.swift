@@ -11,6 +11,12 @@ public enum BuzzLinkClientState: Sendable, Equatable {
     case disconnected
 }
 
+public enum BuzzLinkTimeQuality: String, Codable, Sendable, Equatable {
+    case synced
+    case unsynced
+    case unknown
+}
+
 /// 设备信息（INFO，BUZZLINK.md §8.1）。
 public struct BuzzLinkDeviceInfo: Sendable, Equatable {
     public var model: String
@@ -18,6 +24,8 @@ public struct BuzzLinkDeviceInfo: Sendable, Equatable {
     /// 协议版本号（对应 frame version）
     public var protocolVersion: Int
     public var deviceName: String
+    /// 完整设备 ID；旧固件为 nil
+    public var deviceID: String?
     /// 电量百分比（0–100）
     public var battery: Int
     public var isCharging: Bool
@@ -34,7 +42,8 @@ public struct BuzzLinkDeviceInfo: Sendable, Equatable {
         battery: Int,
         isCharging: Bool,
         storageTotal: UInt64,
-        storageFree: UInt64
+        storageFree: UInt64,
+        deviceID: String? = nil
     ) {
         self.model = model
         self.fwVersion = fwVersion
@@ -44,6 +53,7 @@ public struct BuzzLinkDeviceInfo: Sendable, Equatable {
         self.isCharging = isCharging
         self.storageTotal = storageTotal
         self.storageFree = storageFree
+        self.deviceID = deviceID
     }
 }
 
@@ -52,11 +62,35 @@ public struct BuzzLinkFileEntry: Sendable, Equatable, Identifiable {
     public var id: String
     public var durationMs: UInt32
     public var size: Int
+    public var recordingID: String?
+    public var startedAtEpochMs: Int64?
+    public var startedAtUtcOffsetMin: Int?
+    public var timeQuality: BuzzLinkTimeQuality?
 
-    public init(id: String, durationMs: UInt32, size: Int) {
+    public init(
+        id: String,
+        durationMs: UInt32,
+        size: Int,
+        recordingID: String? = nil,
+        startedAtEpochMs: Int64? = nil,
+        startedAtUtcOffsetMin: Int? = nil,
+        timeQuality: BuzzLinkTimeQuality? = nil
+    ) {
         self.id = id
         self.durationMs = durationMs
         self.size = size
+        self.recordingID = recordingID
+        self.startedAtEpochMs = startedAtEpochMs
+        self.startedAtUtcOffsetMin = startedAtUtcOffsetMin
+        self.timeQuality = timeQuality
+    }
+
+    public var startedAt: Date? {
+        guard timeQuality == .synced, let startedAtEpochMs,
+              let startedAtUtcOffsetMin, (-720...840).contains(startedAtUtcOffsetMin) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: Double(startedAtEpochMs) / 1_000)
     }
 }
 
@@ -84,6 +118,10 @@ public struct BuzzLinkFileInfo: Sendable, Equatable {
     public var format: String
     public var sampleRate: Int
     public var channels: Int
+    public var recordingID: String?
+    public var startedAtEpochMs: Int64?
+    public var startedAtUtcOffsetMin: Int?
+    public var timeQuality: BuzzLinkTimeQuality?
 
     public init(
         id: String,
@@ -92,7 +130,11 @@ public struct BuzzLinkFileInfo: Sendable, Equatable {
         durationMs: UInt32,
         format: String,
         sampleRate: Int,
-        channels: Int
+        channels: Int,
+        recordingID: String? = nil,
+        startedAtEpochMs: Int64? = nil,
+        startedAtUtcOffsetMin: Int? = nil,
+        timeQuality: BuzzLinkTimeQuality? = nil
     ) {
         self.id = id
         self.size = size
@@ -101,6 +143,18 @@ public struct BuzzLinkFileInfo: Sendable, Equatable {
         self.format = format
         self.sampleRate = sampleRate
         self.channels = channels
+        self.recordingID = recordingID
+        self.startedAtEpochMs = startedAtEpochMs
+        self.startedAtUtcOffsetMin = startedAtUtcOffsetMin
+        self.timeQuality = timeQuality
+    }
+
+    public var startedAt: Date? {
+        guard timeQuality == .synced, let startedAtEpochMs,
+              let startedAtUtcOffsetMin, (-720...840).contains(startedAtUtcOffsetMin) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: Double(startedAtEpochMs) / 1_000)
     }
 }
 

@@ -306,6 +306,21 @@ static void test_plan_truncates_to_small_confirmed_size(void)
     CHECK(to == 100u);
 }
 
+static void test_normalize_journal_path(void)
+{
+    char out[REC_JOURNAL_FILE_MAX];
+    CHECK_EQ_INT(rec_journal_normalize_path("REC_0001.OGG", out, sizeof(out)), 0);
+    CHECK(strcmp(out, "/REC_0001.OGG") == 0);
+    CHECK_EQ_INT(rec_journal_normalize_path("/REC_0002.WAV", out, sizeof(out)), 0);
+    CHECK(strcmp(out, "/REC_0002.WAV") == 0);
+    CHECK_EQ_INT(rec_journal_normalize_path("/sdcard/REC_20261122_224235_7E02.OGG",
+                                            out, sizeof(out)), 0);
+    CHECK(strcmp(out, "/REC_20261122_224235_7E02.OGG") == 0);
+    CHECK_EQ_INT(rec_journal_normalize_path("/sdcard/", out, sizeof(out)), -1);
+    CHECK_EQ_INT(rec_journal_normalize_path("..", out, sizeof(out)), -1);
+    CHECK_EQ_INT(rec_journal_normalize_path("REC_0001.OGG", out, 4u), -1);
+}
+
 int main(void)
 {
     RUN_TEST(test_encode_decode_roundtrip);
@@ -333,5 +348,6 @@ int main(void)
     RUN_TEST(test_reserved_bytes_roundtrip);
     RUN_TEST(test_filename_exact_fit);
     RUN_TEST(test_plan_truncates_to_small_confirmed_size);
+    RUN_TEST(test_normalize_journal_path);
     return test_report();
 }

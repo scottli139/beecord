@@ -184,7 +184,8 @@ public actor BuzzLinkClient {
             battery: payload.battery,
             isCharging: payload.charging,
             storageTotal: payload.storageTotal,
-            storageFree: payload.storageFree
+            storageFree: payload.storageFree,
+            deviceID: payload.deviceID
         )
         lastDeviceInfo = info
         return info
@@ -260,8 +261,22 @@ public actor BuzzLinkClient {
         return BuzzLinkFileListPage(
             total: total,
             offset: pageOffset,
-            files: files.map {
-                BuzzLinkFileEntry(id: $0.id, durationMs: $0.durationMs, size: $0.size)
+            files: try files.map { entry in
+                let meta = try ValidatedRecordingMetadata(
+                    recordingID: entry.recordingID,
+                    epochMs: entry.startedAtEpochMs,
+                    utcOffsetMin: entry.startedAtUtcOffsetMin,
+                    qualityRaw: entry.timeQuality
+                )
+                return BuzzLinkFileEntry(
+                    id: entry.id,
+                    durationMs: entry.durationMs,
+                    size: entry.size,
+                    recordingID: meta.recordingID,
+                    startedAtEpochMs: meta.epochMs,
+                    startedAtUtcOffsetMin: meta.utcOffsetMin,
+                    timeQuality: meta.quality
+                )
             }
         )
     }
@@ -292,6 +307,12 @@ public actor BuzzLinkClient {
         guard let size = payload.size, let crc16 = payload.crc16, let durationMs = payload.durationMs else {
             throw BuzzLinkError.protocolViolation("FILE_INFO_RESP 缺少 size/crc16/durationMs 字段")
         }
+        let meta = try ValidatedRecordingMetadata(
+            recordingID: payload.recordingID,
+            epochMs: payload.startedAtEpochMs,
+            utcOffsetMin: payload.startedAtUtcOffsetMin,
+            qualityRaw: payload.timeQuality
+        )
         return BuzzLinkFileInfo(
             id: payload.id ?? id,
             size: size,
@@ -299,7 +320,11 @@ public actor BuzzLinkClient {
             durationMs: durationMs,
             format: payload.format ?? "",
             sampleRate: payload.sampleRate ?? 0,
-            channels: payload.channels ?? 0
+            channels: payload.channels ?? 0,
+            recordingID: meta.recordingID,
+            startedAtEpochMs: meta.epochMs,
+            startedAtUtcOffsetMin: meta.utcOffsetMin,
+            timeQuality: meta.quality
         )
     }
 
@@ -887,6 +912,50 @@ public actor BuzzLinkClient {
 
 // MARK: - JSON 数据模型（BUZZLINK.md §8；与 BuzzLinkSimCore 的输出同构）
 
+private struct ValidatedRecordingMetadata {
+    let recordingID: String?
+    let epochMs: Int64?
+    let utcOffsetMin: Int?
+    let quality: BuzzLinkTimeQuality?
+
+    init(
+        recordingID: String?,
+        epochMs: Int64?,
+        utcOffsetMin: Int?,
+        qualityRaw: String?
+    ) throws {
+        if let recordingID {
+            guard recordingID.utf8.count == 32,
+                  recordingID == recordingID.lowercased(),
+                  recordingID.allSatisfy(\.isHexDigit) else {
+                throw BuzzLinkError.protocolViolation("recordingID 不是 32 位小写 hex")
+            }
+        }
+        let quality = try qualityRaw.map { raw -> BuzzLinkTimeQuality in
+            guard let value = BuzzLinkTimeQuality(rawValue: raw) else {
+                throw BuzzLinkError.protocolViolation("未知 timeQuality=\(raw)")
+            }
+            return value
+        }
+        guard (epochMs == nil) == (utcOffsetMin == nil) else {
+            throw BuzzLinkError.protocolViolation("startedAtEpochMs/startedAtUtcOffsetMin 必须成对出现")
+        }
+        if let epochMs, let utcOffsetMin {
+            guard quality == .synced,
+                  (1_704_067_200_000...4_102_444_799_999).contains(epochMs),
+                  (-720...840).contains(utcOffsetMin) else {
+                throw BuzzLinkError.protocolViolation("起录时间字段值域或 timeQuality 不合法")
+            }
+        } else if quality == .synced {
+            throw BuzzLinkError.protocolViolation("synced 记录缺少完整起录时间")
+        }
+        self.recordingID = recordingID
+        self.epochMs = epochMs
+        self.utcOffsetMin = utcOffsetMin
+        self.quality = quality
+    }
+}
+
 private struct TimeSetRequestPayload: Encodable {
     let epochMs: Int64
     let utcOffsetMin: Int
@@ -904,13 +973,14 @@ private struct InfoPayload: Decodable {
     let fwVersion: String
     let protocolVersion: Int
     let deviceName: String
+    let deviceID: String?
     let battery: Int
     let charging: Bool
     let storageTotal: UInt64
     let storageFree: UInt64
 
     enum CodingKeys: String, CodingKey {
-        case model, fwVersion, deviceName, battery, charging, storageTotal, storageFree
+        case model, fwVersion, deviceName, deviceID, battery, charging, storageTotal, storageFree
         case protocolVersion = "protocol"
     }
 }
@@ -925,7 +995,8 @@ private extension BuzzLinkDeviceInfo {
             battery: payload.battery,
             isCharging: payload.charging,
             storageTotal: payload.storageTotal,
-            storageFree: payload.storageFree
+            storageFree: payload.storageFree,
+            deviceID: payload.deviceID
         )
     }
 }
@@ -949,6 +1020,10 @@ private struct FileEntryPayload: Decodable {
     let id: String
     let durationMs: UInt32
     let size: Int
+    let recordingID: String?
+    let startedAtEpochMs: Int64?
+    let startedAtUtcOffsetMin: Int?
+    let timeQuality: String?
 }
 
 private struct ListResponsePayload: Decodable {
@@ -969,6 +1044,10 @@ private struct FileInfoResponsePayload: Decodable {
     let format: String?
     let sampleRate: Int?
     let channels: Int?
+    let recordingID: String?
+    let startedAtEpochMs: Int64?
+    let startedAtUtcOffsetMin: Int?
+    let timeQuality: String?
     let code: Int?
     let message: String?
 }

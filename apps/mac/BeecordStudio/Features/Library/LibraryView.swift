@@ -3,13 +3,15 @@ import BuzzLinkSync
 import SwiftUI
 
 /// 录音库（T6 Phase B）：左列表 + 右详情占位（播放器/波形/Tab 为 Phase C，接入点见详情区注释）。
-/// 视觉依据 prototype v0.3；组件规格 DESIGN_SYSTEM §2（库列表行/确认对话框行）。
+/// 视觉依据 prototype v0.6；组件规格 DESIGN_SYSTEM §2（库列表行/确认对话框行）。
 struct LibraryView: View {
     @Bindable var viewModel: LibraryViewModel
     let appModel: AppModel
 
     /// 删除确认目标（自绘 NSAlert 语义对话框；AX `common.confirmDialog`）
     @State private var deleteTarget: LibraryViewModel.Item?
+    @State private var editingRecordedAtID: String?
+    @State private var recordedAtDraft = Date()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +27,7 @@ struct LibraryView: View {
         }
         .onAppear { viewModel.refresh() }
         .onChange(of: appModel.syncGeneration) { viewModel.refresh() }
+        .onChange(of: viewModel.selectedID) { editingRecordedAtID = nil }
         .overlay {
             if let target = deleteTarget {
                 deleteDialog(target)
@@ -181,6 +184,21 @@ struct LibraryView: View {
             .padding(DesignTokens.Space.s4)
             .cardStyle()
 
+            RecordingTimeCard(
+                meta: item.meta,
+                isEditing: editingRecordedAtID == item.id,
+                draft: $recordedAtDraft,
+                onEdit: {
+                    recordedAtDraft = item.meta.recordedAt ?? Date()
+                    editingRecordedAtID = item.id
+                },
+                onSave: {
+                    viewModel.updateRecordedAt(id: item.id, date: recordedAtDraft)
+                    editingRecordedAtID = nil
+                },
+                onCancel: { editingRecordedAtID = nil }
+            )
+
             if item.transcode == .ready {
                 VStack(alignment: .leading, spacing: 0) {
                     DetailTabsView()
@@ -226,9 +244,6 @@ struct LibraryView: View {
             LabeledContent("来源", value: meta.source.deviceName.isEmpty ? "—" : meta.source.deviceName)
             LabeledContent("时长", value: FileTableView.durationText(meta.durationMs))
             LabeledContent("大小", value: ByteCountFormatter.string(fromByteCount: Int64(meta.sizeBytes), countStyle: .binary))
-            if let recordedAt = meta.recordedAt {
-                LabeledContent("录制时间", value: Self.dateText(recordedAt))
-            }
             LabeledContent("格式", value: "\(meta.format) · \(meta.sampleRate / 1000) kHz")
         }
         .font(DesignTokens.FontToken.callout)
@@ -316,12 +331,6 @@ struct LibraryView: View {
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
-    private static func dateText(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return formatter.string(from: date)
-    }
 }
 
 /// 列表行（DESIGN_SYSTEM §2 库列表行；自绘 hover 态按 §2.2）。
@@ -391,6 +400,10 @@ private struct LibraryRowView: View {
         let date = item.meta.recordedAt.map { d -> String in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
+            if let offset = item.meta.recordedAtUtcOffsetMin,
+               let zone = TimeZone(secondsFromGMT: offset * 60) {
+                f.timeZone = zone
+            }
             f.dateFormat = "MM-dd HH:mm"
             return f.string(from: d)
         } ?? "未知时间"

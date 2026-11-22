@@ -1,6 +1,9 @@
 # Beecord Studio 技术设计（macOS）
 
-> 状态：**v1.5**（2026-10-18）：T7 已交付——协议控制台全量（`FrameTapTransport` 旁听装饰器、
+> 状态：**v1.6（2026-11-22，实施中）**：接入 BuzzLink v0.3 录音逻辑身份与起录元数据；
+> `meta.json` schema 2，recordingID 去重、旧来源键兼容、原始 UTC 偏移显示；历史时间未知/内联手动编辑
+> 经原型评审后落地（`RecordingTimeCard`，人工值不写回设备）。包测试 234 用例通过。
+> v1.5（2026-10-18）：T7 已交付——协议控制台全量（`FrameTapTransport` 旁听装饰器、
 > `FrameLogBuffer` 环形缓冲、`BuzzLinkClient.sendRaw`、ConsoleViewModel/ConsoleView 全量 UI）、
 > 控制台流 UITest 4 用例（合计 17）。包测试 **215 用例**（2 个活体冒烟 skip）、UITest 17 用例全绿。
 > §5.4 补 T7 落地注记（AsyncStream 单播坑→重建转发流、聚合折叠 ≥4、导出零 schema 变更、
@@ -201,7 +204,8 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
   分页拉全设备列表 → 与库 diff → 队列化下载 → CRC 校验 → **入库（`audio.ogg` + `meta.json`）
   → 清理 `.partial`**；ogg→m4a 转码随 T6 已交付（入库即转 + 存量补转，见 §5.3）；
 - 中断恢复：`.partial` 存在即未完成（启动 `purgeStalePartials()` 清理，P0 无断点续传，
-  整文件重下）；按设备文件 id 幂等（`meta.source.fileID`），重复同步不产生副本；
+  整文件重下）；新记录按 `meta.source.recordingID` 幂等，旧记录按完整设备 ID + fileID，
+  并识别历史 deviceName 来源键，重复同步不产生副本；
 - 状态机：`idle / connecting / ready / listing / syncing / cancelling / reconnecting / failed`；
   自动重连仅"曾 ready 的会话"掉线触发（退避 `[1,2,4,8,10,10,10]`s，耗尽回 idle + 事件），
   首连失败不自动重试；取消为合作式（client 即时取消 + DL_ABORT），有界收敛 3s；
@@ -210,7 +214,8 @@ CI 门禁 `mac-test`（GitHub Actions，macos-26 + Xcode 26.6）执行本条与 
   overallFraction, bytesPerSecond, etaSeconds }`——字节加权整体进度（= UI `device.downloadProgress`
   的 AXValue），5s 滑动窗口速率，节流 100ms 发快照；
 - LibraryStore：`<root>/Library/<recording-id>/{audio.ogg, meta.json}`，同卷原子 move +
-  meta 原子写；`recording-id` = 设备文件 id 安全化（非法字符→`_`，截断 48，冲突加 `-2` 后缀）；
+  meta 原子写；新记录 `recording-id` = 逻辑 recordingID，旧记录使用设备文件 id 安全化
+  （非法字符→`_`，截断 48，异源冲突加 `-2` 后缀）；
   自定义库根经 security-scoped bookmark 持久化（stale 回退默认容器 + toast）；
 - 设备页 VM：`DeviceViewModel`（@MainActor @Observable）装配 transport 工厂
   （loopback/BLE，按设置）+ client + engine，消费双流驱动 UI；蓝牙权限面罩仅 BLE 模式。
@@ -233,8 +238,18 @@ Application Support/Beecord/
 └── models/whisper/          # P1，ggml 模型
 ```
 
-`recording-id` 安全化规则与 §5.2 LibraryStore 一致（设备文件 id，非法字符→`_`、截断 48、
-冲突加 `-2`）。
+`recording-id` 安全化规则与 §5.2 LibraryStore 一致（新记录使用逻辑 recordingID，旧记录使用
+设备文件 id；非法字符→`_`、截断 48、异源冲突加 `-2`）。
+
+**v0.3 / schema 2**：`meta.json` 新增可选 `source.recordingID/deviceID`、`recordedAtUtcOffsetMin`、
+`recordedAtSource` 与 `recordingTimeQuality`。旧 schema 1 缺少这些字段可直接解码，历史目录不搬迁。
+入库优先采用 FILE_INFO/LIST 的显式起录 UTC 毫秒和原始偏移，文件名解析只作旧格式兜底；
+`importedAt` 仅表示入库时间。新录音按 `rid:<recordingID>` 去重，旧录音兼容键见 BUZZLINK §8.5。
+
+历史时间手动修正使用详情页独立 `RecordingTimeCard`：未知态明确显示“未知”并单独显示导入时间；
+内联 DatePicker 保存到分钟，`applyManualRecordedAt` 将 `recordedAtSource=manual`、保存当前 UTC 偏移、
+清除设备时间质量并升级 schema 2。标题和逻辑来源键不变，不写回设备；后续同步与转码回填不得覆盖
+人工值。AX 与三态交互以 ux-design §3.3 v0.6 为准。
 
 **T6 落地**（2026-10-17）：`LibraryCatalog`（actor）已随库页交付——启动全量扫描对账 +
 `.catalog.json` manifest（记录各目录 meta.json 修改时间）增量刷新 + `changes`

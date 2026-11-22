@@ -26,6 +26,7 @@
 #include "esp_attr.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
+#include "esp_heap_caps.h"
 #include "file_index.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -169,6 +170,18 @@ static long vfs_listdir(void *ctx, buzz_file_dirent_cb_t cb, void *cb_ctx)
     return n;
 }
 
+static void *vfs_index_realloc(void *ctx, void *ptr, size_t size)
+{
+    (void)ctx;
+    return heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+
+static void vfs_index_free(void *ctx, void *ptr)
+{
+    (void)ctx;
+    heap_caps_free(ptr);
+}
+
 static const buzz_file_io_t s_file_io = {
     .ctx = NULL,
     .open = vfs_open,
@@ -176,6 +189,8 @@ static const buzz_file_io_t s_file_io = {
     .size = vfs_size,
     .close = vfs_close,
     .listdir = vfs_listdir,
+    .realloc = vfs_index_realloc,
+    .free = vfs_index_free,
 };
 
 // ---------- 本地设备模型（唯一生产者：本服务任务） ----------
@@ -410,16 +425,16 @@ static size_t build_info_json(char *buf, size_t cap)
     if (pct == 0xFFu) {
         jput(&j,
              "{\"model\":\"beecord-watch\",\"fwVersion\":\"%s\",\"protocol\":1,"
-             "\"deviceName\":\"%s\",\"battery\":-1,\"charging\":false,"
+             "\"deviceName\":\"%s\",\"deviceID\":\"%s\",\"battery\":-1,\"charging\":false,"
              "\"storageTotal\":%llu,\"storageFree\":%llu}",
-             FW_VERSION, buzz_ble_device_name(), (unsigned long long)total_bytes,
-             (unsigned long long)free_bytes);
+             FW_VERSION, buzz_ble_device_name(), buzz_ble_device_id(),
+             (unsigned long long)total_bytes, (unsigned long long)free_bytes);
     } else {
         jput(&j,
              "{\"model\":\"beecord-watch\",\"fwVersion\":\"%s\",\"protocol\":1,"
-             "\"deviceName\":\"%s\",\"battery\":%u,\"charging\":%s,"
+             "\"deviceName\":\"%s\",\"deviceID\":\"%s\",\"battery\":%u,\"charging\":%s,"
              "\"storageTotal\":%llu,\"storageFree\":%llu}",
-             FW_VERSION, buzz_ble_device_name(), (unsigned)pct,
+             FW_VERSION, buzz_ble_device_name(), buzz_ble_device_id(), (unsigned)pct,
              charging ? "true" : "false", (unsigned long long)total_bytes,
              (unsigned long long)free_bytes);
     }
@@ -470,6 +485,10 @@ static int handle_time_set(const char *json, char *resp, size_t resp_cap, int *e
         return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_INTERNAL,
                                      "rtc write failed");
     }
+    settings_set_time_context((int)offset_min);
+    if (!settings_last_save_ok()) {
+        ESP_LOGW(TAG, "time context persist failed; runtime time remains valid");
+    }
     model_note_time_set(&local);
     const int n = snprintf(resp, resp_cap,
                            "{\"status\":\"ok\",\"epochMs\":%lld}",
@@ -483,6 +502,21 @@ static int handle_time_set(const char *json, char *resp, size_t resp_cap, int *e
 }
 
 // ---------- 控制通道命令 ----------
+
+static void jput_recording_meta(jbuf_t *j, const char *recording_id, bool has_started_at,
+                                int64_t started_at_epoch_ms, int32_t utc_offset_min,
+                                rec_meta_time_quality_t quality)
+{
+    if (recording_id == NULL || recording_id[0] == '\0') {
+        return;
+    }
+    jput(j, ",\"recordingID\":\"%s\"", recording_id);
+    if (has_started_at) {
+        jput(j, ",\"startedAtEpochMs\":%lld,\"startedAtUtcOffsetMin\":%ld",
+             (long long)started_at_epoch_ms, (long)utc_offset_min);
+    }
+    jput(j, ",\"timeQuality\":\"%s\"", rec_meta_time_quality_name(quality));
+}
 
 // LIST_RESP（§8.2）。offset 缺省 0；limit 缺省/上限 16（§5.2）；offset > total
 // 回 bad offset。翻页终止与 Studio SyncEngine 双条件兼容（total 对账或空页）。
@@ -523,9 +557,12 @@ static int handle_list(const char *json, char *resp, size_t resp_cap, int *err_c
     jput(&j, "{\"status\":\"ok\",\"total\":%lu,\"offset\":%lu,\"files\":[",
          (unsigned long)total, (unsigned long)offset);
     for (uint32_t i = 0; i < count; i++) {
-        jput(&j, "%s{\"id\":\"%s\",\"durationMs\":%lu,\"size\":%lu}", i == 0 ? "" : ",",
-             entries[i].id, (unsigned long)entries[i].durationMs,
-             (unsigned long)entries[i].size);
+        jput(&j, "%s{\"id\":\"%s\"", i == 0 ? "" : ",", entries[i].id);
+        jput_recording_meta(&j, entries[i].recording_id, entries[i].has_started_at,
+                            entries[i].started_at_epoch_ms,
+                            entries[i].started_at_utc_offset_min, entries[i].time_quality);
+        jput(&j, ",\"durationMs\":%lu,\"size\":%lu}",
+             (unsigned long)entries[i].durationMs, (unsigned long)entries[i].size);
     }
     jput(&j, "]}");
     if (j.overflow) {
@@ -572,10 +609,14 @@ static int handle_file_info(const char *json, char *resp, size_t resp_cap, int *
     }
 
     jbuf_t j = {.buf = resp, .cap = resp_cap, .pos = 0, .overflow = false};
+    jput(&j, "{\"status\":\"ok\",\"id\":\"%s\"", id);
+    jput_recording_meta(&j, info.recording_id, info.has_started_at,
+                        info.started_at_epoch_ms, info.started_at_utc_offset_min,
+                        info.time_quality);
     jput(&j,
-         "{\"status\":\"ok\",\"id\":\"%s\",\"size\":%lu,\"crc16\":%u,"
-         "\"durationMs\":%lu,\"format\":\"%s\",\"sampleRate\":%lu,\"channels\":%lu}",
-         id, (unsigned long)info.size, (unsigned)info.crc16,
+         ",\"size\":%lu,\"crc16\":%u,\"durationMs\":%lu,\"format\":\"%s\","
+         "\"sampleRate\":%lu,\"channels\":%lu}",
+         (unsigned long)info.size, (unsigned)info.crc16,
          (unsigned long)info.durationMs, info.format, (unsigned long)info.sampleRate,
          (unsigned long)info.channels);
     if (j.overflow) {

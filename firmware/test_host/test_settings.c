@@ -228,6 +228,44 @@ static void test_reset_to_defaults(void)
     CHECK(settings_get_u8(SETTINGS_BRIGHTNESS) == 100u);
 }
 
+static void test_time_context_single_blob_roundtrip(void)
+{
+    backend_reset();
+    settings_init(&s_store, NULL);
+    settings_time_context_t time = settings_get_time_context();
+    CHECK_EQ_INT(time.synced, 0u);
+    CHECK_EQ_INT(time.utc_offset_min, 0);
+    settings_set_time_context(-360);
+    time = settings_get_time_context();
+    CHECK_EQ_INT(time.synced, 1u);
+    CHECK_EQ_INT(time.utc_offset_min, -360);
+    CHECK_EQ_INT(s_mem_len[SETTINGS_TIME_CONTEXT], sizeof(settings_time_context_t));
+    settings_init(&s_store, NULL);
+    settings_load_all();
+    time = settings_get_time_context();
+    CHECK_EQ_INT(time.synced, 1u);
+    CHECK_EQ_INT(time.utc_offset_min, -360);
+    settings_set_time_context(1000);
+    CHECK_EQ_INT(settings_get_time_context().utc_offset_min, -360);
+}
+
+static void test_time_context_rejects_corrupt_blob(void)
+{
+    backend_reset();
+    settings_time_context_t invalid = { .utc_offset_min = 900, .synced = 1u };
+    memcpy(s_mem[SETTINGS_TIME_CONTEXT], &invalid, sizeof(invalid));
+    s_mem_len[SETTINGS_TIME_CONTEXT] = sizeof(invalid);
+    settings_init(&s_store, NULL);
+    settings_load_all();
+    CHECK_EQ_INT(settings_get_time_context().synced, 0u);
+    invalid.utc_offset_min = 480;
+    invalid.reserved = 1u;
+    memcpy(s_mem[SETTINGS_TIME_CONTEXT], &invalid, sizeof(invalid));
+    settings_init(&s_store, NULL);
+    settings_load_all();
+    CHECK_EQ_INT(settings_get_time_context().synced, 0u);
+}
+
 int main(void)
 {
     RUN_TEST(test_defaults_match_current_behavior);
@@ -243,5 +281,7 @@ int main(void)
     RUN_TEST(test_load_garbage_values_rejected);
     RUN_TEST(test_load_valid_extreme_kept);
     RUN_TEST(test_reset_to_defaults);
+    RUN_TEST(test_time_context_single_blob_roundtrip);
+    RUN_TEST(test_time_context_rejects_corrupt_blob);
     return test_report();
 }

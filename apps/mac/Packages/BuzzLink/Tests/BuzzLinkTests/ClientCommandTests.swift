@@ -1,6 +1,12 @@
 @testable import BuzzLink
 import BuzzLinkCore
+import Foundation
 import XCTest
+
+private let fileInfoV8JSON = "{\"status\":\"ok\",\"id\":\"REC_0001.OGG\","
+    + "\"recordingID\":\"0123456789abcdef0123456789abcdef\","
+    + "\"startedAtEpochMs\":1704067200000,\"startedAtUtcOffsetMin\":480,"
+    + "\"timeQuality\":\"synced\",\"size\":1,\"crc16\":65535,\"durationMs\":0}"
 
 /// 命令层行为：session 分配/匹配、JSON 解析、错误映射、超时与乱序（BUZZLINK.md §3.4/§5/§8/§9）。
 final class ClientCommandTests: XCTestCase {
@@ -179,6 +185,56 @@ final class ClientCommandTests: XCTestCase {
         XCTAssertEqual(info.format, "ogg-opus")
         XCTAssertEqual(info.sampleRate, 16_000)
         XCTAssertEqual(info.channels, 1)
+        await client.disconnect()
+    }
+
+    func testFileInfoV8RecordingMetadata() async throws {
+        let vector = try TestResponseBytes.jsonFrame(
+            type: .fileInfoResp,
+            session: 0x2D,
+            json: fileInfoV8JSON
+        )
+        XCTAssertEqual(vector.suffix(2), Data([0xCB, 0x25]), "与 BUZZLINK §11 V8 CRC 对拍")
+        let (client, _) = try await makeConnected { frame, transport in
+            guard frame.type == BuzzLinkFrameType.fileInfoReq.rawValue,
+                  let resp = try? TestResponseBytes.jsonFrame(
+                      type: .fileInfoResp,
+                      session: frame.session,
+                      json: fileInfoV8JSON
+                  ) else { return }
+            transport.emitInbound(resp)
+        }
+        let info = try await client.fileInfo(id: "REC_0001.OGG")
+        XCTAssertEqual(info.recordingID, "0123456789abcdef0123456789abcdef")
+        XCTAssertEqual(info.startedAtEpochMs, 1_704_067_200_000)
+        XCTAssertEqual(info.startedAtUtcOffsetMin, 480)
+        XCTAssertEqual(info.timeQuality, .synced)
+        XCTAssertEqual(info.startedAt, Date(timeIntervalSince1970: 1_704_067_200))
+        await client.disconnect()
+    }
+
+    func testFileInfoRejectsIncompleteRecordingTime() async throws {
+        let json = "{\"status\":\"ok\",\"id\":\"REC_0001.OGG\","
+            + "\"recordingID\":\"0123456789abcdef0123456789abcdef\","
+            + "\"startedAtEpochMs\":1704067200000,\"timeQuality\":\"synced\","
+            + "\"size\":1,\"crc16\":65535,\"durationMs\":0}"
+        let (client, _) = try await makeConnected { frame, transport in
+            guard frame.type == BuzzLinkFrameType.fileInfoReq.rawValue,
+                  let resp = try? TestResponseBytes.jsonFrame(
+                      type: .fileInfoResp,
+                      session: frame.session,
+                      json: json
+                  ) else { return }
+            transport.emitInbound(resp)
+        }
+        do {
+            _ = try await client.fileInfo(id: "REC_0001.OGG")
+            XCTFail("缺少 UTC 偏移必须拒绝")
+        } catch BuzzLinkError.protocolViolation {
+            // 预期
+        } catch {
+            XCTFail("意外错误：\(error)")
+        }
         await client.disconnect()
     }
 

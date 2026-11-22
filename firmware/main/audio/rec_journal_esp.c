@@ -73,9 +73,14 @@ esp_err_t rec_journal_check_recovery(char *out_recovered_file, size_t file_cap,
         return ESP_FAIL; // 保留现场待排查
     }
 
-    // 组装完整路径并取实际大小
+    // 统一为挂载点相对路径；旧固件 journal 可能存了完整路径。
+    char relative[REC_JOURNAL_FILE_MAX];
+    if (rec_journal_normalize_path(j.file, relative, sizeof(relative)) != 0) {
+        ESP_LOGE(TAG, "journal 路径非法");
+        return ESP_FAIL;
+    }
     char path[REC_JOURNAL_PATH_MAX];
-    snprintf(path, sizeof(path), "%s%s", BSP_SD_MOUNT_POINT, j.file);
+    snprintf(path, sizeof(path), "%s%s", BSP_SD_MOUNT_POINT, relative);
     uint64_t actual_size = 0;
     struct stat st;
     if (stat(path, &st) == 0) {
@@ -121,7 +126,7 @@ esp_err_t rec_journal_check_recovery(char *out_recovered_file, size_t file_cap,
     }
 
     if (out_recovered_file != NULL && file_cap > 0) {
-        snprintf(out_recovered_file, file_cap, "%s", j.file);
+        snprintf(out_recovered_file, file_cap, "%s", relative);
     }
     (void)rec_journal_clear();
     *recovered = true;

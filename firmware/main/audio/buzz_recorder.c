@@ -14,16 +14,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
 #include "rec_journal_esp.h"
+#include "rec_meta.h"
+#include "rec_meta_esp.h"
 #include "rec_meter.h"
 #include "rec_pipe.h"
+#include "sys/rtc_pcf.h"
+#include "sys/settings.h"
 #include "wav_writer.h"
 
 static const char *TAG = "buzz_recorder";
@@ -67,7 +74,6 @@ static QueueHandle_t s_ack_q; // 采集任务 → 控制方（depth 1）
 static TaskHandle_t s_task;
 static esp_codec_dev_handle_t s_mic;
 static buzz_rec_state_t s_state = BUZZ_REC_STATE_IDLE;
-static uint32_t s_next_index; // 启动预扫的下一可用序号（开录前会重扫）
 static uint8_t s_pcm_buf[REC_READ_BUF_BYTES];
 static int s_bitrate_bps;     // 0 = 默认（BUZZ_REC_PIPE_BITRATE）
 
@@ -95,7 +101,7 @@ static void emit(buzz_rec_evt_t evt, const char *message, int32_t value)
 }
 
 // OGG 会话的静态资源（M3）：管线对象内嵌 ~5KB + 4KB 页缓冲，启动期即占用，
-// 采集循环内零 malloc。serial 用文件序号（整流一致即可）。
+// 采集循环内零 malloc。serial 取 recordingID 派生值，整流保持一致即可。
 static buzz_rec_pipe_t s_pipe;
 static uint8_t s_ogg_page_buf[BUZZ_REC_PIPE_PAGE_BUF_SIZE];
 
@@ -118,38 +124,62 @@ static void ogg_page_to_file(const uint8_t *page, uint32_t page_len, void *ctx)
     }
 }
 
-// ---------- 文件序号扫描 ----------
+// ---------- 会话身份、起录时间与文件名 ----------
 
-// 扫挂载点根目录，返回 REC_%04d.WAV/.OGG 两种后缀的全局最大序号（无则 0）。
-// 两种格式共用序号池：混合格式目录里序号仍单调递增。
-static uint32_t scan_max_rec_index(void)
+typedef struct {
+    char name[REC_META_NAME_MAX + 1u];
+    char path[REC_PATH_MAX];
+    rec_meta_t meta;
+} rec_session_files_t;
+
+static esp_err_t prepare_session_files(const char *ext, rec_session_files_t *out)
 {
-    uint32_t max_idx = 0;
-    DIR *dir = opendir(BSP_SD_MOUNT_POINT);
-    if (dir == NULL) {
-        return 0;
+    uint8_t random[16];
+    esp_fill_random(random, sizeof(random));
+    if (rec_meta_create(&out->meta, random) != 0) {
+        return ESP_FAIL;
     }
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        const char *name = ent->d_name;
-        if (strncmp(name, "REC_", 4) != 0) {
-            continue;
-        }
-        const char *num_start = name + 4;
-        char *num_end = NULL;
-        unsigned long v = strtoul(num_start, &num_end, 10);
-        if (num_end == num_start || num_end == NULL || v == 0 || v > 99999ul) {
-            continue;
-        }
-        if (strcasecmp(num_end, ".WAV") != 0 && strcasecmp(num_end, ".OGG") != 0) {
-            continue;
-        }
-        if (v > max_idx) {
-            max_idx = (uint32_t)v;
-        }
+    rtc_datetime_t local;
+    bool rtc_valid = false;
+    rtc_pcf_clock_snapshot(&local, &rtc_valid);
+    if (!rtc_valid) {
+        bool os_stopped = false;
+        rtc_valid = rtc_pcf_read(&local, &os_stopped) == ESP_OK;
     }
-    closedir(dir);
-    return max_idx;
+    const settings_time_context_t time = settings_get_time_context();
+    rec_meta_capture_time(&out->meta, &local, rtc_valid, time.utc_offset_min,
+                          time.synced != 0u);
+
+    for (uint32_t collision = 0; collision <= UINT16_MAX; collision++) {
+        if (rec_meta_audio_name(&out->meta, &local, rtc_valid, ext, collision,
+                                out->name, sizeof(out->name)) != 0) {
+            return ESP_FAIL;
+        }
+        const int n = snprintf(out->path, sizeof(out->path), "%s/%s",
+                               BSP_SD_MOUNT_POINT, out->name);
+        if (n <= 0 || (size_t)n >= sizeof(out->path)) {
+            return ESP_ERR_NO_MEM;
+        }
+        struct stat st;
+        if (stat(out->path, &st) == 0) {
+            continue;
+        }
+        if (errno != ENOENT) {
+            return ESP_FAIL;
+        }
+        const esp_err_t save_rc = rec_meta_save(out->name, &out->meta);
+        if (save_rc != ESP_OK) {
+            ESP_LOGE(TAG, "sidecar save failed for %s: %s; recording uses legacy fallback",
+                     out->name, esp_err_to_name(save_rc));
+        }
+        ESP_LOGI(TAG, "session id=%s file=%s startedAt=%" PRId64 " offset=%" PRId32
+                 " quality=%s sidecar=%s", out->meta.recording_id, out->name,
+                 out->meta.started_at_epoch_ms, out->meta.started_at_utc_offset_min,
+                 rec_meta_time_quality_name(out->meta.time_quality),
+                 save_rc == ESP_OK ? "ok" : "failed");
+        return ESP_OK;
+    }
+    return ESP_ERR_NO_MEM;
 }
 
 // ---------- 混单声道 ----------
@@ -245,14 +275,21 @@ static void session_update_stats(session_ctx_t *c, const int16_t *mono, bool pau
 }
 
 // 每 5s flush + journal 落盘（M5_PLAN D8：断电后开机恢复依赖此数据）
-static void session_journal_tick(session_ctx_t *c, buzz_rec_fmt_t fmt)
+static void session_journal_tick(session_ctx_t *c, buzz_rec_fmt_t fmt, FILE *audio_fp)
 {
     if (s_elapsed_ms - c->last_journal_ms < REC_JOURNAL_PERIOD_MS) {
         return;
     }
     c->last_journal_ms = s_elapsed_ms;
+    if (audio_fp == NULL || fflush(audio_fp) != 0 || fsync(fileno(audio_fp)) != 0) {
+        ESP_LOGW(TAG, "audio flush failed; journal remains at previous confirmed position");
+        return;
+    }
     rec_journal_t j = { 0 };
-    snprintf(j.file, sizeof(j.file), "%s", s_current_path);
+    if (rec_journal_normalize_path(s_current_path, j.file, sizeof(j.file)) != 0) {
+        ESP_LOGW(TAG, "journal path normalize failed");
+        return;
+    }
     j.fmt = (uint8_t)fmt;
     // journal.bytes = 文件总字节（截断目标）：OGG 的 bytes_out 含全部页；
     // WAV 计数只累计数据段，须补 44 字节头（恢复侧头回填与之一致）
@@ -330,11 +367,17 @@ static void rec_session_wav(void)
 {
     session_ctx_t c = { .ack = { .err = ESP_OK, .message = { 0 } } };
 
-    // 开录前重扫：卡在他机写过或其它途径新增文件时序号仍单调
-    s_next_index = scan_max_rec_index() + 1u;
+    rec_session_files_t files;
+    const esp_err_t prepare_rc = prepare_session_files(".WAV", &files);
+    if (prepare_rc != ESP_OK) {
+        c.ack.err = prepare_rc;
+        snprintf(c.ack.message, sizeof(c.ack.message), "prepare recording failed: %s",
+                 esp_err_to_name(prepare_rc));
+        xQueueSend(s_ack_q, &c.ack, 0);
+        return;
+    }
     char path[REC_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/REC_%04" PRIu32 ".WAV", BSP_SD_MOUNT_POINT,
-             s_next_index);
+    snprintf(path, sizeof(path), "%s", files.path);
 
     buzz_wav_writer_t wav;
     int wret = buzz_wav_open(&wav, path);
@@ -343,6 +386,7 @@ static void rec_session_wav(void)
         snprintf(c.ack.message, sizeof(c.ack.message), "open %s failed (wav err %d)",
                  path, wret);
         ESP_LOGE(TAG, "%s", c.ack.message);
+        (void)rec_meta_remove(files.name);
         xQueueSend(s_ack_q, &c.ack, 0);
         return;
     }
@@ -409,7 +453,7 @@ static void rec_session_wav(void)
             break;
         }
         s_bytes_written += mono_bytes;
-        session_journal_tick(&c, BUZZ_REC_FMT_WAV);
+        session_journal_tick(&c, BUZZ_REC_FMT_WAV, wav.fp);
     }
 
     wret = buzz_wav_close(&wav);
@@ -446,31 +490,40 @@ static void rec_session_ogg(void)
 {
     session_ctx_t c = { .ack = { .err = ESP_OK, .message = { 0 } } };
 
-    // 开录前重扫：卡在他机写过或其它途径新增文件时序号仍单调
-    s_next_index = scan_max_rec_index() + 1u;
+    rec_session_files_t files;
+    const esp_err_t prepare_rc = prepare_session_files(".OGG", &files);
+    if (prepare_rc != ESP_OK) {
+        c.ack.err = prepare_rc;
+        snprintf(c.ack.message, sizeof(c.ack.message), "prepare recording failed: %s",
+                 esp_err_to_name(prepare_rc));
+        xQueueSend(s_ack_q, &c.ack, 0);
+        return;
+    }
     char path[REC_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/REC_%04" PRIu32 ".OGG", BSP_SD_MOUNT_POINT,
-             s_next_index);
+    snprintf(path, sizeof(path), "%s", files.path);
 
     FILE *fp = fopen(path, "wb");
     if (fp == NULL) {
         c.ack.err = ESP_FAIL;
         snprintf(c.ack.message, sizeof(c.ack.message), "open %s failed", path);
         ESP_LOGE(TAG, "%s", c.ack.message);
+        (void)rec_meta_remove(files.name);
         xQueueSend(s_ack_q, &c.ack, 0);
         return;
     }
 
     ogg_sink_t sink = { .fp = fp, .write_errs = 0, .disk_full = false };
     const int bitrate = s_bitrate_bps > 0 ? s_bitrate_bps : BUZZ_REC_PIPE_BITRATE;
-    int pret = buzz_rec_pipe_init_ex(&s_pipe, s_next_index, bitrate, s_ogg_page_buf,
-                                     sizeof(s_ogg_page_buf), ogg_page_to_file, &sink);
+    int pret = buzz_rec_pipe_init_ex(&s_pipe, rec_meta_ogg_serial(&files.meta), bitrate,
+                                     s_ogg_page_buf, sizeof(s_ogg_page_buf),
+                                     ogg_page_to_file, &sink);
     if (pret != BUZZ_OK) {
         fclose(fp);
         c.ack.err = ESP_FAIL;
         snprintf(c.ack.message, sizeof(c.ack.message), "ogg session init failed (err %d)",
                  pret);
         ESP_LOGE(TAG, "%s", c.ack.message);
+        (void)rec_meta_remove(files.name);
         xQueueSend(s_ack_q, &c.ack, 0);
         return;
     }
@@ -544,7 +597,7 @@ static void rec_session_ogg(void)
             break;
         }
         s_bytes_written = s_pipe.stats.bytes_out;
-        session_journal_tick(&c, BUZZ_REC_FMT_OGG);
+        session_journal_tick(&c, BUZZ_REC_FMT_OGG, sink.fp);
     }
 
     pret = buzz_rec_pipe_finish(&s_pipe); // 尾帧丢弃 + EOS 封页
@@ -629,8 +682,7 @@ esp_err_t buzz_recorder_init(esp_codec_dev_handle_t mic)
         return ESP_ERR_NO_MEM;
     }
     s_current_path[0] = '\0';
-    s_next_index = scan_max_rec_index() + 1u;
-    ESP_LOGI(TAG, "ready, next index %04" PRIu32, s_next_index);
+    ESP_LOGI(TAG, "ready, recording identity=UUIDv4");
     return ESP_OK;
 }
 

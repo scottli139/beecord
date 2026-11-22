@@ -16,6 +16,9 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# FAT 长文件名：录音浏览名使用 REC_YYYYMMDD_HHMMSS_XXXX.OGG；heap 缓冲避免占用服务任务栈。
+CONFIG_FATFS_LFN_HEAP=y
+
 # PSRAM（M3）：ESP32-S3R8 合封 8MB octal PSRAM。
 # Opus 编码器 state/pseudostack 经 CAPS 分配落 PSRAM；同时为 M4 BLE、
 # M5 LVGL framebuffer 预留内部 RAM。

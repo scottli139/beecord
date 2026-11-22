@@ -6,7 +6,7 @@ import os
 
 /// 录音库视图模型（T6 Phase B）：消费 LibraryCatalog 变更流驱动列表；
 /// 转码任务串行队列（入库即转 + 存量补转最小接线，完整验证 Phase D）；
-/// 重命名/删除/显示于 Finder 意图。
+/// 重命名/手动录制时间/删除/显示于 Finder 意图。
 ///
 /// 线程模型：@MainActor；catalog 为 actor，changes 为 Sendable 值流。
 @MainActor
@@ -199,6 +199,27 @@ final class LibraryViewModel {
                 await catalog.applyLocalUpdate(meta)
             } catch {
                 appModel.showToast(ToastMessage(kind: .error, text: "重命名失败：\(error.localizedDescription)"))
+            }
+        }
+    }
+
+    func updateRecordedAt(id: String, date: Date) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        var meta = items[index].meta
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: date
+        )
+        let normalizedDate = Calendar.current.date(from: components) ?? date
+        let utcOffsetMin = TimeZone.current.secondsFromGMT(for: normalizedDate) / 60
+        meta.applyManualRecordedAt(normalizedDate, utcOffsetMin: utcOffsetMin)
+        Task {
+            do {
+                try store.updateMeta(meta)
+                await catalog.applyLocalUpdate(meta)
+                appModel.showToast(ToastMessage(kind: .info, text: "已保存手动录制时间"))
+            } catch {
+                appModel.showToast(ToastMessage(kind: .error, text: "保存录制时间失败：\(error.localizedDescription)"))
             }
         }
     }

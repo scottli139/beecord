@@ -52,6 +52,24 @@ static uint64_t get_u64(const uint8_t **p)
     return v;
 }
 
+int rec_journal_normalize_path(const char *path, char *out, size_t out_cap)
+{
+    if (path == NULL || out == NULL) {
+        return -1;
+    }
+    const char *slash = strrchr(path, '/');
+    const char *name = slash != NULL ? slash + 1 : path;
+    const size_t len = strlen(name);
+    if (len == 0u || len + 2u > out_cap || len + 2u > REC_JOURNAL_FILE_MAX ||
+        strcmp(name, ".") == 0 || strcmp(name, "..") == 0 || strchr(name, '\\') != NULL) {
+        return -1;
+    }
+    out[0] = '/';
+    memcpy(out + 1, name, len);
+    out[len + 1u] = '\0';
+    return 0;
+}
+
 int rec_journal_encode(const rec_journal_t *j, uint8_t *buf, uint32_t cap)
 {
     if (j == NULL || buf == NULL || cap < REC_JOURNAL_ENCODED_SIZE) {

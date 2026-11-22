@@ -8,6 +8,7 @@ public struct SimDeviceProfile: Equatable, Sendable {
     public var fwVersion: String
     /// 广播名（`BCD-XXXX`，§2.2）
     public var deviceName: String
+    public var deviceID: String
     /// 电量百分比（0–100）
     public var battery: Int
     /// 是否充电中
@@ -24,7 +25,8 @@ public struct SimDeviceProfile: Equatable, Sendable {
         battery: Int = 87,
         isCharging: Bool = false,
         storageTotal: UInt64 = 31_000_000,
-        storageFree: UInt64 = 12_345_678
+        storageFree: UInt64 = 12_345_678,
+        deviceID: String = "00000000BEEF"
     ) {
         self.model = model
         self.fwVersion = fwVersion
@@ -33,5 +35,6 @@ public struct SimDeviceProfile: Equatable, Sendable {
         self.isCharging = isCharging
         self.storageTotal = storageTotal
         self.storageFree = storageFree
+        self.deviceID = deviceID
     }
 }

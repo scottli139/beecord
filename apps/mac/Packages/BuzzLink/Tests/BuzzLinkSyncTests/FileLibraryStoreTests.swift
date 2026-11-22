@@ -163,6 +163,34 @@ final class FileLibraryStoreTests: XCTestCase {
         XCTAssertTrue(SyncTestSupport.partialFileNames(root: root).isEmpty)
     }
 
+    func testSchema1MetaLoadsWithoutRecordingIdentityFields() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var meta = SyncTestSupport.makeMeta(
+            fileID: "REC_0001.OGG", size: 100, crc16: 123, durationMs: 1_000
+        )
+        meta.schemaVersion = 1
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(meta)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let source = object?["source"] as? [String: Any]
+        XCTAssertNil(object?["recordedAtSource"])
+        XCTAssertNil(source?["recordingID"])
+        let dir = store.libraryURL.appendingPathComponent("legacy", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try data.write(to: dir.appendingPathComponent("meta.json"))
+
+        let decoded = try store.recording(id: "legacy")
+        XCTAssertEqual(decoded?.schemaVersion, 1)
+        XCTAssertNil(decoded?.source.recordingID)
+        XCTAssertNil(decoded?.source.deviceID)
+        XCTAssertEqual(
+            decoded?.sourceKeys,
+            ["legacy:BCD-DEMO:REC_0001.OGG"]
+        )
+    }
+
     // MARK: - 坏 meta 容忍
 
     func testExistingSourceIDsToleratesCorruptMeta() async throws {

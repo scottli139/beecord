@@ -32,7 +32,7 @@ enum SyncTestSupport {
             id: "",
             title: fileID,
             source: RecordingMeta.Source(
-                fileID: fileID, deviceName: "BCD-TEST", deviceModel: "beecord-sim", fwVersion: "0.1.0"
+                fileID: fileID, deviceName: "BCD-DEMO", deviceModel: "beecord-sim", fwVersion: "0.1.0"
             ),
             durationMs: durationMs,
             sizeBytes: size,
@@ -100,16 +100,18 @@ struct SyncFixture {
 func makeSyncFixture(
     files: [SimFile],
     faults: SimFaults = SimFaults(),
+    profile: SimDeviceProfile = SimDeviceProfile(),
+    rootURL: URL? = nil,
     randomSeed: UInt64 = 0xBEEC_0DE1,
     config: SyncConfig = .testDefault,
     throttleBytesPerSecond: Int? = nil,
     commandTimeout: TimeInterval = 0.5,
     chunkTimeout: TimeInterval = 0.3
 ) -> SyncFixture {
-    let simEngine = SimEngine(files: files, faults: faults, randomSeed: randomSeed)
+    let simEngine = SimEngine(profile: profile, files: files, faults: faults, randomSeed: randomSeed)
     let transport = SimEngineTransport(engine: simEngine, throttleBytesPerSecond: throttleBytesPerSecond)
     let client = BuzzLinkClient(transport: transport, commandTimeout: commandTimeout, chunkTimeout: chunkTimeout)
-    let root = SyncTestSupport.makeTempRoot()
+    let root = rootURL ?? SyncTestSupport.makeTempRoot()
     let store = FileLibraryStore(rootURL: root)
     let engine = SyncEngine(client: client, store: store, config: config)
     return SyncFixture(transport: transport, client: client, store: store, engine: engine, root: root)

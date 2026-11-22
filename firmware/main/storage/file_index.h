@@ -1,11 +1,10 @@
-// 录音文件索引与元数据（M4.3）：枚举 REC_*.*（.WAV/.OGG）、新→旧排序（id 字典序
-// 降序）、分页（§5.2：limit 缺省 16、上限 16）、元数据（size/流式全文件 crc16/
-// durationMs/format/sampleRate/channels）。
+// 录音文件索引与元数据：枚举 REC_*.*（.WAV/.OGG）、起录时间新→旧排序、
+// 分页（§5.2：limit 缺省 16、上限 16）、size/流式 CRC/时长及可选录音身份与时间。
 //
-// 所有文件访问经回调注入（buzz_file_io_t 五件套：open/read_at/size/close/listdir）：
-// 设备侧由 buzz_cmds 用 FATFS/VFS 实现，宿主测用内存假文件系统（见
-// test_host/test_file_index.c）。本模块硬件无关：不 include 任何 esp_* 头，
-// 零 malloc（全部静态缓冲），单实例（buzz_file_index_init 绑定一次 io 表）。
+// 所有文件访问经回调注入；sidecar 缺失或损坏时按旧格式降级，不影响音频可见性。
+// 索引仅在非实时服务任务重建，使用注入的 realloc/free 扩容；未注入时使用 libc。
+// 分配失败显式返回 BUZZ_INDEX_ERR_MEMORY，不返回不完整列表。音频/BLE 回调不分配。
+// 本模块硬件无关、单实例（buzz_file_index_init 绑定 io 表）。
 //
 // durationMs 解析规则：
 //   WAV = 解析 RIFF fmt/data chunk：dataSize*1000/byteRate，sampleRate/channels
@@ -18,9 +17,6 @@
 // 0 字节文件：显式 info/CRC 查询仍保留 size=0、crc16=0xFFFF、durationMs=0 的
 // 兼容语义；列表枚举与 total 则过滤 0 字节项（M5.5）。
 //
-// 索引上限 BUZZ_INDEX_MAX_FILES：匹配文件数超出时仅保留先枚举到的条目（FAT
-// 枚举序），total 仍报真实计数；超出部分客户端按空页终止翻页。P0 容量取 128
-// （约 64 小时录音），动态索引归 M6 再评估。
 #ifndef BUZZ_FILE_INDEX_H
 #define BUZZ_FILE_INDEX_H
 
@@ -29,6 +25,7 @@
 #include <stdint.h>
 
 #include "buzz_proto.h" // BUZZ_FILE_ID_MAX_LEN / BUZZ_OK 及错误码约定
+#include "rec_meta.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,8 +34,8 @@ extern "C" {
 // 列表页大小上限（BUZZLINK.md §5.2：每页最多 16 条）
 #define BUZZ_INDEX_PAGE_MAX 16u
 
-// 索引容量（静态 id 槽位数，零 malloc 的代价；溢出行为见文件头注释）
-#define BUZZ_INDEX_MAX_FILES 128u
+// 索引容量已改为按需扩容；内存失败通过 BUZZ_INDEX_ERR_MEMORY 上报。
+#define BUZZ_INDEX_ERR_MEMORY (-8)
 
 // 本模块自有错误码（其余复用 buzz_proto.h 的 BUZZ_OK/BUZZ_ERR_NULL/BUZZ_ERR_ARG/
 // BUZZ_ERR_SIZE）
@@ -64,17 +61,30 @@ typedef struct {
     void (*close)(void *ctx, void *fh);
     // 枚举目录全部条目，对每条调用 cb(cb_ctx, name)。返回交付条数；<0 = 出错。
     long (*listdir)(void *ctx, buzz_file_dirent_cb_t cb, void *cb_ctx);
+    // 可选索引扩容分配器；仅服务任务重建索引时调用。NULL 使用 libc realloc/free。
+    void *(*realloc)(void *ctx, void *ptr, size_t size);
+    void (*free)(void *ctx, void *ptr);
 } buzz_file_io_t;
 
 // 列表页条目（BUZZLINK.md §8.2 files[] 元素）
 typedef struct {
-    char id[BUZZ_FILE_ID_MAX_LEN + 1u]; // 文件名（含扩展名，D1），NUL 结尾
-    uint32_t size;                      // 文件字节数
-    uint32_t durationMs;                // 解析失败（含 0 字节文件）为 0
+    char id[BUZZ_FILE_ID_MAX_LEN + 1u]; // 设备文件寻址 ID（当前为含扩展名文件名）
+    char recording_id[REC_META_ID_LEN + 1u]; // 可选 UUIDv4；空串=旧格式
+    int64_t started_at_epoch_ms;
+    int32_t started_at_utc_offset_min;
+    rec_meta_time_quality_t time_quality;
+    bool has_started_at;
+    uint32_t size;
+    uint32_t durationMs;
 } buzz_file_entry_t;
 
 // 文件元数据（BUZZLINK.md §8.3）
 typedef struct {
+    char recording_id[REC_META_ID_LEN + 1u];
+    int64_t started_at_epoch_ms;
+    int32_t started_at_utc_offset_min;
+    rec_meta_time_quality_t time_quality;
+    bool has_started_at;
     uint32_t size;      // 文件字节数
     uint16_t crc16;     // 整文件流式 CRC-16/CCITT-FALSE（0 字节文件 = 0xFFFF）
     uint32_t durationMs;

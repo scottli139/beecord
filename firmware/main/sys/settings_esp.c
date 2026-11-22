@@ -20,6 +20,7 @@ static const char *s_keys[SETTINGS_ID_COUNT] = {
     [SETTINGS_BEEP_ENABLED] = "beep",
     [SETTINGS_BRIGHTNESS] = "brig",
     [SETTINGS_SCREEN_OFF_S] = "scro",
+    [SETTINGS_TIME_CONTEXT] = "timectx",
 };
 
 // settings_id → 是否 float 项（与 settings.c 的类型表保持一致）
@@ -29,6 +30,7 @@ static const bool s_is_float[SETTINGS_ID_COUNT] = {
     [SETTINGS_BEEP_ENABLED] = false,
     [SETTINGS_BRIGHTNESS] = false,
     [SETTINGS_SCREEN_OFF_S] = false,
+    [SETTINGS_TIME_CONTEXT] = false,
 };
 
 static int nvs_load(void *ctx, uint8_t key, void *buf, uint32_t cap)
@@ -36,6 +38,17 @@ static int nvs_load(void *ctx, uint8_t key, void *buf, uint32_t cap)
     (void)ctx;
     if (key >= (uint8_t)SETTINGS_ID_COUNT || s_h == 0) {
         return -1;
+    }
+    if (key == (uint8_t)SETTINGS_TIME_CONTEXT) {
+        if (cap < sizeof(settings_time_context_t)) {
+            return -1;
+        }
+        size_t len = sizeof(settings_time_context_t);
+        if (nvs_get_blob(s_h, s_keys[key], buf, &len) != ESP_OK ||
+            len != sizeof(settings_time_context_t)) {
+            return -1;
+        }
+        return (int)len;
     }
     if (s_is_float[key]) {
         // ESP-IDF NVS 无 float 原语：按 IEEE754 位模式存 u32
@@ -67,7 +80,12 @@ static int nvs_save(void *ctx, uint8_t key, const void *buf, uint32_t len)
         return -1;
     }
     esp_err_t ret;
-    if (s_is_float[key]) {
+    if (key == (uint8_t)SETTINGS_TIME_CONTEXT) {
+        if (len != sizeof(settings_time_context_t)) {
+            return -1;
+        }
+        ret = nvs_set_blob(s_h, s_keys[key], buf, len);
+    } else if (s_is_float[key]) {
         if (len != sizeof(float)) {
             return -1;
         }
@@ -109,10 +127,12 @@ esp_err_t settings_esp_init(void)
 
 void settings_esp_dump(void)
 {
-    ESP_LOGI(TAG, "rec_quality=%u mic_gain=%.1fdB beep=%u brightness=%u screen_off=%us",
+    const settings_time_context_t time = settings_get_time_context();
+    ESP_LOGI(TAG, "rec_quality=%u mic_gain=%.1fdB beep=%u brightness=%u screen_off=%us time_synced=%u utc_offset=%d",
              (unsigned)settings_get_u8(SETTINGS_REC_QUALITY),
              (double)settings_get_float(SETTINGS_MIC_GAIN_DB),
              (unsigned)settings_get_u8(SETTINGS_BEEP_ENABLED),
              (unsigned)settings_get_u8(SETTINGS_BRIGHTNESS),
-             (unsigned)settings_get_u8(SETTINGS_SCREEN_OFF_S));
+             (unsigned)settings_get_u8(SETTINGS_SCREEN_OFF_S),
+             (unsigned)time.synced, (int)time.utc_offset_min);
 }

@@ -6,7 +6,8 @@
 //     "OggS\x00" 假阳性强校验排除）
 //   - 0 字节文件（size=0 / crc16=0xFFFF / duration=0 不崩溃）、缺文件、路径穿越
 //   - crc16 已知向量（§3.2 "123456789"=0x29B1 / "Beecord"=0x5D1E）与流式等价性
-//   - 损坏头容错（duration 0、crc 不受影响）、索引容量溢出（total 真实计数）
+//   - 损坏头容错（duration 0、crc 不受影响）、动态索引超过旧 128 上限与 OOM 显式错误
+//   - sidecar recordingID/起录时间、未对时降级、损坏 sidecar 不隐藏音频
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -199,6 +200,16 @@ static void append_ogg_page(uint64_t granule, uint8_t hdr_type, const uint8_t *p
 static buzz_file_entry_t g_entries[BUZZ_INDEX_PAGE_MAX];
 
 // ---------- 用例 ----------
+
+static void test_empty_directory(void)
+{
+    fixture();
+    uint32_t total = 99;
+    uint32_t count = 99;
+    CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(total, 0u);
+    CHECK_EQ_INT(count, 0u);
+}
 
 static void test_filters_prefix_and_ext(void)
 {
@@ -423,10 +434,10 @@ static void test_zero_filter_mixed_and_list_all(void)
     fs_add("REC_0002.OGG", NULL, 0);
     fs_add_zero("README.TXT");
     fs_add("REC_0001.WAV", NULL, 0);
-    static buzz_file_entry_t all[BUZZ_INDEX_MAX_FILES];
+    static buzz_file_entry_t all[2];
     uint32_t total = 0;
     uint32_t count = 0;
-    CHECK_EQ_INT(buzz_file_index_list_all(all, BUZZ_INDEX_MAX_FILES, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(buzz_file_index_list_all(all, 2u, &total, &count), BUZZ_OK);
     CHECK_EQ_INT(total, 2u);
     CHECK_EQ_INT(count, 2u);
     CHECK(strcmp(all[0].id, "REC_0002.OGG") == 0);
@@ -512,21 +523,126 @@ static void test_corrupt_headers_tolerated(void)
     CHECK_EQ_INT((int)ogg.crc16, (int)buzz_crc16(junk_ogg, sizeof(junk_ogg)));
 }
 
-static void test_index_overflow_reports_true_total(void)
+static void test_index_grows_beyond_legacy_128_limit(void)
 {
     static char names[130][13];
     fixture();
-    for (int i = 0; i < 130; i++) { // 超出索引容量 128
+    for (int i = 0; i < 130; i++) {
         snprintf(names[i], sizeof(names[i]), "REC_%04d.OGG", i + 1);
         fs_add(names[i], NULL, 0);
     }
     uint32_t total = 0;
     uint32_t count = 0;
     CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
-    CHECK_EQ_INT(total, 130u); // total 为真实计数
+    CHECK_EQ_INT(total, 130u);
     CHECK_EQ_INT(count, 16u);
     CHECK_EQ_INT(buzz_file_index_list(124, 16, g_entries, 16, &total, &count), BUZZ_OK);
-    CHECK_EQ_INT(count, 4u); // 可用条目截在 128：切片 [124,128)
+    CHECK_EQ_INT(count, 6u);
+    CHECK(strcmp(g_entries[5].id, "REC_0001.OGG") == 0);
+    CHECK_EQ_INT(buzz_file_index_list(128, 16, g_entries, 16, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(count, 2u);
+}
+
+static void test_sidecar_identity_time_and_legacy_fallback(void)
+{
+    fixture();
+    static char audio[REC_META_NAME_MAX + 1u];
+    static char sidecar[REC_META_NAME_MAX + 1u];
+    static char json[REC_META_JSON_CAP];
+    uint8_t random[16] = {0};
+    rec_meta_t meta;
+    CHECK_EQ_INT(rec_meta_create(&meta, random), 0);
+    const rtc_datetime_t local = {
+        .year = 2026, .month = 11, .day = 22, .hour = 19, .minute = 12, .second = 21,
+    };
+    rec_meta_capture_time(&meta, &local, true, 480, true);
+    CHECK_EQ_INT(rec_meta_audio_name(&meta, &local, true, ".OGG", 0,
+                                    audio, sizeof(audio)), 0);
+    CHECK_EQ_INT(rec_meta_sidecar_name(audio, sidecar, sizeof(sidecar)), 0);
+    CHECK(rec_meta_encode(&meta, json, sizeof(json)) > 0);
+    fs_add("REC_9999.OGG", NULL, 0);
+    fs_add(audio, NULL, 0);
+    fs_add(sidecar, (const uint8_t *)json, (uint32_t)strlen(json));
+    uint32_t total = 0;
+    uint32_t count = 0;
+    CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(count, 2u);
+    CHECK(strcmp(g_entries[0].id, audio) == 0);
+    CHECK(strcmp(g_entries[0].recording_id, meta.recording_id) == 0);
+    CHECK(g_entries[0].has_started_at);
+    CHECK(g_entries[0].started_at_epoch_ms == 1795345941000LL);
+    CHECK_EQ_INT(g_entries[0].started_at_utc_offset_min, 480);
+    CHECK_EQ_INT(g_entries[0].time_quality, REC_META_TIME_SYNCED);
+    CHECK(strcmp(g_entries[1].id, "REC_9999.OGG") == 0);
+    CHECK_EQ_INT(g_entries[1].recording_id[0], '\0');
+    buzz_file_info_t info;
+    CHECK_EQ_INT(buzz_file_index_info(audio, &info), BUZZ_OK);
+    CHECK(strcmp(info.recording_id, meta.recording_id) == 0);
+    CHECK(info.has_started_at);
+    CHECK_EQ_INT(buzz_file_index_info("REC_9999.OGG", &info), BUZZ_OK);
+    CHECK_EQ_INT(info.recording_id[0], '\0');
+    CHECK(!info.has_started_at);
+}
+
+static void test_corrupt_sidecar_does_not_hide_audio(void)
+{
+    fixture();
+    fs_add("REC_0001.OGG", NULL, 0);
+    static const char corrupt[] = "not-json";
+    fs_add("REC_0001.json", (const uint8_t *)corrupt, sizeof(corrupt) - 1u);
+    uint32_t total = 0;
+    uint32_t count = 0;
+    CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(count, 1u);
+    CHECK(strcmp(g_entries[0].id, "REC_0001.OGG") == 0);
+    CHECK_EQ_INT(g_entries[0].recording_id[0], '\0');
+    buzz_file_info_t info;
+    CHECK_EQ_INT(buzz_file_index_info("REC_0001.OGG", &info), BUZZ_OK);
+    CHECK_EQ_INT(info.recording_id[0], '\0');
+}
+
+static void test_unsynced_sidecar_keeps_identity_without_fake_time(void)
+{
+    fixture();
+    static char json[REC_META_JSON_CAP];
+    uint8_t random[16] = {1};
+    rec_meta_t meta;
+    CHECK_EQ_INT(rec_meta_create(&meta, random), 0);
+    const rtc_datetime_t local = {
+        .year = 2026, .month = 11, .day = 22, .hour = 19, .minute = 12, .second = 21,
+    };
+    rec_meta_capture_time(&meta, &local, true, 0, false);
+    CHECK(rec_meta_encode(&meta, json, sizeof(json)) > 0);
+    fs_add("REC_0002.OGG", NULL, 0);
+    fs_add("REC_0002.json", (const uint8_t *)json, (uint32_t)strlen(json));
+    uint32_t total = 0;
+    uint32_t count = 0;
+    CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(count, 1u);
+    CHECK(strcmp(g_entries[0].recording_id, meta.recording_id) == 0);
+    CHECK_EQ_INT(g_entries[0].time_quality, REC_META_TIME_UNSYNCED);
+    CHECK(!g_entries[0].has_started_at);
+}
+
+static void *fail_realloc(void *ctx, void *ptr, size_t size)
+{
+    (void)ctx;
+    (void)ptr;
+    (void)size;
+    return NULL;
+}
+
+static void test_index_allocation_failure_is_explicit(void)
+{
+    fs_reset();
+    buzz_file_io_t io = g_fake_io;
+    io.realloc = fail_realloc;
+    CHECK_EQ_INT(buzz_file_index_init(&io), BUZZ_OK);
+    fs_add("REC_0001.OGG", NULL, 0);
+    uint32_t total = 0;
+    uint32_t count = 0;
+    CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count),
+                 BUZZ_INDEX_ERR_MEMORY);
 }
 
 // ---------- CRC 缓存（FILE_INFO / DL_BEGIN 共享） ----------
@@ -627,6 +743,7 @@ static void test_crc_cache_eviction_round_robin(void)
 
 int main(void)
 {
+    RUN_TEST(test_empty_directory);
     RUN_TEST(test_filters_prefix_and_ext);
     RUN_TEST(test_sort_desc_mixed_ext);
     RUN_TEST(test_default_limit_is_16);
@@ -647,7 +764,11 @@ int main(void)
     RUN_TEST(test_crc16_streaming_equivalence);
     RUN_TEST(test_crc16_beecord_vector);
     RUN_TEST(test_corrupt_headers_tolerated);
-    RUN_TEST(test_index_overflow_reports_true_total);
+    RUN_TEST(test_index_grows_beyond_legacy_128_limit);
+    RUN_TEST(test_sidecar_identity_time_and_legacy_fallback);
+    RUN_TEST(test_corrupt_sidecar_does_not_hide_audio);
+    RUN_TEST(test_unsynced_sidecar_keeps_identity_without_fake_time);
+    RUN_TEST(test_index_allocation_failure_is_explicit);
     RUN_TEST(test_crc_cache_hit_skips_full_read);
     RUN_TEST(test_crc_cache_size_change_invalidates);
     RUN_TEST(test_crc_cache_shared_entry_point);

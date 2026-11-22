@@ -173,8 +173,8 @@ final class DeviceSyncUITests: XCTestCase {
     }
 
     /// 启动进程内 Sim server；端口占用（本机 Sim app 在跑）→ 重试后 XCTSkip
-    private func startServerOrSkip(faults: SimFaults = SimFaults()) throws {
-        let server = UITestSimServer(engine: SimEngine(files: Self.makeSampleFiles(), faults: faults))
+    private func startServerOrSkip(faults: SimFaults = SimFaults(), files: [SimFile]? = nil) throws {
+        let server = UITestSimServer(engine: SimEngine(files: files ?? Self.makeSampleFiles(), faults: faults))
         for attempt in 1...3 {
             do {
                 try server.start()
@@ -206,6 +206,13 @@ final class DeviceSyncUITests: XCTestCase {
         let dir = libraryRoot.appendingPathComponent("Library/\(id)")
         return FileManager.default.fileExists(atPath: dir.appendingPathComponent("audio.ogg").path)
             && FileManager.default.fileExists(atPath: dir.appendingPathComponent("meta.json").path)
+    }
+
+    private func libraryMeta(_ id: String) -> [String: Any]? {
+        guard let libraryRoot = state.libraryRoot else { return nil }
+        let url = libraryRoot.appendingPathComponent("Library/\(id)/meta.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
     /// Library 下的录音目录数（不含 .partial）
@@ -561,6 +568,69 @@ final class DeviceSyncUITests: XCTestCase {
             "空文件列表显示 fileTable 空态"
         )
         XCTAssertTrue(waitForDisappearance("device.fileTable", timeout: 5), "无文件表")
+    }
+
+    func testManualRecordedAtUnknownSaveAndRelaunch() throws {
+        let id = "REC_0001.OGG"
+        let file = SimFile(id: id, durationMs: 1_000, data: SyntheticOgg.silence(durationSeconds: 1))
+        try startServerOrSkip(files: [file])
+        try launchApp()
+        ensureSidebarVisible()
+        requireDeviceCard()
+        XCTAssertTrue(waitForStatus(id, equal: "✓ 已校验", timeout: 30))
+        element("sidebar.navItem.library").click()
+        XCTAssertTrue(waitForExistence("library.recordingTable.row.\(id)", timeout: 30))
+        element("library.recordingTable.row.\(id)").click()
+        XCTAssertTrue(waitForElement(
+            "library.recordedAt.value",
+            predicate: NSPredicate(format: "value == %@", "未知"),
+            timeout: 15
+        ))
+        XCTAssertTrue(waitForExistence("library.importedAt.value", timeout: 5))
+
+        element("library.recordedAt.editButton").click()
+        XCTAssertTrue(waitForExistence("library.recordedAt.editor", timeout: 5))
+        XCTAssertTrue(waitForExistence("library.recordedAt.dateField", timeout: 5))
+        XCTAssertTrue(waitForExistence("library.recordedAt.timeField", timeout: 5))
+        element("library.recordedAt.cancelButton").click()
+        XCTAssertTrue(waitForDisappearance("library.recordedAt.editor", timeout: 5))
+        XCTAssertEqual(element("library.recordedAt.value").value as? String, "未知")
+
+        element("library.recordedAt.editButton").click()
+        XCTAssertTrue(waitForExistence("library.recordedAt.editor", timeout: 5))
+        element("library.recordedAt.saveButton").click()
+        XCTAssertTrue(waitForElement(
+            "library.recordedAt.value",
+            predicate: NSPredicate(format: "value CONTAINS %@", "（手动）"),
+            timeout: 15
+        ))
+        let persisted = waitForElement(
+            "library.recordedAt.value",
+            predicate: NSPredicate { [weak self] _, _ in
+                self?.libraryMeta(id)?["recordedAtSource"] as? String == "manual"
+            },
+            timeout: 15
+        )
+        XCTAssertTrue(persisted, "meta.json 写入手动时间")
+        let meta = libraryMeta(id)
+        XCTAssertNotNil(meta?["recordedAt"])
+        XCTAssertNotNil(meta?["recordedAtUtcOffsetMin"])
+        XCTAssertEqual(meta?["title"] as? String, id)
+        XCTAssertEqual((meta?["source"] as? [String: Any])?["fileID"] as? String, id)
+
+        app.terminate()
+        app.launch()
+        app.activate()
+        ensureSidebarVisible()
+        element("sidebar.navItem.library").click()
+        XCTAssertTrue(waitForExistence("library.recordingTable.row.\(id)", timeout: 30))
+        element("library.recordingTable.row.\(id)").click()
+        XCTAssertTrue(waitForElement(
+            "library.recordedAt.value",
+            predicate: NSPredicate(format: "value CONTAINS %@", "（手动）"),
+            timeout: 15
+        ), "重启与自动同步后人工时间不被覆盖")
+        XCTAssertEqual(element("library.recordedAt.editButton").label, "修改")
     }
 }
 

@@ -212,6 +212,24 @@ M5.5 手表快照与真实 BLE 验收补充：
   -settings.transportMode ble -settings.autoSyncEnabled YES`。验收至少 3 条 `Library/*/audio.ogg`
   与 `meta.json` 齐备，并对拍 CRC、时长和文件字节；结束测试进程即可，无需改用户默认设置。
 
+BuzzLink v0.3 录音身份与起录元数据验收补充：
+
+- 宿主覆盖 UUIDv4/时间冻结、sidecar 正常/损坏/未对时、旧文件降级、空目录、130 条动态翻页、
+  OOM 显式错误、V8 帧向量及 journal 路径规范化；Clang/GCC 均跑全量。
+- Swift 覆盖 V8 对拍、非法时间拒绝、显式时间与原始 UTC 偏移入库、schema 1 读取、同文件名
+  跨卡 recordingID 去重、旧文件跨设备 deviceID 去重；全量 234 项通过（1 项跨机 BLE skip）。
+  历史时间手动修正另有模型回归与 UITest：未知→展开/取消→保存→meta.json→App 重启后人工值
+  不被同步覆盖。
+- 实机已验收 OGG/WAV 新命名与 sidecar、INFO deviceID、LIST/FILE_INFO 元数据、三方 CRC、
+  Studio 隔离库 schema 2 入库及音频逐字节对拍。异常复位后 journal 恢复成功，recordingID/
+  起录时间保留，恢复文件下载与 Ogg 页 CRC 通过。
+- **串口纪律**：开 port 即使 `dtr=False` 也观察到 `USB_UART_CHIP_RESET`。录音开始、保持、停止
+  和列文件必须在同一串口会话完成；断电恢复测试则在录制会话结束后重新开端口并读取启动日志。
+- 本机完整 Xcode 25 项中，18 个功能用例全部通过（含新增手动时间用例）；7 个无障碍审计均
+  在系统 `audit()` 内统一报 `Code=-56 Audit failed to complete in time`，导航与前置断言已通过，
+  按既有环境限制留 CI 复核，不删场景、不放宽豁免。最终源码的新增用例随后单独重跑再次通过。
+- 物理换卡与格式化会擦除当前卡，需另行授权测试；本轮以跨卡同名合成回归代替，未声称已做物理擦卡。
+
 ## 8. 测试数据纪律
 
 - 测试音频一律**合成样本**（脚本生成 16kHz 单声道 Ogg Opus：`tools/make_sim_samples.sh`，

@@ -144,6 +144,12 @@
   .badge.tc-ready{color:var(--ok);background:rgba(48,209,88,.14)}
   /* P0-6 列表头：排序规则标注 */
   .lib-head{font-size:11px;color:var(--text3);padding:0 2px 2px;display:flex;justify-content:space-between}
+  .time-summary{display:grid;grid-template-columns:88px 1fr auto;gap:8px 12px;align-items:center;font-size:12px}
+  .time-summary .label{color:var(--text2)}
+  .time-summary .muted{color:var(--text3)}
+  .time-note{font-size:11px;color:var(--text3);line-height:1.5;margin-top:10px}
+  .time-editor{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .time-editor input{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px}
   /* P0-2 播放器占位（转码未完成） */
   .player-blocked{display:flex;flex-direction:column;align-items:center;gap:10px;padding:26px 0;color:var(--text2);font-size:13px}
   .player-blocked .err{color:var(--danger)}
@@ -274,6 +280,7 @@
         <option value="device-empty">已连接 · 设备无录音</option>
         <option value="library-empty">录音库为空</option>
         <option value="library-no-selection">录音库未选择</option>
+        <option value="library-time-unknown">录音库 · 历史时间未知 / 手动修正（已评审）</option>
         <option value="library-actions-a">录音库 · 操作行 方案A（导出合并·已定案）</option>
         <option value="library-actions-b">录音库 · 操作行 方案B（⋯ 收纳·未采纳）</option>
         <option value="library-actions-c">录音库 · 操作行 方案C（图标钮·未采纳）</option>
@@ -417,6 +424,24 @@
                 </div>
                 <!-- P0-2 转码未完成占位：与列表徽标联动 -->
                 <div class="player-blocked" id="player-blocked" style="display:none"></div>
+              </div>
+              <div class="card" id="lib-time-card" style="display:none;margin-top:12px">
+                <div class="time-summary">
+                  <span class="label">录制时间</span>
+                  <span id="lib-recorded-at" data-ax="library.recordedAt.value" class="muted">未知</span>
+                  <button class="sm" id="btn-edit-recorded-at" data-ax="library.recordedAt.editButton">设置时间</button>
+                  <span class="label">导入时间</span>
+                  <span id="lib-imported-at" data-ax="library.importedAt.value">2026-11-22 22:45</span>
+                  <span></span>
+                </div>
+                <div class="time-note">旧录音没有可信起录时间；导入时间不能代替录制时间。手动修正只修改此 Mac 的元数据，不写回手表，后续同步不会覆盖人工值。</div>
+                <div class="time-editor" id="recorded-at-editor" data-ax="library.recordedAt.editor" style="display:none">
+                  <input type="date" id="recorded-at-date" data-ax="library.recordedAt.dateField" value="2026-11-22" aria-label="录制日期">
+                  <input type="time" id="recorded-at-time" data-ax="library.recordedAt.timeField" value="19:12" aria-label="录制时间">
+                  <button class="primary" id="btn-save-recorded-at" data-ax="library.recordedAt.saveButton">保存</button>
+                  <button class="sm" id="btn-cancel-recorded-at" data-ax="library.recordedAt.cancelButton">取消</button>
+                  <div class="time-note" style="width:100%;margin-top:0">保存后标注“手动”；录音标题保持不变。</div>
+                </div>
               </div>
               <div class="card" id="lib-tabs-card" style="display:none">
                 <div class="tabs">
@@ -607,7 +632,7 @@ const $ = id => document.getElementById(id);
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
 const fmtT = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(Math.floor(s%60)).padStart(2,"0")}`;
-const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","library-actions-a","library-actions-b","library-actions-c","bluetooth-off","console","console-disconnected","console-syncing"]);
+const SCENARIOS=new Set(["normal","no-device","device-empty","library-empty","library-no-selection","library-time-unknown","library-actions-a","library-actions-b","library-actions-c","bluetooth-off","console","console-disconnected","console-syncing"]);
 const requestedScenario=new URLSearchParams(location.search).get("state")||"normal";
 const SCENARIO=SCENARIOS.has(requestedScenario)?requestedScenario:"normal";
 $("prototype-scenario").value=SCENARIO;
@@ -766,6 +791,14 @@ function selectLib(i){
   S.curLib=i; renderLib();
   const r=S.lib[i];
   $("lib-title").value=r.t;
+  const timeScenario=SCENARIO==="library-time-unknown";
+  $("lib-time-card").style.display=timeScenario?"":"none";
+  if(timeScenario){
+    $("recorded-at-editor").style.display="none";
+    $("lib-recorded-at").textContent=r.manualTime?`${r.manualTime}（手动）`:"未知";
+    $("lib-recorded-at").classList.toggle("muted",!r.manualTime);
+    $("btn-edit-recorded-at").textContent=r.manualTime?"修改":"设置时间";
+  }
   $("lib-tabs-card").style.display="";
   const ready=r.tc==="ready";
   $("player").style.display=ready?"":"none";
@@ -782,6 +815,21 @@ function selectLib(i){
   $("pc-time").textContent=`00:00 / ${fmtT(r.dur)}`;
   genWave(); setProgress(0);
 }
+// 历史时间修正原型：内联面板；人工值只影响本地元数据，不改标题。
+function setRecordedAtEditor(open){
+  $("recorded-at-editor").style.display=open?"flex":"none";
+  if(open) $("recorded-at-date").focus();
+}
+$("btn-edit-recorded-at").onclick=()=>setRecordedAtEditor(true);
+$("btn-cancel-recorded-at").onclick=()=>setRecordedAtEditor(false);
+$("btn-save-recorded-at").onclick=()=>{
+  const r=S.lib[S.curLib];
+  r.manualTime=`${$("recorded-at-date").value} ${$("recorded-at-time").value}`;
+  r.m=`${r.manualTime.slice(5)} · ${fmtT(r.dur)}`;
+  setRecordedAtEditor(false);
+  selectLib(S.curLib);
+  toast("已保存手动录制时间");
+};
 // P0-7 已复核：跳设备页并触发连接（P0 连接即扫描一体）
 $("btn-library-sync").onclick=()=>{ showView("device"); if(!S.connected&&!S.scanned) startScan(); };
 $("btn-select-recent").onclick=()=>selectLib(0);
@@ -1243,6 +1291,7 @@ function applyScenario(){
   // 统一重置：候选场景会覆盖 S.lib / 操作行 / 详情列宽，其余场景从这里恢复默认
   S.lib=DEFAULT_LIB.map(r=>({...r})); S.curLib=null;
   $("width-switch").style.display="none";
+  $("lib-time-card").style.display="none";
   document.querySelector(".lib-detail").style.width="";
   renderActions("current");
   if(SCENARIO==="no-device"){
@@ -1253,6 +1302,16 @@ function applyScenario(){
     S.lib=[]; S.curLib=null; renderLib(); showView("library"); startScan();
   }else if(SCENARIO==="library-no-selection"){
     S.curLib=null; renderLib(); showView("library"); startScan();
+  }else if(SCENARIO==="library-time-unknown"){
+    S.lib=[{t:"REC_0002.OGG",m:"未知时间 · 0:03",dur:3,tc:"ready",tr:"none"}];
+    renderLib(); showView("library"); selectLib(0);
+    if((new URLSearchParams(location.search).get("demo"))==="edit"){
+      setTimeout(()=>setRecordedAtEditor(true),300);
+    }else if((new URLSearchParams(location.search).get("demo"))==="saved"){
+      S.lib[0].manualTime="2026-11-22 19:12";
+      S.lib[0].m="11-22 19:12 · 0:03";
+      selectLib(0);
+    }
   }else if(SCENARIO==="library-actions-a"||SCENARIO==="library-actions-b"||SCENARIO==="library-actions-c"){
     // 操作行方案场景（A 已定案 2026-10-17 实现为产品形态；B/C 未采纳，留作历史对照）：
     // NPR 三条 mock + 方案操作行 + 窗口宽模拟控件（默认 1024，URL ?w=1280|1024|900）

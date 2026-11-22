@@ -11,8 +11,8 @@
 // 最多 64 个）、电平统计（rec_meter，0..24 档）、每 5s journal 落盘钩子
 //（rec_journal_esp）、码率参数（设置页两档的前置）、写满/写错误事件细分。
 //
-// 文件名 /sdcard/REC_%04d.OGG 或 .WAV 递增：开录前扫目录同时认两种后缀
-// 取最大序号 +1（卡在他机写过不冲突）。
+// 每次会话生成 UUIDv4 与起录 sidecar；文件名使用 RTC 时间戳 + UUID 派生后缀，
+// RTC 无效时使用无日期 UUID 派生名，不依赖递增序号。
 #pragma once
 
 #include "esp_codec_dev.h"

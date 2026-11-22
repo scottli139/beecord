@@ -62,6 +62,19 @@ public struct SimEngine: Sendable {
     /// 中途静默触发点：推流进度达到该比例后进入静默
     private static let silenceTriggerPercent = 30
 
+    private static func newestFirst(_ lhs: SimFile, _ rhs: SimFile) -> Bool {
+        switch (lhs.startedAtEpochMs, rhs.startedAtEpochMs) {
+        case let (left?, right?) where left != right:
+            return left > right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return lhs.id > rhs.id
+        }
+    }
+
     private var rng: SplitMix64
     private var silencedUntil: TimeInterval?
 
@@ -73,7 +86,7 @@ public struct SimEngine: Sendable {
     ) {
         self.profile = profile
         self.faults = faults
-        self.files = files.sorted { $0.id > $1.id }
+        self.files = files.sorted(by: Self.newestFirst)
         self.rng = SplitMix64(seed: randomSeed)
     }
 
@@ -83,7 +96,7 @@ public struct SimEngine: Sendable {
         if faults.hostileFileNames {
             result.append(contentsOf: SimFile.hostileEntries())
         }
-        return result.sorted { $0.id > $1.id }
+        return result.sorted(by: Self.newestFirst)
     }
 
     /// 是否处于静默期（故障注入"推流中途断连"）
@@ -215,7 +228,17 @@ public struct SimEngine: Sendable {
             status: "ok",
             total: all.count,
             offset: request.offset,
-            files: page.map { FileEntryJSON(id: $0.id, durationMs: $0.durationMs, size: $0.data.count) }
+            files: page.map {
+                FileEntryJSON(
+                    id: $0.id,
+                    durationMs: $0.durationMs,
+                    size: $0.data.count,
+                    recordingID: $0.recordingID,
+                    startedAtEpochMs: $0.startedAtEpochMs,
+                    startedAtUtcOffsetMin: $0.startedAtUtcOffsetMin,
+                    timeQuality: $0.effectiveTimeQuality
+                )
+            }
         )
         return emitJSON(ListResponseJSON.self, value: json, type: .listResp, session: frame.session)
     }
@@ -237,7 +260,11 @@ public struct SimEngine: Sendable {
             durationMs: file.durationMs,
             format: "ogg-opus",
             sampleRate: 16_000,
-            channels: 1
+            channels: 1,
+            recordingID: file.recordingID,
+            startedAtEpochMs: file.startedAtEpochMs,
+            startedAtUtcOffsetMin: file.startedAtUtcOffsetMin,
+            timeQuality: file.effectiveTimeQuality
         )
         return emitJSON(FileInfoJSON.self, value: json, type: .fileInfoResp, session: frame.session)
     }
@@ -295,6 +322,7 @@ public struct SimEngine: Sendable {
             fwVersion: profile.fwVersion,
             protocolVersion: Int(BuzzLinkConstants.version),
             deviceName: profile.deviceName,
+            deviceID: profile.deviceID,
             battery: profile.battery,
             charging: profile.isCharging,
             storageTotal: profile.storageTotal,
@@ -492,13 +520,14 @@ private struct InfoJSON: Encodable {
     let fwVersion: String
     let protocolVersion: Int
     let deviceName: String
+    let deviceID: String
     let battery: Int
     let charging: Bool
     let storageTotal: UInt64
     let storageFree: UInt64
 
     enum CodingKeys: String, CodingKey {
-        case model, fwVersion, deviceName, battery, charging, storageTotal, storageFree
+        case model, fwVersion, deviceName, deviceID, battery, charging, storageTotal, storageFree
         case protocolVersion = "protocol"
     }
 }
@@ -507,6 +536,10 @@ private struct FileEntryJSON: Encodable {
     let id: String
     let durationMs: UInt32
     let size: Int
+    let recordingID: String?
+    let startedAtEpochMs: Int64?
+    let startedAtUtcOffsetMin: Int?
+    let timeQuality: String?
 }
 
 private struct ListResponseJSON: Encodable {
@@ -525,6 +558,10 @@ private struct FileInfoJSON: Encodable {
     let format: String
     let sampleRate: Int
     let channels: Int
+    let recordingID: String?
+    let startedAtEpochMs: Int64?
+    let startedAtUtcOffsetMin: Int?
+    let timeQuality: String?
 }
 
 private struct ErrorJSON: Encodable {

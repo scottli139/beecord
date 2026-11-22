@@ -27,6 +27,10 @@ public struct DeviceFileRow: Sendable, Equatable, Identifiable {
     public var id: String
     public var durationMs: UInt32
     public var size: Int
+    public var recordingID: String?
+    public var startedAtEpochMs: Int64?
+    public var startedAtUtcOffsetMin: Int?
+    public var timeQuality: BuzzLinkTimeQuality?
     public var status: Status
 
     /// 行状态（DESIGN_SYSTEM §2 状态徽标语义）
@@ -43,11 +47,32 @@ public struct DeviceFileRow: Sendable, Equatable, Identifiable {
         case incomplete
     }
 
-    public init(id: String, durationMs: UInt32, size: Int, status: Status) {
+    public init(
+        id: String,
+        durationMs: UInt32,
+        size: Int,
+        status: Status,
+        recordingID: String? = nil,
+        startedAtEpochMs: Int64? = nil,
+        startedAtUtcOffsetMin: Int? = nil,
+        timeQuality: BuzzLinkTimeQuality? = nil
+    ) {
         self.id = id
         self.durationMs = durationMs
         self.size = size
         self.status = status
+        self.recordingID = recordingID
+        self.startedAtEpochMs = startedAtEpochMs
+        self.startedAtUtcOffsetMin = startedAtUtcOffsetMin
+        self.timeQuality = timeQuality
+    }
+
+    public var startedAt: Date? {
+        guard timeQuality == .synced, let startedAtEpochMs,
+              let startedAtUtcOffsetMin, (-720...840).contains(startedAtUtcOffsetMin) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: Double(startedAtEpochMs) / 1_000)
     }
 }
 

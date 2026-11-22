@@ -29,6 +29,7 @@ static const char *TAG = "buzz_ble";
 // 设备名 "BCD-XXXX"：前缀 + MAC 末 2 字节大写 hex + NUL。
 #define DEVICE_NAME_FMT "BCD-%02X%02X"
 static char s_device_name[sizeof("BCD-FFFF")];
+static char s_device_id[13];
 
 // 建议连接参数（BUZZLINK.md §2.1）；对端可拒绝/覆盖，不阻塞验收。
 // M4.4 实测：7.5ms 被 macOS 拒绝（维持 15ms），11.25ms 为 Apple 实际下限。
@@ -237,6 +238,9 @@ esp_err_t buzz_ble_init(void)
     ESP_RETURN_ON_ERROR(esp_read_mac(mac, ESP_MAC_BT), TAG, "read BT MAC failed");
     snprintf(s_device_name, sizeof(s_device_name), DEVICE_NAME_FMT, (unsigned)mac[4],
              (unsigned)mac[5]);
+    snprintf(s_device_id, sizeof(s_device_id), "%02X%02X%02X%02X%02X%02X",
+             (unsigned)mac[0], (unsigned)mac[1], (unsigned)mac[2],
+             (unsigned)mac[3], (unsigned)mac[4], (unsigned)mac[5]);
 
     ESP_RETURN_ON_ERROR(nimble_port_init(), TAG, "nimble_port_init failed");
 
@@ -268,6 +272,11 @@ esp_err_t buzz_ble_init(void)
 const char *buzz_ble_device_name(void)
 {
     return s_device_name;
+}
+
+const char *buzz_ble_device_id(void)
+{
+    return s_device_id;
 }
 
 bool buzz_ble_is_connected(void)

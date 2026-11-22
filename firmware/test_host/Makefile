@@ -6,6 +6,7 @@ PROTO  := ../main/proto
 AUDIO  := ../main/audio
 BLE    := ../main/ble
 STORAGE := ../main/storage
+SYS := ../main/sys
 BUILD  := build
 
 # 会话向量回放（TESTING.md §3）：JSON 或转换脚本变更时 make 自动重新生成 C 表
@@ -26,9 +27,9 @@ HAVE_OPUS   := $(shell pkg-config --exists opus > /dev/null 2>&1 && echo 1)
 PIPE_SRCS   := $(AUDIO)/opus_enc.c $(AUDIO)/rec_pipe.c
 PIPE_HDRS   := $(AUDIO)/opus_enc.h $(AUDIO)/rec_pipe.h
 
-SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(BLE)/buzz_server.c $(STORAGE)/file_index.c $(VECTOR_SRC)
-HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(BLE)/buzz_server.h $(STORAGE)/file_index.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc test_device_model
+SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(AUDIO)/rec_meta.c $(SYS)/rtc.c $(BLE)/buzz_server.c $(STORAGE)/file_index.c $(VECTOR_SRC)
+HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(AUDIO)/rec_meta.h $(SYS)/rtc.h $(BLE)/buzz_server.h $(STORAGE)/file_index.h $(VECTOR_HDR) test.h
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_rec_meta test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc test_device_model
 
 ifeq ($(HAVE_OPUS),1)
 TESTS += test_rec_pipe
@@ -56,7 +57,6 @@ endif
 	fi
 
 # keyd/beep（M5.2）：纯逻辑单测，仅链各自 sys 源码，独立显式规则
-SYS := ../main/sys
 test_keyd: test_keyd.c $(SYS)/keyd.c $(SYS)/keyd.h test.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/keyd.c
@@ -104,14 +104,14 @@ test_rtc: test_rtc.c $(SYS)/rtc.c $(SYS)/rtc.h $(BLE)/buzz_server.c test.h
 ifeq ($(HAVE_OPUS),1)
 test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(OPUS_CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(GENERATED) \
+	$(CC) $(CFLAGS) $(OPUS_CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(SYS) -I$(GENERATED) \
 	    -o $(BUILD)/test_rec_pipe $< $(SRCS) $(PIPE_SRCS) $(OPUS_LIBS) -lm
 endif
 
 # test_rec_pipe/keyd/beep 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
 $(filter-out test_rec_pipe test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc test_device_model,$(TESTS)): %: %.c $(SRCS) $(HDRS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(STORAGE) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
+	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(STORAGE) -I$(SYS) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
 
 # 生成物一次产出 .c/.h 两个文件：.h 仅作同批声明，避免 macOS make 3.81 双跑生成
 $(VECTOR_HDR): $(VECTOR_SRC)

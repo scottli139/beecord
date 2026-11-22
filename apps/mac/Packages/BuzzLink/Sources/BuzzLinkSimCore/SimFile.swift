@@ -12,11 +12,31 @@ public struct SimFile: Equatable, Sendable, Identifiable {
     public var durationMs: UInt32
     /// 文件完整内容
     public var data: Data
+    public var recordingID: String?
+    public var startedAtEpochMs: Int64?
+    public var startedAtUtcOffsetMin: Int?
+    public var timeQuality: String?
 
-    public init(id: String, durationMs: UInt32, data: Data) {
+    public init(
+        id: String,
+        durationMs: UInt32,
+        data: Data,
+        recordingID: String? = nil,
+        startedAtEpochMs: Int64? = nil,
+        startedAtUtcOffsetMin: Int? = nil,
+        timeQuality: String? = nil
+    ) {
         self.id = id
         self.durationMs = durationMs
         self.data = data
+        self.recordingID = recordingID
+        self.startedAtEpochMs = startedAtEpochMs
+        self.startedAtUtcOffsetMin = startedAtUtcOffsetMin
+        self.timeQuality = timeQuality
+    }
+
+    var effectiveTimeQuality: String? {
+        timeQuality ?? (startedAtEpochMs == nil ? nil : "synced")
     }
 
     /// 整文件 CRC-16/CCITT-FALSE（§6.3，下载验收用）

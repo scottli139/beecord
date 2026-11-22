@@ -36,16 +36,26 @@ struct FileTableView: View {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .binary)
     }
 
-    /// 复选框 AX label（R3）：业务 id（`REC_20260101_120000`）解析为可读录制时间，
-    /// 解析失败回退原串。
+    /// 复选框 AX label：显式设备时间优先，旧文件名解析仅作兜底。
     static func selectionLabel(_ fileID: String) -> String {
-        let parser = DateFormatter()
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.dateFormat = "yyyyMMdd_HHmmss"
-        let raw = fileID.hasPrefix("REC_") ? String(fileID.dropFirst(4)) : fileID
-        guard let date = parser.date(from: raw) else { return "选择 \(fileID)" }
+        selectionLabel(fileID, date: RecordingMeta.parseRecordedAt(fromFileID: fileID), utcOffsetMin: nil)
+    }
+
+    static func selectionLabel(_ row: DeviceFileRow) -> String {
+        selectionLabel(
+            row.id,
+            date: row.startedAt ?? RecordingMeta.parseRecordedAt(fromFileID: row.id),
+            utcOffsetMin: row.startedAt != nil ? row.startedAtUtcOffsetMin : nil
+        )
+    }
+
+    private static func selectionLabel(_ fileID: String, date: Date?, utcOffsetMin: Int?) -> String {
+        guard let date else { return "选择 \(fileID)" }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        if let utcOffsetMin, let zone = TimeZone(secondsFromGMT: utcOffsetMin * 60) {
+            formatter.timeZone = zone
+        }
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return "选择录音 \(formatter.string(from: date))"
     }
@@ -68,7 +78,7 @@ private struct FileRowView: View {
             }
             .labelsHidden()
             .toggleStyle(.checkbox)
-            .accessibilityLabel(FileTableView.selectionLabel(row.id))
+            .accessibilityLabel(FileTableView.selectionLabel(row))
             .accessibilityIdentifier("device.fileTable.row.\(row.id).checkbox")
             Text(row.id)
                 .font(DesignTokens.FontToken.body)

@@ -1,6 +1,8 @@
 // Beecord 设置框架实现（settings.c，M5.4）。硬件无关，存储回调注入。
 #include "settings.h"
 
+#include "rtc.h"
+
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
@@ -8,6 +10,7 @@
 typedef enum {
     SETTING_T_U8 = 0,
     SETTING_T_FLOAT,
+    SETTING_T_TIME_CONTEXT,
 } setting_type_t;
 
 typedef struct {
@@ -23,11 +26,13 @@ static const setting_desc_t s_desc[SETTINGS_ID_COUNT] = {
     [SETTINGS_BEEP_ENABLED] = { SETTING_T_U8, 1u, 0.0f },
     [SETTINGS_BRIGHTNESS] = { SETTING_T_U8, 100u, 0.0f },
     [SETTINGS_SCREEN_OFF_S] = { SETTING_T_U8, 10u, 0.0f },
+    [SETTINGS_TIME_CONTEXT] = { SETTING_T_TIME_CONTEXT, 0u, 0.0f },
 };
 
 typedef struct {
     uint8_t u8;
     float f;
+    settings_time_context_t time;
 } setting_value_t;
 
 static setting_value_t s_values[SETTINGS_ID_COUNT];
@@ -48,6 +53,7 @@ void settings_reset_to_defaults(void)
     for (int i = 0; i < (int)SETTINGS_ID_COUNT; i++) {
         s_values[i].u8 = s_desc[i].def_u8;
         s_values[i].f = s_desc[i].def_float;
+        memset(&s_values[i].time, 0, sizeof(s_values[i].time));
     }
 }
 
@@ -86,12 +92,19 @@ void settings_load_all(void)
             const int n = s_store->load(s_ctx, id, &v, sizeof(v));
             if (n == (int)sizeof(v) && u8_value_valid((settings_id_t)id, v)) {
                 s_values[id].u8 = v;
-            } // 无键/坏值/越域：保持默认
-        } else {
+            }
+        } else if (s_desc[id].type == SETTING_T_FLOAT) {
             float v = 0.0f;
             const int n = s_store->load(s_ctx, id, &v, sizeof(v));
             if (n == (int)sizeof(v) && float_value_valid((settings_id_t)id, v)) {
                 s_values[id].f = v;
+            }
+        } else {
+            settings_time_context_t v;
+            const int n = s_store->load(s_ctx, id, &v, sizeof(v));
+            if (n == (int)sizeof(v) && v.synced <= 1u && v.reserved == 0u &&
+                v.utc_offset_min >= RTC_OFFSET_MIN_M && v.utc_offset_min <= RTC_OFFSET_MAX_M) {
+                s_values[id].time = v;
             }
         }
     }
@@ -122,8 +135,11 @@ static void persist(settings_id_t id)
     int rc;
     if (s_desc[id].type == SETTING_T_U8) {
         rc = s_store->save(s_ctx, (uint8_t)id, &s_values[id].u8, sizeof(uint8_t));
-    } else {
+    } else if (s_desc[id].type == SETTING_T_FLOAT) {
         rc = s_store->save(s_ctx, (uint8_t)id, &s_values[id].f, sizeof(float));
+    } else {
+        rc = s_store->save(s_ctx, (uint8_t)id, &s_values[id].time,
+                           sizeof(settings_time_context_t));
     }
     if (rc < 0) {
         s_save_ok = false; // 运行值保留；上层观测 settings_last_save_ok
@@ -152,6 +168,25 @@ void settings_set_float(settings_id_t id, float value)
     }
     s_values[id].f = value;
     persist(id);
+}
+
+settings_time_context_t settings_get_time_context(void)
+{
+    return s_values[SETTINGS_TIME_CONTEXT].time;
+}
+
+void settings_set_time_context(int utc_offset_min)
+{
+    if (utc_offset_min < RTC_OFFSET_MIN_M || utc_offset_min > RTC_OFFSET_MAX_M) {
+        return;
+    }
+    settings_time_context_t value = {
+        .utc_offset_min = (int16_t)utc_offset_min,
+        .synced = 1u,
+        .reserved = 0u,
+    };
+    s_values[SETTINGS_TIME_CONTEXT].time = value;
+    persist(SETTINGS_TIME_CONTEXT);
 }
 
 bool settings_last_save_ok(void)

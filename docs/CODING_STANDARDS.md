@@ -49,7 +49,9 @@
 - **命名**：函数/变量 `snake_case`，宏与枚举值 `UPPER_SNAKE_CASE`，类型 `_t` 结尾。
 - **协议层硬件无关**：`main/proto/` 下代码**禁止 include 任何 `esp_*` 头文件**，
   不调用 IDF API——必须能在 macOS 宿主用 gcc/clang 编译跑单测（见 TESTING.md L1）。
-- **内存**：启动期完成分配，运行路径零 `malloc`；禁递归（栈深受限）；缓冲区长度显式传递。
+- **内存**：音频采集、BLE 回调与 UI 渲染路径零 `malloc`；仅非实时 buzz 服务任务的
+  `file_index` 重建可经注入分配器扩容（目标侧 PSRAM），失败必须显式报错。其余运行路径启动期
+  完成分配；禁递归（栈深受限）；缓冲区长度显式传递。
 - **错误码**：组件内统一返回 `esp_err_t` 风格（`BUZZ_OK = 0`，负值为错）。
 - **警告**：`-Wall -Wextra` 零警告；格式化以仓库根 `.clang-format` 为准（提交前执行）。
 

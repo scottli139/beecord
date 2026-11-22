@@ -27,6 +27,9 @@ esp_err_t buzz_ble_init(void);
 // 设备名字符串（如 "BCD-A12B"），指向内部静态缓冲，永不为 NULL。
 const char *buzz_ble_device_name(void);
 
+// 完整 BT MAC 的 12 位大写 hex；BLE 初始化成功后可用。
+const char *buzz_ble_device_id(void);
+
 // 当前是否有中心设备连接。
 bool buzz_ble_is_connected(void);
 

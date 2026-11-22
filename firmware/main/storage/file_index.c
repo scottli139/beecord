@@ -1,4 +1,4 @@
-// 录音文件索引与元数据（M4.3）实现。硬件无关、零 malloc（全部静态缓冲）、
+// 录音文件索引与元数据实现。硬件无关；仅非实时索引重建经注入分配器扩容，
 // 单实例。解析规则与容错约定见 file_index.h 头注释。
 #include "file_index.h"
 
@@ -8,13 +8,59 @@
 
 #include "crc16.h"
 
-// ---------- 静态状态（单实例，零 malloc） ----------
+// ---------- 静态状态（单实例；索引数组在服务任务中扩容，其余缓冲静态） ----------
 
 static buzz_file_io_t s_io;
 static bool s_ready;
 
-// id 槽位：list() 重建索引时先收集再排序，元数据仅对切片条目填齐。
-static buzz_file_entry_t s_ids[BUZZ_INDEX_MAX_FILES];
+// 索引在非实时服务任务中按需扩容；目标侧经注入分配器落 PSRAM。
+static buzz_file_entry_t *s_ids;
+static uint32_t s_ids_cap;
+
+static void *index_realloc(void *ptr, size_t size)
+{
+    if (s_io.realloc != NULL) {
+        return s_io.realloc(s_io.ctx, ptr, size);
+    }
+    return realloc(ptr, size);
+}
+
+static void index_free(void *ptr)
+{
+    if (ptr == NULL) {
+        return;
+    }
+    if (s_io.free != NULL) {
+        s_io.free(s_io.ctx, ptr);
+    } else {
+        free(ptr);
+    }
+}
+
+static bool ensure_capacity(uint32_t need)
+{
+    if (need <= s_ids_cap) {
+        return true;
+    }
+    uint32_t cap = s_ids_cap == 0u ? 64u : s_ids_cap;
+    while (cap < need) {
+        if (cap > UINT32_MAX / 2u) {
+            return false;
+        }
+        cap *= 2u;
+    }
+    const size_t bytes = (size_t)cap * sizeof(*s_ids);
+    if (bytes / (size_t)cap != sizeof(*s_ids)) {
+        return false;
+    }
+    void *grown = index_realloc(s_ids, bytes);
+    if (grown == NULL) {
+        return false;
+    }
+    s_ids = grown;
+    s_ids_cap = cap;
+    return true;
+}
 
 // 解析复用缓冲（静态避免占调用栈；服务任务单上下文串行使用）。
 // 窗口宏先于缓冲定义，供其定长。
@@ -298,12 +344,55 @@ static int fill_entry(buzz_file_entry_t *entry)
     return BUZZ_OK;
 }
 
-// ---------- qsort 比较器：id 字典序降序（新→旧，D1） ----------
+// ---------- sidecar 元数据 ----------
 
-static int cmp_id_desc(const void *a, const void *b)
+static bool load_meta(const char *audio_name, rec_meta_t *out)
+{
+    char sidecar[REC_META_NAME_MAX + 1u];
+    if (rec_meta_sidecar_name(audio_name, sidecar, sizeof(sidecar)) != 0) {
+        return false;
+    }
+    void *fh = open_by_id(sidecar);
+    if (fh == NULL) {
+        return false;
+    }
+    const long size = s_io.size(s_io.ctx, fh);
+    if (size <= 0 || size >= REC_META_JSON_CAP) {
+        s_io.close(s_io.ctx, fh);
+        return false;
+    }
+    char json[REC_META_JSON_CAP];
+    const long n = s_io.read_at(s_io.ctx, fh, 0u, (uint8_t *)json, (uint32_t)size);
+    s_io.close(s_io.ctx, fh);
+    if (n != size) {
+        return false;
+    }
+    json[size] = '\0';
+    return rec_meta_decode(json, out) == 0;
+}
+
+static void entry_apply_meta(buzz_file_entry_t *entry, const rec_meta_t *meta)
+{
+    strncpy(entry->recording_id, meta->recording_id, REC_META_ID_LEN);
+    entry->recording_id[REC_META_ID_LEN] = '\0';
+    entry->started_at_epoch_ms = meta->started_at_epoch_ms;
+    entry->started_at_utc_offset_min = meta->started_at_utc_offset_min;
+    entry->time_quality = meta->time_quality;
+    entry->has_started_at = meta->has_started_at;
+}
+
+// ---------- qsort 比较器：可信起录时间新→旧；未知时间按文件名降序 ----------
+
+static int cmp_entry_desc(const void *a, const void *b)
 {
     const buzz_file_entry_t *ea = a;
     const buzz_file_entry_t *eb = b;
+    if (ea->has_started_at != eb->has_started_at) {
+        return ea->has_started_at ? -1 : 1;
+    }
+    if (ea->has_started_at && ea->started_at_epoch_ms != eb->started_at_epoch_ms) {
+        return ea->started_at_epoch_ms > eb->started_at_epoch_ms ? -1 : 1;
+    }
     return -strcmp(ea->id, eb->id);
 }
 
@@ -313,6 +402,7 @@ typedef struct {
     uint32_t count;
     uint32_t total;
     bool io_error;
+    bool memory_error;
 } collect_ctx_t;
 
 static void collect_cb(void *cb_ctx, const char *name)
@@ -336,12 +426,19 @@ static void collect_cb(void *cb_ctx, const char *name)
         return;
     }
     c->total++;
-    if (c->count < BUZZ_INDEX_MAX_FILES) {
-        memset(&s_ids[c->count], 0, sizeof(s_ids[c->count]));
-        strncpy(s_ids[c->count].id, name, BUZZ_FILE_ID_MAX_LEN);
-        s_ids[c->count].id[BUZZ_FILE_ID_MAX_LEN] = '\0';
-        c->count++;
+    if (!ensure_capacity(c->count + 1u)) {
+        c->memory_error = true;
+        return;
     }
+    buzz_file_entry_t *entry = &s_ids[c->count];
+    memset(entry, 0, sizeof(*entry));
+    strncpy(entry->id, name, BUZZ_FILE_ID_MAX_LEN);
+    entry->id[BUZZ_FILE_ID_MAX_LEN] = '\0';
+    rec_meta_t meta;
+    if (load_meta(name, &meta)) {
+        entry_apply_meta(entry, &meta);
+    }
+    c->count++;
 }
 
 bool buzz_file_orphan_candidate(const char *name, uint32_t size, bool is_regular)
@@ -355,7 +452,7 @@ static int index_list(uint32_t offset, uint32_t limit, buzz_file_entry_t *entrie
     if (!s_ready || entries == NULL || out_total == NULL || out_count == NULL) {
         return BUZZ_ERR_NULL;
     }
-    if (limit == 0u || limit > BUZZ_INDEX_MAX_FILES || entries_cap < limit) {
+    if (limit == 0u || entries_cap < limit) {
         return BUZZ_ERR_ARG;
     }
 
@@ -364,8 +461,13 @@ static int index_list(uint32_t offset, uint32_t limit, buzz_file_entry_t *entrie
     if (n_list < 0 || collector.io_error) {
         return BUZZ_INDEX_ERR_IO;
     }
+    if (collector.memory_error) {
+        return BUZZ_INDEX_ERR_MEMORY;
+    }
     const uint32_t stored = collector.count;
-    qsort(s_ids, stored, sizeof(s_ids[0]), cmp_id_desc);
+    if (stored > 1u) {
+        qsort(s_ids, stored, sizeof(s_ids[0]), cmp_entry_desc);
+    }
 
     uint32_t count = 0;
     if (offset < stored) {
@@ -391,6 +493,11 @@ int buzz_file_index_init(const buzz_file_io_t *io)
         io->close == NULL || io->listdir == NULL) {
         return BUZZ_ERR_NULL;
     }
+    if (s_ready) {
+        index_free(s_ids);
+    }
+    s_ids = NULL;
+    s_ids_cap = 0;
     s_io = *io;
     s_crc_cache_len = 0; // init 复位缓存（启动期一次绑定；测试可确定性重放）
     s_crc_cache_next = 0;
@@ -425,6 +532,14 @@ int buzz_file_index_info(const char *id, buzz_file_info_t *out)
         return BUZZ_ERR_ARG; // 路径穿越防线：id 只应是裸文件名
     }
     memset(out, 0, sizeof(*out));
+    rec_meta_t meta;
+    if (load_meta(id, &meta)) {
+        strncpy(out->recording_id, meta.recording_id, REC_META_ID_LEN);
+        out->started_at_epoch_ms = meta.started_at_epoch_ms;
+        out->started_at_utc_offset_min = meta.started_at_utc_offset_min;
+        out->time_quality = meta.time_quality;
+        out->has_started_at = meta.has_started_at;
+    }
 
     void *fh = open_by_id(id);
     if (fh == NULL) {

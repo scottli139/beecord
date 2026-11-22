@@ -251,8 +251,8 @@ public actor SyncEngine {
             try epochGuard(flowEpoch)
             let entries = try await fetchAllFiles()
             try epochGuard(flowEpoch)
-            let existing = try await store.existingSourceIDs()
-            reconcileRows(entries: entries, existingSourceIDs: existing)
+            let existing = try await store.existingSourceKeys()
+            reconcileRows(entries: entries, existingSourceKeys: existing)
             emitSnapshot()
             if autoSyncEnabled {
                 let pending = snapshotValue.rows.filter { $0.status == .notDownloaded }.map(\.id)
@@ -311,11 +311,17 @@ public actor SyncEngine {
         return all
     }
 
-    /// diff：库内已有的标 verified；失败红标跨会话保留（人工重试）；其余未下载
-    private func reconcileRows(entries: [BuzzLinkFileEntry], existingSourceIDs: Set<String>) {
+    /// diff：recordingID 优先；旧记录同时识别完整设备 ID 与历史 deviceName 来源键。
+    private func reconcileRows(entries: [BuzzLinkFileEntry], existingSourceKeys: Set<String>) {
         snapshotValue.rows = entries.map { entry in
             let status: DeviceFileRow.Status
-            if existingSourceIDs.contains(entry.id) {
+            let sourceKeys = RecordingMeta.sourceKeys(
+                fileID: entry.id,
+                recordingID: entry.recordingID,
+                deviceID: snapshotValue.deviceInfo?.deviceID,
+                deviceName: snapshotValue.deviceInfo?.deviceName ?? ""
+            )
+            if !sourceKeys.isDisjoint(with: existingSourceKeys) {
                 status = .verified
             } else if let old = snapshotValue.rows.first(where: { $0.id == entry.id }),
                       case .failed(let reason) = old.status {
@@ -323,7 +329,16 @@ public actor SyncEngine {
             } else {
                 status = .notDownloaded
             }
-            return DeviceFileRow(id: entry.id, durationMs: entry.durationMs, size: entry.size, status: status)
+            return DeviceFileRow(
+                id: entry.id,
+                durationMs: entry.durationMs,
+                size: entry.size,
+                status: status,
+                recordingID: entry.recordingID,
+                startedAtEpochMs: entry.startedAtEpochMs,
+                startedAtUtcOffsetMin: entry.startedAtUtcOffsetMin,
+                timeQuality: entry.timeQuality
+            )
         }
     }
 
@@ -635,16 +650,35 @@ public actor SyncEngine {
         result: BuzzLinkDownloadResult,
         fileInfo: BuzzLinkFileInfo?
     ) -> RecordingMeta {
-        let recordedAt = RecordingMeta.parseRecordedAt(fromFileID: fileID)
+        let explicitDate = fileInfo?.startedAt ?? entry.startedAt
+        let filenameDate = explicitDate == nil ? RecordingMeta.parseRecordedAt(fromFileID: fileID) : nil
+        let recordedAt = explicitDate ?? filenameDate
+        let recordedAtUtcOffsetMin: Int?
+        if fileInfo?.startedAt != nil {
+            recordedAtUtcOffsetMin = fileInfo?.startedAtUtcOffsetMin
+        } else if entry.startedAt != nil {
+            recordedAtUtcOffsetMin = entry.startedAtUtcOffsetMin
+        } else {
+            recordedAtUtcOffsetMin = nil
+        }
+        let timeSource: RecordingTimeSource? = explicitDate != nil
+            ? .device
+            : filenameDate != nil ? .filename : nil
         return RecordingMeta(
             schemaVersion: RecordingMeta.currentSchemaVersion,
             id: "",  // 由 commitPartial 按分配的 recording-id 覆写
-            title: RecordingMeta.defaultTitle(for: fileID, recordedAt: recordedAt),
+            title: RecordingMeta.defaultTitle(
+                for: fileID,
+                recordedAt: recordedAt,
+                utcOffsetMin: recordedAtUtcOffsetMin
+            ),
             source: RecordingMeta.Source(
                 fileID: fileID,
                 deviceName: snapshotValue.deviceInfo?.deviceName ?? "",
                 deviceModel: snapshotValue.deviceInfo?.model ?? "",
-                fwVersion: snapshotValue.deviceInfo?.fwVersion ?? ""
+                fwVersion: snapshotValue.deviceInfo?.fwVersion ?? "",
+                recordingID: fileInfo?.recordingID ?? entry.recordingID,
+                deviceID: snapshotValue.deviceInfo?.deviceID
             ),
             durationMs: fileInfo?.durationMs ?? entry.durationMs,
             sizeBytes: result.size,
@@ -656,7 +690,10 @@ public actor SyncEngine {
             importedAt: Date(),
             audio: RecordingMeta.AudioFiles(ogg: "audio.ogg", m4a: nil),
             transcribe: RecordingMeta.PipelineStatus(status: "none"),
-            summary: RecordingMeta.PipelineStatus(status: "none")
+            summary: RecordingMeta.PipelineStatus(status: "none"),
+            recordedAtUtcOffsetMin: recordedAtUtcOffsetMin,
+            recordedAtSource: timeSource,
+            recordingTimeQuality: fileInfo?.timeQuality ?? entry.timeQuality
         )
     }
 

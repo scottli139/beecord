@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "file_index.h"
+#include "rec_meta_esp.h"
 #include "sdmmc_cmd.h"
 
 static const char *TAG = "buzz_sdcard";
@@ -108,6 +109,7 @@ uint32_t buzz_sdcard_cleanup_orphans(void)
             continue;
         }
         if (remove(full) == 0) {
+            (void)rec_meta_remove(ent->d_name);
             removed++;
             ESP_LOGW(TAG, "removed empty recording: %s", ent->d_name);
         } else {

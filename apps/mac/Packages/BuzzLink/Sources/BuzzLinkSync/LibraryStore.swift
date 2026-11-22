@@ -6,11 +6,12 @@ import Foundation
 /// 语义契约：
 /// - `.partial` 目录中的文件视为"未完成"，``purgeStalePartials()`` 负责清理（P0 无断点续传，
 ///   重连后整文件重下）；
-/// - 幂等键为设备文件 id（`RecordingMeta.source.fileID`），而非 recording-id（冲突后缀不可推导）。
+/// - 幂等键为 `RecordingMeta.sourceKeys`：新记录使用 recordingID，旧记录使用设备+文件 ID；
+///   recording-id（库目录名，冲突后缀不可推导）不是同步身份。
 public protocol LibraryStore: Sendable {
 
-    /// 已完成录音的来源设备文件 id 集合（diff 用）；损坏/缺 meta 的目录跳过。
-    func existingSourceIDs() async throws -> Set<String>
+    /// 已完成录音的逻辑来源键集合（recordingID 优先，旧记录含设备名兼容别名）。
+    func existingSourceKeys() async throws -> Set<String>
 
     /// 为 fileID 准备 `.partial` 临时文件（清掉同名残留），返回其路径。
     func preparePartial(for fileID: String) async throws -> URL

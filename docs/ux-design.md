@@ -82,6 +82,27 @@
 - 边界：转码链 T6 已交付（入库即转 + 存量补转，幂等 + 失败可重试）；
   搜索/过滤、标签、批量操作推 P1。
 
+#### 历史录音时间未知与手动修正（v0.6 定案，2026-11-22，用户评审通过）
+
+原型入口：`prototype/index.html?state=library-time-unknown`；`&demo=edit` 为展开态，
+`&demo=saved` 为已保存态。
+
+- `recordedAt` 缺失时详情明确显示“录制时间：未知”，不再整行消失；“导入时间”独立展示，
+  不得冒充满制时间。
+- 操作按钮为“设置时间”，点击展开**内联编辑面板**（日期 + 时间 + 保存/取消），不用弹窗；
+  保存后显示“（手动）”并将按钮改为“修改”。列表同步显示该时间，原标题保持不变。
+- 手动值只修改此 Mac 的 `meta.json`，`recordedAtSource=manual`；不写回手表，后续设备元数据
+  同步不得覆盖人工值。无法确认的旧录音继续保持未知，不根据序号或导入时间猜测。
+- AX：`library.recordedAt.{value,editButton,editor,dateField,timeField,saveButton,cancelButton}`、
+  `library.importedAt.value`。对应 UITest 覆盖未知→展开/取消→保存→重启持久化；布局改动另做
+  实际窗口三态截图并与原型同场景核对。
+
+![历史录音时间未知](images/prototype-recorded-at-unknown.png)
+
+![手动编辑录制时间](images/prototype-recorded-at-edit.png)
+
+![手动录制时间已保存](images/prototype-recorded-at-saved.png)
+
 ### 3.4 转写与 AI 纪要
 
 - 转写：本地 whisper，按钮触发，进度可见；产物随文件保存；

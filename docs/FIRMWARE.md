@@ -138,6 +138,24 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
   新录音 CLI 三方 CRC、Studio 真 BLE 三条录音入库；格式化取消/成功/busy/无卡失败/插卡重试
   均通过，重试后录音与下载正常。M5.6 长时间稳定性与性能审计待做。
 
+## 录音身份与起录元数据（BuzzLink v0.3，2026-11-22 主链路已落地）
+
+- `recordingID` 是跨卡、跨设备的逻辑录音身份；设备文件 `id` 继续用于下载寻址。
+  INFO 新增完整 `deviceID`，LIST/FILE_INFO 新增可选 recordingID、起录 UTC 毫秒、原始 UTC 偏移和
+  `timeQuality`；frame version 不变，旧客户端忽略新字段。
+- TIME_SET 成功后以单个 4 字节 NVS 设置项保存偏移与已对时标志；起录时冻结快照，会话中再次对时
+  不回改元数据。录音时长继续使用会话单调计时，不用 RTC 差值。
+- FAT LFN heap 已启用。file_index 在缺失/损坏 sidecar 时回退旧格式，不让音频消失；可信时间按
+  新→旧排序，未知时间组保留文件名倒序。
+- 协议索引取消固定 128 项截断：仅在非实时 buzz 服务任务重建时经注入 realloc/free 扩容，
+  目标侧落 PSRAM；OOM 显式报错。音频采集、BLE 回调和 LVGL 渲染路径仍不动态分配。
+  手表 UI 的最新 128 条快照只是渲染窗口，不再限制协议 total 与分页。
+- Studio `meta.json` schema 2 以 `rid:<recordingID>` 去重；旧记录使用设备 ID + fileID，并识别
+  历史 deviceName 来源键。显式设备时间优先于文件名解析，导入时间不冒充录制时间。
+- 已通过 Clang/GCC 宿主全量、Swift 234 项、目标构建与 Xcode 应用构建；实机 OGG/WAV
+  录制→BLE 元数据→三方 CRC→Studio 隔离库入库通过，异常复位恢复后 recordingID/起录时间
+  保留，恢复文件可下载且 Ogg 页 CRC 全过。换卡/格式化物理场景与 Xcode UI Automation 另列待验收。
+
 ## 架构详述
 
 以下按已落地实现记录；未完成的 M5.6 能力不作超前承诺：
@@ -166,8 +184,11 @@ WAV 格式保留并存（`rec start wav`）。
   页满经回调写卡（码率 ~5.6KB/s，写频 ~1.8 次/s，远低于 WAV 的 8 次/s）；finish 丢弃不足
   一帧的尾采样（<20ms），末包带 EOS flag 封页（空会话则产空 EOS 页）。
   单任务直写沿用 M2 结论：编码耗时（定点 SILK 16kHz 单声道）与写页阻塞远小于 64ms 读节奏。
-- **双格式与文件序号**：`buzz_recorder_start(buzz_rec_fmt_t)` 选 Ogg（默认）/WAV；
-  `REC_%04d` 序号池两种后缀共用（扫目录取全局最大+1）。
+- **双格式、逻辑身份与文件名**：`buzz_recorder_start(buzz_rec_fmt_t)` 选 Ogg（默认）/WAV。
+  每次起录生成 UUIDv4 recordingID 与同主文件名 `.json` sidecar；RTC 有效时文件名为
+  `REC_YYYYMMDD_HHMMSS_XXXX`，无效时使用无日期 UUID 派生名，不再使用递增序号。
+  sidecar 保存起录 UTC 毫秒、原始 UTC 偏移和 `timeQuality`；采集前写入并 flush。
+  元数据失败优先保全录音，该文件按旧格式降级，旧 `REC_%04d` 文件仍可枚举与下载。
 - **录控**（`console_cmd`，USB Serial/JTAG 串口 REPL，提示符 `beecord> `）：
   `rec start [ogg|wav]` / `rec stop`、`ls`（含卡容量）、`get <文件> [字节数]`（base64 串口导出，
   免读卡器取文件，实测 ~46KB/s）、`gain <dB>`（运行期调增益）、`ble`（连接态/MTU/订阅态查询）。
@@ -179,8 +200,10 @@ WAV 格式保留并存（`rec start wav`）。
 - **M2.4 实测修正**：①REPL 创建前不能再调 `esp_console_init`（`esp_console_new_repl_*` 内部
   已含，重复初始化报 `ESP_ERR_INVALID_STATE`）；②串口脚本须 `dtr=False` 并等待提示符同步，
   否则开端口触发的复位会吞掉命令。
-- **现场保护（M5.3）**：录音中每 5s flush 并写 journal，异常断电后开机检查并修复可恢复的
-  未闭合文件；首个 journal 落盘前断电仍可能留下 0 字节孤儿文件，其清理/列表过滤归 M5.5。
+- **现场保护（M5.3，v0.3 修复）**：录音中每 5s 先 `fflush + fsync` 音频，再写确认位置到 journal；
+  异常断电后开机先按 journal 恢复，再清理无 journal 的 0 字节孤儿。journal 统一存挂载点相对
+  文件名并兼容旧完整路径，避免重复拼接；恢复音频继续关联起录 sidecar。首个 journal 落盘前断电
+  仍可能留下 0 字节孤儿文件，其清理/列表过滤归 M5.5。
 
 ### BuzzLink BLE 服务实现
 

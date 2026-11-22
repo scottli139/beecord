@@ -15,6 +15,19 @@ enum TestResponseBytes {
         ).encoded()
     }
 
+    static func jsonFrame(
+        type: BuzzLinkFrameType,
+        session: UInt8,
+        json: String
+    ) throws -> Data {
+        try BuzzLinkFrame(
+            type: type.rawValue,
+            session: session,
+            channel: BuzzLinkChannel.control.rawValue,
+            payload: Data(json.utf8)
+        ).encoded()
+    }
+
     /// INFO（§8.1）
     static func info(
         session: UInt8,

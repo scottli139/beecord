@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define REC_JOURNAL_MAGIC 0x524A4E4Cu   // "RJNL"
@@ -44,6 +45,9 @@ int rec_journal_encode(const rec_journal_t *j, uint8_t *buf, uint32_t cap);
 
 // 解析+校验（magic/ver/len/CRC）。返回 0；任何不一致返回 -1。
 int rec_journal_decode(const uint8_t *buf, uint32_t len, rec_journal_t *out);
+
+// 将旧/新会话路径统一为相对挂载点的 "/文件名"，避免恢复时重复拼接挂载点。
+int rec_journal_normalize_path(const char *path, char *out, size_t out_cap);
 
 // 恢复决策（纯函数）：
 // 输入 journal 与实际文件大小，输出该文件应截断到的字节数：
