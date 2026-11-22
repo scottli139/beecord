@@ -415,8 +415,8 @@ document.addEventListener("keydown",e=>{
 function startRec(){
   if(S.rec) return;
   if(S.storage!=="mounted"||S.formatting){ beep(3); toast("无可用存储卡"); return; }
-  S.rec={t:0,paused:false,marks:[],started:new Date()};
   beep(1); toast("♪ 滴 — 开始录音");
+  S.rec={t:0,paused:false,marks:[],started:new Date()};
   setOff(false); showPage("rec");
 }
 function finalizeRec(){

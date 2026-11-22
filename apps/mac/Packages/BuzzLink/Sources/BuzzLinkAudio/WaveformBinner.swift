@@ -15,6 +15,19 @@ public enum WaveformBinner {
         public var count: Int
     }
 
+    public static let minimumDecibels: Float = -60
+    public static let minimumHeight: Float = 0.03
+
+    /// 固定分贝映射：-60...0 dBFS → 0...1，近静音保留最小可见高度。
+    public static func normalizedHeight(for amplitude: Float) -> Float {
+        guard amplitude.isFinite else { return minimumHeight }
+        let magnitude = min(1, abs(amplitude))
+        guard magnitude > 0 else { return minimumHeight }
+        let decibels = 20 * log10(magnitude)
+        let normalized = min(1, max(0, (decibels - minimumDecibels) / -minimumDecibels))
+        return max(minimumHeight, normalized)
+    }
+
     /// 按画布宽度计算条规格：条宽 3pt、间隙 2pt；宽度不足整数根时余量均分到间隙。
     /// 极端窄（<200pt）降级条宽/间隙 1pt 并减根数，min 1 根不崩。
     public static func barSpec(width: CGFloat) -> BarSpec {

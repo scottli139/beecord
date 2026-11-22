@@ -171,6 +171,9 @@ WAV 格式保留并存（`rec start wav`）。
 - **录控**（`console_cmd`，USB Serial/JTAG 串口 REPL，提示符 `beecord> `）：
   `rec start [ogg|wav]` / `rec stop`、`ls`（含卡容量）、`get <文件> [字节数]`（base64 串口导出，
   免读卡器取文件，实测 ~46KB/s）、`gain <dB>`（运行期调增益）、`ble`（连接态/MTU/订阅态查询）。
+  按键开录路径先播开始提示音再启动采集（约 430ms 后计时），停止路径先封包关文件再播停止提示音，
+  两者均不写入录音；REPL `rec toggle` 走功能键同一控制路径用于回归，`rec start` 是开发直录入口，
+  不播放开始提示音。
 - **握手协议**：start 在会话开始（文件打开后）即回应答，stop 收会话收尾应答（含统计进日志）；
   start 前清空应答队列防陈旧 ack。REPL 侧先做状态预检给出中文提示。
 - **M2.4 实测修正**：①REPL 创建前不能再调 `esp_console_init`（`esp_console_new_repl_*` 内部

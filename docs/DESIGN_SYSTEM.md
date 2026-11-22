@@ -1,6 +1,8 @@
 # Beecord UX 设计系统（Design System）v1.0
 
-> 状态：**v1.12**（2026-11-22：M5.5 数据接真——录音列表增加独立垂直滚动区与存储错误/刷新状态，
+> 状态：**v1.13**（2026-11-22：播放器波形由绝对线性幅值改为固定 **-60～0 dBFS** 映射，
+> 保留原始 min/max 缓存；低电平语音可辨、提示音高峰仍保留，3% 最小高度仅用于近静音列。）
+> v1.12（2026-11-22：M5.5 数据接真——录音列表增加独立垂直滚动区与存储错误/刷新状态，
 > 保留 tileview 横向换页；同步进度只表达设备可证实的当前文件入队进度与完成确认；
 > 设置值统一 text.secondary，亮度与抬腕亮屏在无可验证应用路径时不提供交互。）
 > v1.11（2026-11-22：规则 14 字体门禁补数字字体生成物检查——num56/num64
@@ -161,7 +163,7 @@ Mac 端系统语义色（label/secondaryLabel/tertiaryLabel 系）按 **R10 平�
 | 状态徽标 | 12px 文字：未下载 secondary（R10） / 下载中 accent / ✓已校验 success / 失败 danger | `device.fileTable.row.{fileName}.status` |
 | 进度条 | h6，r3，轨道 card2，填充 accent | `device.downloadProgress`（AXValue 0-1） |
 | 标签页 | **下划线页签**：accent 2px 下划线 + active 字重加重（2026-10-17 评审修订，替换 `.segmented`；设备页无标签页） | `library.detailTabs` |
-| 播放器 | 波形 h80；走带按钮 h36；倍速菜单 1/1.5/2；±15s | `library.player.playButton`、`.progressSlider` |
+| 播放器 | 波形 h80；固定 **-60～0 dBFS** 映射 min/max 幅值，近静音最小高度 3%，不逐文件归一化；走带按钮 h36；倍速菜单 1/1.5/2；±15s | `library.player.playButton`、`.progressSlider` |
 | Toast | 底部居中胶囊，12px，2s（错误 3s） | `common.toast` |
 | 空态 | 图标 40 + 标题 15/600 + 说明 13 + 主按钮 | `{page}.emptyState` |
 | 设置行 | 左标签右控件，行距 12 | `settings.aiProviderPicker` 等 |

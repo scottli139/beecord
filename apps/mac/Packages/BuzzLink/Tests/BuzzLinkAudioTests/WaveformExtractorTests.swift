@@ -77,4 +77,35 @@ final class WaveformBinnerTests: XCTestCase {
             XCTAssertLessThanOrEqual(bar.min, bar.max)
         }
     }
+
+    func testDecibelScaleKeepsSpeechAndBeepDistinct() {
+        XCTAssertEqual(WaveformBinner.normalizedHeight(for: 0.001), 0.03, accuracy: 0.0001)
+        let speech = WaveformBinner.normalizedHeight(for: 0.01)
+        XCTAssertEqual(speech, 1.0 / 3.0, accuracy: 0.001)
+        let speechPeak = WaveformBinner.normalizedHeight(for: 0.045)
+        let beep = WaveformBinner.normalizedHeight(for: 0.45)
+        XCTAssertGreaterThan(speechPeak, speech)
+        XCTAssertGreaterThan(beep, speechPeak)
+        XCTAssertGreaterThan(beep, 0.8)
+    }
+
+    func testDecibelScaleDoesNotFlattenLowLevelVariation() {
+        let heights: [Float] = [0.005, 0.01, 0.02].map {
+            WaveformBinner.normalizedHeight(for: $0)
+        }
+        XCTAssertTrue(heights.allSatisfy { $0 > WaveformBinner.minimumHeight })
+        XCTAssertLessThan(heights[0], heights[1])
+        XCTAssertLessThan(heights[1], heights[2])
+    }
+
+    func testDecibelScaleClampsInvalidAndExtremeValues() {
+        XCTAssertEqual(WaveformBinner.normalizedHeight(for: 0), 0.03)
+        XCTAssertEqual(
+            WaveformBinner.normalizedHeight(for: -0.01),
+            WaveformBinner.normalizedHeight(for: 0.01)
+        )
+        XCTAssertEqual(WaveformBinner.normalizedHeight(for: 1), 1)
+        XCTAssertEqual(WaveformBinner.normalizedHeight(for: 2), 1)
+        XCTAssertEqual(WaveformBinner.normalizedHeight(for: .nan), 0.03)
+    }
 }

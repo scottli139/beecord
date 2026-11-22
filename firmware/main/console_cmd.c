@@ -32,6 +32,7 @@
 #include "sys/rtc_pcf.h"
 #include "sys/settings.h"
 #include "ui/device_model.h"
+#include "ui/ui_rec.h"
 
 static const char *TAG = "console";
 
@@ -41,11 +42,20 @@ static bool s_repl_started;
 
 static void print_rec_usage(void)
 {
-    printf("Usage:\n  rec start [ogg|wav]  开始录音（缺省 ogg）\n  rec stop   停止录音\n");
+    printf("Usage:\n  rec start [ogg|wav]  开始录音（缺省 ogg）\n  rec stop   停止录音\n  rec toggle  功能键同路径（含提示音）\n");
 }
 
 static int cmd_rec(int argc, char **argv)
 {
+    if (argc >= 2 && strcmp(argv[1], "toggle") == 0) {
+        const esp_err_t ret = ui_rec_request_toggle();
+        if (ret != ESP_OK) {
+            printf("toggle 请求失败: %s\n", esp_err_to_name(ret));
+            return 1;
+        }
+        printf("toggle 已提交（功能键同路径）\n");
+        return 0;
+    }
     if (argc < 2 || (strcmp(argv[1], "start") != 0 && strcmp(argv[1], "stop") != 0)) {
         print_rec_usage();
         return 1;
@@ -554,7 +564,7 @@ esp_err_t console_cmd_start_repl(void)
     const esp_console_cmd_t rec_cmd = {
         .command = "rec",
         .help = "录音控制",
-        .hint = "start [ogg|wav]|stop",
+        .hint = "start [ogg|wav]|stop|toggle",
         .func = &cmd_rec,
     };
     const esp_console_cmd_t ls_cmd = {

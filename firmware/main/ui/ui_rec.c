@@ -83,8 +83,7 @@ static void beep_for_event(uint8_t evt)
 {
     switch ((buzz_rec_evt_t)evt) {
     case BUZZ_REC_EVT_STARTED:
-        (void)beep_play(BEEP_EVT_REC_START);
-        break;
+        break; // 开始提示音已在开录前播放，避免写入录音文件
     case BUZZ_REC_EVT_STOPPED:
         (void)beep_play(BEEP_EVT_REC_STOP);
         break;
@@ -141,6 +140,10 @@ static void do_toggle(void)
             forward_to_ui((uint8_t)BUZZ_REC_EVT_ERROR, 0, NULL);
             return;
         }
+        const esp_err_t beep_ret = beep_play(BEEP_EVT_REC_START);
+        if (beep_ret != ESP_OK) {
+            ESP_LOGW(TAG, "start beep failed: %s（继续开录）", esp_err_to_name(beep_ret));
+        }
         esp_err_t ret = buzz_recorder_start(BUZZ_REC_FMT_OGG);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "start failed: %s", esp_err_to_name(ret));
@@ -148,7 +151,7 @@ static void do_toggle(void)
             (void)beep_play(BEEP_EVT_ERROR);
             forward_to_ui((uint8_t)BUZZ_REC_EVT_ERROR, 0, NULL);
         }
-        // 成功路径：STARTED 事件已入队，统一由事件分支处理提示音/页面
+        // 成功路径：STARTED 事件只负责页面反馈；开始提示音已在开录前完成
     } else {
         esp_err_t ret = buzz_recorder_stop();
         if (ret != ESP_OK) {

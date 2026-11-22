@@ -22,8 +22,8 @@ struct WaveformView: View {
                 for (index, column) in bars.enumerated() {
                     let played = Double(index) / Double(bars.count) <= progress
                     let color: Color = played ? Color.accentColor : Color.accentColor.opacity(0.35)
-                    let up = CGFloat(max(0.03, column.max)) * midY
-                    let down = CGFloat(max(0.03, abs(min(0, column.min)))) * midY
+                    let up = CGFloat(WaveformBinner.normalizedHeight(for: max(0, column.max))) * midY
+                    let down = CGFloat(WaveformBinner.normalizedHeight(for: abs(min(0, column.min)))) * midY
                     let x = CGFloat(index) * (spec.barWidth + spec.gap)
                     let rect = CGRect(
                         x: x,

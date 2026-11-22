@@ -785,11 +785,18 @@ function selectLib(i){
 // P0-7 已复核：跳设备页并触发连接（P0 连接即扫描一体）
 $("btn-library-sync").onclick=()=>{ showView("device"); if(!S.connected&&!S.scanned) startScan(); };
 $("btn-select-recent").onclick=()=>selectLib(0);
+function waveHeight(amplitude){
+  const a=Math.min(1,Math.abs(amplitude));
+  if(!a) return .03;
+  const db=20*Math.log10(a);
+  return Math.max(.03,Math.min(1,(db+60)/60));
+}
 function genWave(){
   const w=$("wave"); w.innerHTML="";
   for(let i=0;i<72;i++){
-    const h=12+Math.abs(Math.sin(i*1.7)+Math.sin(i*.53)*1.6)*22;
-    const b=document.createElement("i"); b.style.height=h+"px"; w.appendChild(b);
+    const speech=.003+Math.abs(Math.sin(i*1.7)+Math.sin(i*.53)*1.6)*.012;
+    const amplitude=(i<3||i>68)?.45:speech;
+    const b=document.createElement("i"); b.style.height=(waveHeight(amplitude)*52)+"px"; w.appendChild(b);
   }
 }
 function setProgress(sec){
