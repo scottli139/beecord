@@ -12,10 +12,10 @@ LVGL 字体生成流水线。手表 Flash 资源紧张，中文按 **UI 文案�
 | `ui_font_cjk10.c` | 思源黑体 CN Regular | 10/400 | `FONT_TINY`——提示语、状态小件标签 |
 | `ui_font_cjk13.c` | 思源黑体 CN Regular | 13/400 | `FONT_BODY`——日期、横幅、正文 |
 | `ui_font_cjk15b.c` | 思源黑体 CN Bold | 15/700 | `FONT_TITLE`——页面标题、状态小件值（代设计 16/600，无对应字重） |
-| `ui_font_num56.c` | Montserrat Light | 56/300 | `FONT_TIMER`——录音计时（数字+冒号） |
-| `ui_font_num64.c` | Montserrat Light | 64/300 | `FONT_DISPLAY`——表盘时间（数字+冒号） |
+| `ui_font_num56.c` | Montserrat Light | 56/300 | `FONT_TIMER`——录音计时（数字+冒号+连字符） |
+| `ui_font_num64.c` | Montserrat Light | 64/300 | `FONT_DISPLAY`——表盘时间（数字+冒号+连字符） |
 
-参数：bpp=4（抗锯齿灰度）；大数字仅含 `0-9:`；中文三档共用 `charset.txt` 词表。
+参数：bpp=4（抗锯齿灰度）；大数字仅含 `0-9:-`（连字符用于未对时占位）；中文三档共用 `charset.txt` 词表。
 
 ## 用法
 
@@ -44,6 +44,7 @@ bash beecord/firmware/tools/font_gen/gen.sh
 
 ## 缺字防护（M5.3 起）
 
-`make -C test_host fontcheck`（已挂进 `make test`）扫描 `main/ui/scr_*.c` 与
-`ui_toast.c` 的字符串字面量中文字符，对 `charset.txt` 词表做比对，缺字报错。
-新增 UI 文案忘补词表会在构建期被拦下（DESIGN_SYSTEM 防跑偏规则 14）。
+`make -C test_host fontcheck`（已挂进 `make test`）扫描 `main/ui/*.c` 字符串
+字面量中的非 ASCII 字符，对 `charset.txt` 词表做比对；同时直接检查
+`num56/num64` 生成物包含 `0-9:-`，防止未对时占位符缺字。缺字即报错。
+新增 UI 文案忘补字符集会在构建期被拦下（DESIGN_SYSTEM 防跑偏规则 14）。

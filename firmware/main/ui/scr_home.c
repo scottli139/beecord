@@ -22,7 +22,7 @@ static lv_obj_t *s_bolt_canvas;
 // 充电闪电位图（10×14 I1，行起止列；DESIGN §3 状态图标·充电加闪电·的等效小图标）
 #define BOLT_W 10u
 #define BOLT_H 14u
-static uint8_t s_bolt_buf[((BOLT_W + 7u) / 8u) * BOLT_H];
+LV_DRAW_BUF_DEFINE_STATIC(s_bolt_draw_buf, BOLT_W, BOLT_H, LV_COLOR_FORMAT_I1);
 static const uint8_t s_bolt_rows[BOLT_H][2] = {
     { 5, 7 }, { 5, 7 }, { 5, 7 }, { 4, 7 }, { 4, 6 }, { 4, 6 },
     { 3, 5 }, { 3, 5 }, { 2, 4 }, { 2, 4 }, { 3, 4 }, { 3, 4 }, { 0xFF, 0 }, { 0xFF, 0 },
@@ -124,8 +124,8 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_style_pad_all(s_bolt_canvas, 0, 0);
     lv_obj_set_scrollable(s_bolt_canvas, false);
     lv_obj_set_clickable(s_bolt_canvas, false);
-    lv_canvas_set_buffer(s_bolt_canvas, s_bolt_buf, BOLT_W, BOLT_H,
-                         LV_COLOR_FORMAT_I1);
+    LV_DRAW_BUF_INIT_STATIC(s_bolt_draw_buf);
+    lv_canvas_set_draw_buf(s_bolt_canvas, &s_bolt_draw_buf);
     // palette[0]=透明底 [1]=琥珀；set_px 对 I1 取 color.blue 作索引（LVGL 9 实现）
     lv_canvas_set_palette(s_bolt_canvas, 0, (lv_color32_t){ .alpha = 0 });
     lv_canvas_set_palette(s_bolt_canvas, 1,

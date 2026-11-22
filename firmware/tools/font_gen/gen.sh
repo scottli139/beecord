@@ -6,8 +6,8 @@
 #   main/ui/fonts/ui_font_cjk11.c    思源黑体 CN Regular 11px（caption：状态栏/辅助说明）
 #   main/ui/fonts/ui_font_cjk13.c    思源黑体 CN Regular 13px（body：日期/正文）
 #   main/ui/fonts/ui_font_cjk15b.c   思源黑体 CN Bold    15px（title：页面标题/小件值，代设计 16/600）
-#   main/ui/fonts/ui_font_num56.c    Montserrat Light  56px（timer：录音计时，数字+冒号）
-#   main/ui/fonts/ui_font_num64.c    Montserrat Light  64px（display：表盘时间，数字+冒号）
+#   main/ui/fonts/ui_font_num56.c    Montserrat Light  56px（timer：录音计时，数字+冒号+连字符）
+#   main/ui/fonts/ui_font_num64.c    Montserrat Light  64px（display：表盘时间，数字+冒号+连字符）
 #
 # 用法：bash gen.sh   （依赖 node>=18 与 npx，首次自动下载字体源到 vendor/）
 set -euo pipefail
@@ -76,8 +76,8 @@ conv "$VENDOR/$SHANS_REG"   11 ui_font_cjk11  "$CHARS"
 conv "$VENDOR/$SHANS_REG"   13 ui_font_cjk13  "$CHARS"
 conv "$VENDOR/$SHANS_BOLD"  15 ui_font_cjk15b "$CHARS"
 
-# 大数字仅需 0-9 与冒号（设计：timer/display 为纯数字计时）
-NUM_CHARS="0123456789:"
+# 大数字覆盖计时数字、冒号与未对时占位符连字符
+NUM_CHARS="0123456789:-"
 conv "$VENDOR/$MONTS_LIGHT" 56 ui_font_num56 "$NUM_CHARS"
 conv "$VENDOR/$MONTS_LIGHT" 64 ui_font_num64 "$NUM_CHARS"
 
