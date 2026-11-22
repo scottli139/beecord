@@ -3,6 +3,7 @@
 
 #include <dirent.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -69,7 +70,7 @@ static TaskHandle_t s_task;
 static uint32_t s_idle_sec; // 空闲计时（服务任务上下文；入向流量/出向进度复位，D10）
 static EXT_RAM_BSS_ATTR device_snapshot_t s_model_build;
 static EXT_RAM_BSS_ATTR buzz_file_entry_t s_model_files[DEVICE_MODEL_MAX_FILES];
-static bool s_refresh_queued;
+static atomic_uint s_refresh_queued;
 static bool s_formatting;
 static bool s_reject_storage_io;
 
@@ -777,12 +778,12 @@ esp_err_t buzz_cmds_request_refresh(void)
     if (s_queue == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (__atomic_test_and_set(&s_refresh_queued, __ATOMIC_ACQ_REL)) {
+    if (atomic_exchange_explicit(&s_refresh_queued, 1u, memory_order_acq_rel) != 0u) {
         return ESP_OK;
     }
     const esp_err_t ret = post_local_item(BUZZ_CMDS_ITEM_REFRESH, 0u);
     if (ret != ESP_OK) {
-        __atomic_clear(&s_refresh_queued, __ATOMIC_RELEASE);
+        atomic_store_explicit(&s_refresh_queued, 0u, memory_order_release);
     }
     return ret;
 }
@@ -833,7 +834,7 @@ static void buzz_cmds_task(void *arg)
             } else if (item.kind == BUZZ_CMDS_ITEM_EVT) {
                 handle_event((buzz_ble_evt_t)item.data[0]);
             } else if (item.kind == BUZZ_CMDS_ITEM_REFRESH) {
-                __atomic_clear(&s_refresh_queued, __ATOMIC_RELEASE);
+                atomic_store_explicit(&s_refresh_queued, 0u, memory_order_release);
                 refresh_model(true);
             } else if (item.kind == BUZZ_CMDS_ITEM_SETTING) {
                 handle_local_setting((buzz_local_setting_t)item.data[0]);
@@ -877,6 +878,7 @@ esp_err_t buzz_cmds_init(void)
         return ESP_ERR_INVALID_STATE;
     }
     device_model_init();
+    atomic_init(&s_refresh_queued, 0u);
     const int frc = buzz_file_index_init(&s_file_io);
     if (frc != BUZZ_OK) {
         ESP_LOGE(TAG, "file_index init failed rc=%d", frc);
