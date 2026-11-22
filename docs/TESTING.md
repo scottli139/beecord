@@ -200,6 +200,18 @@ UI 的自动化验收以 **AX 树驱动** 为准，自动化回归中禁止坐�
 - 串口 REPL `ble` 命令：设备侧连接态/MTU/订阅态查询；
 - 注意 macOS 终端/Studio 各自需已授蓝牙权限；串口脚本须 `dtr=False`（开port复位芯片）。
 
+M5.5 手表快照与真实 BLE 验收补充：
+
+- `ui tile <c> <r>` 跳页、`ui scroll <y>` 验证虚拟列表、`ui set <0-2>` 在 LVGL 任务中触发真实设置行
+  点击事件；`ui format cancel|confirm` 同样触发格式化按钮事件，`model` 只读输出存储/文件/BLE/传输快照。
+- `ui snap` 存 `/sdcard/snap.bmp`，导出前执行 `screen off` 再 `get SNAP.BMP`；未挂载卡时用
+  `ui snapusb` 直接输出 Base64 BMP（LVGL 只抓帧，REPL 逐行节流输出）。主机只接受完整 Base64 行，
+  并校验 BMP 头与声明长度，缺行必须重试，不得交付不完整截图。
+- Studio 命令行实测使用独立库，避免污染用户录音。若已恢复的设置状态干扰传输选择，可只对测试进程
+  注入偏好参数：`<BeecordStudio 可执行文件> -libraryRoot /tmp/beecord-l4 \
+  -settings.transportMode ble -settings.autoSyncEnabled YES`。验收至少 3 条 `Library/*/audio.ogg`
+  与 `meta.json` 齐备，并对拍 CRC、时长和文件字节；结束测试进程即可，无需改用户默认设置。
+
 ## 8. 测试数据纪律
 
 - 测试音频一律**合成样本**（脚本生成 16kHz 单声道 Ogg Opus：`tools/make_sim_samples.sh`，

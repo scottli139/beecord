@@ -28,7 +28,7 @@ PIPE_HDRS   := $(AUDIO)/opus_enc.h $(AUDIO)/rec_pipe.h
 
 SRCS := $(PROTO)/crc16.c $(PROTO)/buzz_proto.c $(PROTO)/buzz_reasm.c $(AUDIO)/ogg_writer.c $(AUDIO)/wav_writer.c $(BLE)/buzz_server.c $(STORAGE)/file_index.c $(VECTOR_SRC)
 HDRS := $(PROTO)/crc16.h $(PROTO)/buzz_proto.h $(PROTO)/buzz_reasm.h $(AUDIO)/ogg_writer.h $(AUDIO)/wav_writer.h $(BLE)/buzz_server.h $(STORAGE)/file_index.h $(VECTOR_HDR) test.h
-TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc
+TESTS := test_crc16 test_frame test_reasm test_vector_replay test_ogg_writer test_wav_writer test_server test_file_index test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc test_device_model
 
 ifeq ($(HAVE_OPUS),1)
 TESTS += test_rec_pipe
@@ -84,6 +84,11 @@ test_sync_marks: test_sync_marks.c $(SYS)/sync_marks.c $(SYS)/sync_marks.h test.
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(SYS) -o $(BUILD)/$@ $< $(SYS)/sync_marks.c
 
+UI := ../main/ui
+test_device_model: test_device_model.c $(UI)/device_model.c $(UI)/device_model.h test.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(UI) -o $(BUILD)/$@ $< $(UI)/device_model.c
+
 # power（M5.4 二阶段）：电量平滑/低电阈值纯逻辑（-lm 数学库）
 test_power: test_power.c $(SYS)/power.c $(SYS)/power.h test.h
 	@mkdir -p $(BUILD)
@@ -104,7 +109,7 @@ test_rec_pipe: test_rec_pipe.c $(SRCS) $(PIPE_SRCS) $(HDRS) $(PIPE_HDRS)
 endif
 
 # test_rec_pipe/keyd/beep 从模式规则中剔除，避免与上方显式规则重复给配方（macOS make 3.81 下同）
-$(filter-out test_rec_pipe test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc,$(TESTS)): %: %.c $(SRCS) $(HDRS)
+$(filter-out test_rec_pipe test_keyd test_beep test_rec_meter test_rec_journal test_settings test_sync_marks test_power test_rtc test_device_model,$(TESTS)): %: %.c $(SRCS) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -I$(PROTO) -I$(AUDIO) -I$(BLE) -I$(STORAGE) -I$(GENERATED) -o $(BUILD)/$@ $< $(SRCS)
 

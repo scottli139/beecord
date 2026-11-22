@@ -15,7 +15,8 @@
 //         8B LE）→ durationMs = granule*1000/48000（RFC 7845：Opus granule 为
 //         48 kHz 域）；sampleRate/channels 固定 16000/1（M3 封装参数固定，
 //         不解析 OpusHead）。找不到合法页 → durationMs=0。
-//   0 字节文件：size=0、crc16=空输入 CRC（0xFFFF）、durationMs=0，不得崩溃。
+// 0 字节文件：显式 info/CRC 查询仍保留 size=0、crc16=0xFFFF、durationMs=0 的
+// 兼容语义；列表枚举与 total 则过滤 0 字节项（M5.5）。
 //
 // 索引上限 BUZZ_INDEX_MAX_FILES：匹配文件数超出时仅保留先枚举到的条目（FAT
 // 枚举序），total 仍报真实计数；超出部分客户端按空页终止翻页。P0 容量取 128
@@ -96,6 +97,10 @@ int buzz_file_index_init(const buzz_file_io_t *io);
 int buzz_file_index_list(uint32_t offset, uint32_t limit, buzz_file_entry_t *entries,
                          uint32_t entries_cap, uint32_t *out_total, uint32_t *out_count);
 
+// 本地 UI 快照用全量有效条目（最多 128 条），不改变协议 LIST 的 16 条分页上限。
+int buzz_file_index_list_all(buzz_file_entry_t *entries, uint32_t entries_cap,
+                             uint32_t *out_total, uint32_t *out_count);
+
 // 查询单个文件元数据：open → size → 流式全文件 crc16 → 按扩展名解析
 // durationMs/format/sampleRate/channels → close。
 // id 含 '/' 或 '\\' 返回 BUZZ_ERR_ARG（路径穿越防线，调用方亦应先过滤）；
@@ -105,6 +110,9 @@ int buzz_file_index_info(const char *id, buzz_file_info_t *out);
 // id 合法性校验（file_index 内部与调用方共用）：以 "REC_" 前缀 + .WAV/.OGG
 // 扩展名（扩展名大小写不敏感）且长度 ≤ BUZZ_FILE_ID_MAX_LEN。
 bool buzz_file_index_id_match(const char *name);
+
+// 启动孤儿清理的选择规则：仅普通文件、0 字节、合法录音文件名。
+bool buzz_file_orphan_candidate(const char *name, uint32_t size, bool is_regular);
 
 // 返回 init 时绑定的 io 表（指向模块静态存储）。buzz_dl 下载推流经此直接
 // 读文件，保持"所有文件访问注入"的单一来源；未 init 返回 NULL。

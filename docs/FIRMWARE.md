@@ -6,7 +6,8 @@ SDMMC 双卡实测）、M2（音频采集：ES7210 → 混单声道 → WAV 写 
 M3（编码封装：Opus 定点编码 → Ogg 写卡，8MB PSRAM 启用）、M4（BuzzLink BLE 服务：
 NimBLE GATT + 全命令 + 下载流，Beecord Studio 端到端验收通过）已完成。M5 已落地
 表盘与录音 UI、按键/提示音、现场保护、设置与同步标记持久化、电源/RTC 和自动对时；
-四页数据接真/格式化（M5.5）与端到端收官（M5.6）随后续里程碑完成。
+四页数据接真、设置持久化与存储格式化（M5.5）已完成，通过实机 snapshot、CLI、Studio BLE
+及格式化取消/成功/busy/失败重试验收。下一步 M5.6 端到端收官与稳定性审计。
 
 ## 构建前提
 
@@ -75,7 +76,8 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 - 覆盖帧编解码与协议向量、字节流/分片重组、CRC16、Ogg/Opus/WAV、rec_pipe 真编解码
   roundtrip、buzz_server、file_index；M5 新增 keyd/beep、rec_meter/journal、settings/
   sync_marks（值域/损坏数据/写失败/LRU）、power（平滑/迟滞/阈值）与 rtc（BCD/闰年/
-  epoch/时区/本地窗口）硬件无关用例，另有全量 UI 字体字符门禁。
+  epoch/时区/本地窗口）硬件无关用例，另有全量 UI 字体字符门禁；M5.5 增加设备快照/generation、
+  格式化状态转换、0 字节过滤与全量快照索引、sync_marks 清空及持久化失败用例。
 - 本机除默认 clang 外，可用 `make -C firmware/test_host CC=gcc-16 test` 跑真 GCC；
   macOS 名为 `gcc` 的命令通常是 Apple clang 别名，不能当作 GCC 回归。
 - **会话向量回放**：与 Mac 侧 XCTest 共享同一份 JSON（`buzzlink-vector/1` schema），
@@ -121,9 +123,24 @@ make -C firmware/test_host test          # 本机 clang；CI 用 `make CC=gcc`�
 - RTC 初始化在 BLE 之前（客户端连接窗口内 TIME_SET 无竞态）；表盘真实时钟（1Hz 时钟服务 + HH:MM/基线秒/月日周几；未对时显 "--:-- --"+"未对时"）。
 - Studio：连接 INFO 后、LIST 前自动对时（失败降级不阻断同步）。
 
+## 里程碑补充（M5.5，2026-11-22，已完成）
+
+- `ui/device_model` 提供 generation 快照，后台唯一生产者复用 Buzz 服务任务；扫卡、设置写入和格式化
+  不阻塞 LVGL。本地服务与 BLE 初始化解耦，蓝牙失败时列表、设置和格式化仍可运行。
+- 表盘小件、录音列表、同步页和设置页均接真实状态；列表只创建 8 个可见行并随滚动复用，
+  避免全量行对象耗尽内部 RAM。共享/后台/UI 三份快照经 `EXT_RAM_BSS_ATTR` 放 PSRAM，
+  DMA 显示缓冲仍在内部 RAM。
+- 列表与协议 LIST 过滤 0 字节录音；显式 FILE_INFO 的 0 字节兼容应答不变。启动只清理符合录音命名
+  规则的 0 字节普通文件，其他文件和目录不动。
+- 设置行通过 LVGL 点击事件提交后台循环切换并持久化；同步页显示当前文件入队进度，DL_END 后才
+  更新 ✓/待同步数。格式化采用候选/确认/执行/失败状态机，只有显式确认才允许带格式化参数重挂载。
+- 已过：Clang/GCC 宿主全量、字体门禁、目标构建、四页与滚动 snapshot、设置重启保持、ABORT 不标记、
+  新录音 CLI 三方 CRC、Studio 真 BLE 三条录音入库；格式化取消/成功/busy/无卡失败/插卡重试
+  均通过，重试后录音与下载正常。M5.6 长时间稳定性与性能审计待做。
+
 ## 架构详述
 
-以下按已落地实现记录；未完成的 M5.5/M5.6 能力不作超前承诺：
+以下按已落地实现记录；未完成的 M5.6 能力不作超前承诺：
 
 ### 录音管线（采集 → Opus → Ogg → TF 卡）
 

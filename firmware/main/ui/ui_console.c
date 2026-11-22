@@ -9,6 +9,7 @@
 #include "esp_err.h"
 #include "esp_check.h"
 
+#include "device_model.h"
 #include "screen_pwr.h"
 #include "sys/beep_play.h"
 #include "ui_snapshot.h"
@@ -93,20 +94,57 @@ static int cmd_ui(int argc, char **argv)
         printf("tile %d,%d\n", col, row);
         return 0;
     }
-    if (argc < 2 || strcmp(argv[1], "snap") != 0) {
+    if (argc >= 3 && strcmp(argv[1], "set") == 0) {
+        const int index = atoi(argv[2]);
+        if (index < 0 || index > 2) {
+            printf("设置项越界：0=熄屏 1=质量 2=提示音\n");
+            return 1;
+        }
+        const ui_msg_t msg = {.src = UI_MSG_SRC_DEBUG, .code = 3, .value = index};
+        return ui_msg_post(&msg) == ESP_OK ? 0 : 1;
+    }
+    if (argc >= 3 && strcmp(argv[1], "scroll") == 0) {
+        const int y = atoi(argv[2]);
+        if (y < 0 || y > DEVICE_MODEL_MAX_FILES * 64) {
+            printf("scroll 偏移越界\n");
+            return 1;
+        }
+        const ui_msg_t msg = {.src = UI_MSG_SRC_DEBUG, .code = 2, .value = y};
+        return ui_msg_post(&msg) == ESP_OK ? 0 : 1;
+    }
+    if (argc >= 3 && strcmp(argv[1], "format") == 0) {
+        const bool cancel = strcmp(argv[2], "cancel") == 0;
+        const bool confirm = strcmp(argv[2], "confirm") == 0;
+        if (!cancel && !confirm) {
+            printf("Usage: ui format cancel|confirm\n");
+            return 1;
+        }
+        const ui_msg_t msg = {.src = UI_MSG_SRC_DEBUG, .code = 4, .value = confirm ? 1 : 0};
+        return ui_msg_post(&msg) == ESP_OK ? 0 : 1;
+    }
+    const bool snap_sd = argc >= 2 && strcmp(argv[1], "snap") == 0;
+    const bool snap_usb = argc >= 2 && strcmp(argv[1], "snapusb") == 0;
+    if (!snap_sd && !snap_usb) {
         printf("Usage:\n  ui snap   截当前屏幕存 /sdcard/snap.bmp（配合 get snap.bmp 导出）\n"
+               "  ui snapusb  Base64 BMP console output\n"
+               "  ui format cancel|confirm\n"
                "  ui touch  打印触摸控制器原始触点（摸屏时连发观察）\n"
-               "  ui tile <c 0-2> <r 0-1>  调试跳页（r1=设置页）\n");
+               "  ui tile <c 0-2> <r 0-1>  调试跳页（r1=设置页）\n"
+               "  ui scroll <y>  列表滚动到 Y 坐标（虚拟列表验收）\n"
+               "  ui set <0-2>  触发设置行点击事件（0熄屏/1质量/2提示音）\n");
         return 1;
     }
     if (!ui_is_ready()) {
         printf("UI 未初始化\n");
         return 1;
     }
-    // 快照渲染栈需求大（console_repl 16KB 实测仍溢出）→ 派发到 LVGL 任务执行
-    esp_err_t ret = ui_snapshot_request_async();
+    esp_err_t ret = snap_usb ? ui_snapshot_console_request_async()
+                             : ui_snapshot_request_async();
     if (ret == ESP_OK) {
-        ret = ui_snapshot_wait_done(15000);
+        ret = ui_snapshot_wait_done(snap_usb ? 60000 : 15000);
+    }
+    if (ret == ESP_OK && snap_usb) {
+        ret = ui_snapshot_console_emit();
     }
     if (ret != ESP_OK) {
         printf("snap 失败: %s\n", esp_err_to_name(ret));

@@ -1,4 +1,4 @@
-// Beecord 固件入口（M0 骨架 → M5.4 收尾）。启动序列（2026-10-30 实际顺序）：
+// Beecord 固件入口（M5.5）。启动顺序：
 // 版本打印 → NVS → settings/sync_marks（NVS）→ TF 卡挂载 → 音频（bsp i2c 随之就绪）
 // → 设置应用（质量/增益/提示音/熄屏）→ PCF85063 RTC（须在 BLE 前，TIME_SET 窗口竞态）
 // → BLE 广播 + buzz_cmds → display/LVGL/UI/按键/录音控制 → 表盘时钟服务（1Hz）
@@ -48,6 +48,9 @@ void app_main(void)
     }
 
     buzz_sdcard_probe();
+    if (buzz_sdcard_mounted()) {
+        (void)buzz_sdcard_cleanup_orphans();
+    }
 
     // M5.3：断电恢复检测（journal 残留 → 截断收尾 + 置恢复标志，UI 起来后 toast）
     {
@@ -84,22 +87,20 @@ void app_main(void)
         ESP_LOGE(TAG, "rtc init failed, TIME_SET unavailable");
     }
 
-    // BLE 失败仅降级（同步功能不可用），不阻断 REPL。
+    // BLE 失败仅降级（同步功能不可用），不阻断本地服务和 REPL。
     ret = buzz_ble_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "BLE init failed (%s), sync disabled", esp_err_to_name(ret));
     } else {
         ESP_LOGI(TAG, "BLE device: %s", buzz_ble_device_name());
-        // M4.3：控制通道命令服务（INFO/LIST/FILE_INFO）；失败仅失能 BLE 命令。
-        ret = buzz_cmds_init();
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "BLE commands init failed (%s), sync disabled",
-                     esp_err_to_name(ret));
-        }
+    }
+    ret = buzz_cmds_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "local commands init failed (%s)", esp_err_to_name(ret));
     }
 
     // M5.1：display + LVGL + 手表 UI 框架（失败仅无 UI，REPL 仍可用；
-    // SD 挂载失败现状行为不变——格式化弹窗是 M5.5 的事）
+    // M5.5 由设备模型驱动四页，挂载失败进入格式化确认状态）
     ret = ui_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "UI init failed (%s), headless mode", esp_err_to_name(ret));

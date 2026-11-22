@@ -1,11 +1,13 @@
-// 表盘主页实现（scr_home.c，M5.1 静态版）。
+// 表盘主页实现（M5.5：RTC/电量 + 设备模型快照）。
 // 布局依据：DESIGN_SYSTEM §3 手表组件 + 图版 ds-watch-components.png ① 屏幕解剖。
 // 页面 padding 16/16/30，上安全区 14；所有颜色/间距/圆角取 theme.h 令牌。
 #include "scr_home.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
+#include "buzz_recorder.h"
 #include "scr_shell.h"
 #include "sys/rtc_pcf.h"
 #include "theme.h"
@@ -18,6 +20,11 @@ static lv_obj_t *s_sec_label;
 static lv_obj_t *s_date_label;
 static lv_obj_t *s_batt_fill;
 static lv_obj_t *s_bolt_canvas;
+static lv_obj_t *s_ble_dot;
+static lv_obj_t *s_storage_value;
+static lv_obj_t *s_pending_value;
+static lv_obj_t *s_recent_value;
+static lv_obj_t *s_hint;
 
 // 充电闪电位图（10×14 I1，行起止列；DESIGN §3 状态图标·充电加闪电·的等效小图标）
 #define BOLT_W 10u
@@ -80,7 +87,7 @@ static void status_bar_create(lv_obj_t *page)
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollable(bar, false);
 
-    // 左：BLE 状态（M5.5 接连接态；当前静态空心=未连接）
+    // 左：BLE 状态（M5.5 设备模型：连接实心/断开空心）
     lv_obj_t *ble = lv_obj_create(bar);
     lv_obj_set_size(ble, 48, UI_STATUS_BAR_H); // 触控目标 ≥48
     lv_obj_set_style_bg_opa(ble, 0, 0);
@@ -92,13 +99,13 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_flex_align(ble, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollable(ble, false);
-    lv_obj_t *dot = lv_obj_create(ble);
-    lv_obj_set_size(dot, UI_STATUS_DOT, UI_STATUS_DOT);
-    lv_obj_set_style_radius(dot, UI_RADIUS_FULL, 0);
-    lv_obj_set_style_bg_opa(dot, 0, 0); // 空心：仅描边
-    lv_obj_set_style_border_color(dot, UI_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_border_width(dot, 1, 0);
-    lv_obj_set_style_pad_all(dot, 0, 0);
+    s_ble_dot = lv_obj_create(ble);
+    lv_obj_set_size(s_ble_dot, UI_STATUS_DOT, UI_STATUS_DOT);
+    lv_obj_set_style_radius(s_ble_dot, UI_RADIUS_FULL, 0);
+    lv_obj_set_style_bg_opa(s_ble_dot, 0, 0);
+    lv_obj_set_style_border_color(s_ble_dot, UI_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_border_width(s_ble_dot, 1, 0);
+    lv_obj_set_style_pad_all(s_ble_dot, 0, 0);
     lv_obj_t *ble_txt = lv_label_create(ble);
     lv_label_set_text(ble_txt, "BLE");
     ui_theme_apply_text(ble_txt, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
@@ -162,6 +169,7 @@ static void status_bar_create(lv_obj_t *page)
 // 录音中横幅：h36 r12（§3 组件规格）红边 1px + recording 深红底；点击进入录音页（M5.3 接）
 static lv_obj_t *s_banner;
 static lv_obj_t *s_banner_dot;
+static lv_obj_t *s_banner_text;
 static bool s_pulse_started;
 
 static void banner_pulse_cb(void *obj, int32_t v)
@@ -204,9 +212,9 @@ static void banner_create(lv_obj_t *page)
     lv_obj_set_style_bg_color(s_banner_dot, UI_COLOR_RECORDING, 0);
     lv_obj_set_style_border_width(s_banner_dot, 0, 0);
     lv_obj_set_style_pad_all(s_banner_dot, 0, 0);
-    lv_obj_t *txt = lv_label_create(left);
-    lv_label_set_text(txt, "录音中 00:12:34"); // 计时 M5.3 接
-    ui_theme_apply_text(txt, FONT_CAPTION, UI_COLOR_TEXT_PRIMARY);
+    s_banner_text = lv_label_create(left);
+    lv_label_set_text(s_banner_text, "录音中 00:00");
+    ui_theme_apply_text(s_banner_text, FONT_CAPTION, UI_COLOR_TEXT_PRIMARY);
 
     lv_obj_t *go = lv_label_create(s_banner);
     lv_label_set_text(go, "查看 ›");
@@ -244,11 +252,72 @@ void scr_home_show_rec_banner(bool show)
     bsp_display_unlock();
 }
 
+void scr_home_render(const device_snapshot_t *snapshot)
+{
+    char buf[40];
+    bool mounted = snapshot->storage_state == DEVICE_STORAGE_MOUNTED;
+    if (mounted && snapshot->storage_total > 0u) {
+        const uint64_t used = snapshot->storage_free <= snapshot->storage_total
+                                  ? snapshot->storage_total - snapshot->storage_free
+                                  : 0u;
+        const uint32_t pct = (uint32_t)(used * 100u / snapshot->storage_total);
+        snprintf(buf, sizeof(buf), "%" PRIu32 "%%", pct);
+        lv_obj_set_style_text_color(s_storage_value,
+                                    pct > 90u ? UI_COLOR_DANGER : UI_COLOR_TEXT_PRIMARY, 0);
+    } else {
+        const char *text = "--";
+        if (snapshot->storage_state == DEVICE_STORAGE_UNAVAILABLE) {
+            text = "无卡";
+        } else if (snapshot->storage_state == DEVICE_STORAGE_ERROR) {
+            text = "错误";
+        } else if (snapshot->storage_state == DEVICE_STORAGE_FORMATTING) {
+            text = "格式化";
+        } else if (snapshot->storage_state == DEVICE_STORAGE_FORMAT_CANDIDATE ||
+                   snapshot->storage_state == DEVICE_STORAGE_FORMAT_CONFIRM ||
+                   snapshot->storage_state == DEVICE_STORAGE_FORMAT_FAILED) {
+            text = "未识别";
+        }
+        snprintf(buf, sizeof(buf), "%s", text);
+        lv_obj_set_style_text_color(s_storage_value,
+                                    mounted ? UI_COLOR_TEXT_PRIMARY : UI_COLOR_DANGER, 0);
+    }
+    lv_label_set_text(s_storage_value, buf);
+
+    if (mounted) {
+        snprintf(buf, sizeof(buf), "%u", (unsigned)snapshot->pending_count);
+        lv_label_set_text(s_pending_value, buf);
+        if (snapshot->file_count > 0u) {
+            scr_format_duration(snapshot->files[0].duration_ms, buf, sizeof(buf));
+            lv_label_set_text(s_recent_value, buf);
+        } else {
+            lv_label_set_text(s_recent_value, "—");
+        }
+        lv_label_set_text(s_hint, "按功能键开始录音");
+    } else {
+        lv_label_set_text(s_pending_value, "--");
+        lv_label_set_text(s_recent_value, "—");
+        lv_label_set_text(s_hint, snapshot->storage_state == DEVICE_STORAGE_UNAVAILABLE
+                                      ? "无存储卡，无法录音"
+                                      : "存储不可用，请检查");
+    }
+
+    lv_obj_set_style_bg_color(s_ble_dot, UI_COLOR_SYNC, 0);
+    lv_obj_set_style_bg_opa(s_ble_dot, snapshot->ble_connected ? LV_OPA_COVER : 0, 0);
+    lv_obj_set_style_border_color(s_ble_dot,
+                                  snapshot->ble_connected ? UI_COLOR_SYNC
+                                                          : UI_COLOR_TEXT_SECONDARY,
+                                  0);
+
+    char duration[16];
+    scr_format_duration(buzz_recorder_elapsed_ms(), duration, sizeof(duration));
+    snprintf(buf, sizeof(buf), "录音中 %s", duration);
+    lv_label_set_text(s_banner_text, buf);
+}
+
 // 状态小件：3 等分卡 r14，标签 10 + 值 15B（设计 16/600，用 Bold 15 代）
 static void widget_row_create(lv_obj_t *page)
 {
     static const char *labels[3] = {"存储", "待同步", "最近录音"};
-    static const char *values[3] = {"62%", "2", "01:36"}; // M5.4/M5.5 接真
 
     lv_obj_t *row = lv_obj_create(page);
     lv_obj_set_size(row, LV_PCT(100), UI_WIDGET_H);
@@ -280,8 +349,15 @@ static void widget_row_create(lv_obj_t *page)
         lv_label_set_text(lab, labels[i]);
         ui_theme_apply_text(lab, FONT_TINY, UI_COLOR_TEXT_SECONDARY);
         lv_obj_t *val = lv_label_create(card);
-        lv_label_set_text(val, values[i]);
+        lv_label_set_text(val, "--");
         ui_theme_apply_text(val, FONT_TITLE, UI_COLOR_TEXT_PRIMARY);
+        if (i == 0) {
+            s_storage_value = val;
+        } else if (i == 1) {
+            s_pending_value = val;
+        } else {
+            s_recent_value = val;
+        }
     }
 }
 
@@ -367,13 +443,12 @@ void scr_home_create(lv_obj_t *tile)
     lv_obj_set_style_pad_all(spacer, 0, 0);
     lv_obj_set_scrollable(spacer, false);
 
-    lv_obj_t *hint = lv_label_create(page);
-    lv_label_set_text(hint, "按功能键开始录音");
-    // 实机可读性修订：tiny 10 在 410×502 AMOLED 上偏小，提示语提级 caption 11（DESIGN_SYSTEM §1.2 注记）
-    ui_theme_apply_text(hint, FONT_CAPTION, UI_COLOR_TEXT_TERTIARY);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_margin_top(hint, UI_SPACE_4, 0);
-    lv_obj_set_style_margin_bottom(hint, UI_SPACE_1, 0);
+    s_hint = lv_label_create(page);
+    lv_label_set_text(s_hint, "按功能键开始录音");
+    ui_theme_apply_text(s_hint, FONT_CAPTION, UI_COLOR_TEXT_TERTIARY);
+    lv_obj_set_style_text_align(s_hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_margin_top(s_hint, UI_SPACE_4, 0);
+    lv_obj_set_style_margin_bottom(s_hint, UI_SPACE_1, 0);
 
     lv_timer_create(clock_timer_cb, 1000, NULL); // 表盘时钟 1Hz 渲染
 }

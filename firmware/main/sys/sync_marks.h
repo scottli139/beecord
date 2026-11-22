@@ -40,6 +40,10 @@ const char *sync_marks_at(uint32_t idx);
 
 bool sync_marks_last_save_ok(void);
 
+// 清空运行集合并持久化空表（格式化后同名序号复用，旧标记必须失效）。
+// 返回 0 成功，-2 保存失败；失败时运行态仍保持为空。
+int sync_marks_clear(void);
+
 #ifdef __cplusplus
 }
 #endif

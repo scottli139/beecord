@@ -20,11 +20,26 @@
 extern "C" {
 #endif
 
-// 启动 BLE 命令服务：初始化 file_index + buzz_server、创建输入队列与服务任务、
-// 注册 GATT 写回调与 BLE 事件订阅。须在 buzz_ble_init() 成功后调用一次。
-// 失败返回非 ESP_OK（已记日志）；调用方降级（BLE 命令不可用，REPL 不受影响）。
-// 线程安全：仅 app_main 上下文调用。
+// 启动本地命令服务：初始化 file_index + 设备模型 + buzz_server、创建输入队列与
+// 服务任务。可在 buzz_ble_init() 失败后调用；此时本地列表/设置/格式化仍可用。
+// 失败返回非 ESP_OK（已记日志）。线程安全：仅 app_main 上下文调用。
 esp_err_t buzz_cmds_init(void);
+
+typedef enum {
+    BUZZ_LOCAL_SETTING_SCREEN_OFF = 0,
+    BUZZ_LOCAL_SETTING_QUALITY,
+    BUZZ_LOCAL_SETTING_BEEP,
+} buzz_local_setting_t;
+
+typedef enum {
+    BUZZ_FORMAT_REQUEST = 0,
+    BUZZ_FORMAT_CANCEL,
+    BUZZ_FORMAT_CONFIRM,
+} buzz_format_action_t;
+
+esp_err_t buzz_cmds_request_refresh(void);
+esp_err_t buzz_cmds_cycle_setting(buzz_local_setting_t setting);
+esp_err_t buzz_cmds_format_action(buzz_format_action_t action);
 
 #ifdef __cplusplus
 }

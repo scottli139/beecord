@@ -6,15 +6,23 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "audio/buzz_recorder.h"
 #include "bsp/esp32_s3_touch_amoled_2_06.h" // BSP_SD_MOUNT_POINT
 #include "buzz_ble.h"
 #include "buzz_dl.h"
 #include "buzz_gatt.h"
+#include "buzz_sdcard.h"
 #include "buzz_server.h"
+#include "sys/beep.h"
 #include "sys/power_axp.h"
 #include "sys/rtc.h"
 #include "sys/rtc_pcf.h"
+#include "sys/settings.h"
+#include "sys/sync_marks.h"
+#include "ui/device_model.h"
+#include "ui/screen_pwr.h"
 #include "esp_log.h"
+#include "esp_attr.h"
 #include "esp_timer.h"
 #include "esp_vfs_fat.h"
 #include "file_index.h"
@@ -29,7 +37,7 @@ static const char *TAG = "buzz_cmds";
 
 // 服务任务优先级：低于音频采集（REC_TASK_PRIO 5），高于 REPL
 #define BUZZ_CMDS_TASK_PRIO 4u
-#define BUZZ_CMDS_TASK_STACK (4096u)
+#define BUZZ_CMDS_TASK_STACK (8192u)
 // 入向队列：定长槽位（GATT 单次写 ≤ MTU-3 ≤ 244B），满则丢弃并记日志
 #define BUZZ_CMDS_Q_LEN 8u
 #define BUZZ_CMDS_Q_SLOT 256u
@@ -41,10 +49,14 @@ static const char *TAG = "buzz_cmds";
 typedef enum {
     BUZZ_CMDS_ITEM_CMD = 0, // data = 中央设备写载荷（BuzzLink 字节流）
     BUZZ_CMDS_ITEM_EVT,     // data[0] = buzz_ble_evt_t
+    BUZZ_CMDS_ITEM_REFRESH,
+    BUZZ_CMDS_ITEM_SETTING,
+    BUZZ_CMDS_ITEM_FORMAT,
 } buzz_cmds_item_kind_t;
 
 typedef struct {
     uint8_t kind;
+    uint8_t storage_busy;
     uint16_t len;
     uint8_t data[BUZZ_CMDS_Q_SLOT];
 } buzz_cmds_item_t;
@@ -55,6 +67,13 @@ static buzz_server_t s_server; // 协议服务层实例（内嵌 ~5.5KB 缓冲�
 static QueueHandle_t s_queue;
 static TaskHandle_t s_task;
 static uint32_t s_idle_sec; // 空闲计时（服务任务上下文；入向流量/出向进度复位，D10）
+static EXT_RAM_BSS_ATTR device_snapshot_t s_model_build;
+static EXT_RAM_BSS_ATTR buzz_file_entry_t s_model_files[DEVICE_MODEL_MAX_FILES];
+static bool s_refresh_queued;
+static bool s_formatting;
+static bool s_reject_storage_io;
+
+static void server_reset(void);
 
 static int server_send_glue(void *ctx, const uint8_t *frame, size_t len);
 static int control_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
@@ -158,6 +177,217 @@ static const buzz_file_io_t s_file_io = {
     .listdir = vfs_listdir,
 };
 
+// ---------- 本地设备模型（唯一生产者：本服务任务） ----------
+
+static void model_fill_common(void)
+{
+    s_model_build.ble_connected = buzz_ble_is_connected();
+    s_model_build.ble_subscribed = buzz_ble_notify_subscribed();
+    s_model_build.rec_quality = settings_get_u8(SETTINGS_REC_QUALITY);
+    s_model_build.beep_enabled = settings_get_u8(SETTINGS_BEEP_ENABLED);
+    s_model_build.screen_off_s = settings_get_u8(SETTINGS_SCREEN_OFF_S);
+
+    buzz_dl_snapshot_t dl;
+    buzz_dl_snapshot(&dl);
+    s_model_build.transfer_state = DEVICE_TRANSFER_IDLE;
+    s_model_build.transfer_id[0] = '\0';
+    s_model_build.sent_chunks = 0;
+    s_model_build.total_chunks = 0;
+    if (dl.active) {
+        s_model_build.transfer_state =
+            dl.wait_end ? DEVICE_TRANSFER_WAIT_END : DEVICE_TRANSFER_SENDING;
+        strncpy(s_model_build.transfer_id, dl.id, sizeof(s_model_build.transfer_id) - 1u);
+        s_model_build.sent_chunks = dl.sent_chunks;
+        s_model_build.total_chunks = dl.total_chunks;
+    }
+}
+
+static void publish_notice(device_notice_t notice)
+{
+    device_model_snapshot(&s_model_build);
+    s_model_build.notice_seq++;
+    s_model_build.notice = notice;
+    device_model_publish(&s_model_build);
+}
+
+static void model_note_time_set(const rtc_datetime_t *local)
+{
+    device_model_snapshot(&s_model_build);
+    s_model_build.time_set_valid = true;
+    s_model_build.time_year = local->year;
+    s_model_build.time_month = local->month;
+    s_model_build.time_day = local->day;
+    s_model_build.time_hour = local->hour;
+    s_model_build.time_minute = local->minute;
+    device_model_publish(&s_model_build);
+}
+
+static void refresh_model(bool scan)
+{
+    device_model_snapshot(&s_model_build);
+    model_fill_common();
+    if (scan) {
+        s_model_build.refreshing = true;
+        device_model_publish(&s_model_build);
+    }
+
+    if (buzz_sdcard_mounted()) {
+        if (!s_formatting) {
+            s_model_build.storage_state = DEVICE_STORAGE_MOUNTED;
+        }
+        s_model_build.storage_error = 0;
+        uint64_t total = 0;
+        uint64_t free_bytes = 0;
+        if (esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &total, &free_bytes) == ESP_OK) {
+            s_model_build.storage_total = total;
+            s_model_build.storage_free = free_bytes;
+        } else {
+            s_model_build.storage_total = 0;
+            s_model_build.storage_free = 0;
+            s_model_build.storage_state = DEVICE_STORAGE_ERROR;
+            s_model_build.storage_error = ESP_FAIL;
+        }
+    } else if (!s_formatting && s_model_build.storage_state != DEVICE_STORAGE_FORMAT_CONFIRM &&
+               s_model_build.storage_state != DEVICE_STORAGE_FORMAT_FAILED) {
+        s_model_build.storage_state = buzz_sdcard_last_error() == ESP_FAIL
+                                          ? DEVICE_STORAGE_FORMAT_CANDIDATE
+                                          : DEVICE_STORAGE_UNAVAILABLE;
+        s_model_build.storage_error = (int32_t)buzz_sdcard_last_error();
+        s_model_build.storage_total = 0;
+        s_model_build.storage_free = 0;
+        s_model_build.file_count = 0;
+        s_model_build.total_count = 0;
+        s_model_build.pending_count = 0;
+    }
+
+    if (scan && buzz_sdcard_mounted() && !s_formatting) {
+        uint32_t total = 0;
+        uint32_t count = 0;
+        const int rc = buzz_file_index_list_all(s_model_files, DEVICE_MODEL_MAX_FILES,
+                                                &total, &count);
+        if (rc != BUZZ_OK) {
+            ESP_LOGW(TAG, "model file scan failed rc=%d", rc);
+            s_model_build.storage_state = DEVICE_STORAGE_ERROR;
+            s_model_build.file_count = 0;
+            s_model_build.total_count = 0;
+            s_model_build.pending_count = 0;
+        } else {
+            const bool recording_active = buzz_recorder_state() != BUZZ_REC_STATE_IDLE;
+            const char *active = recording_active ? buzz_recorder_current_path() : "";
+            const char *slash = strrchr(active, '/');
+            if (slash != NULL) {
+                active = slash + 1;
+            }
+            uint16_t out = 0;
+            for (uint32_t i = 0; i < count; i++) {
+                if (device_model_file_is_active(recording_active, active, s_model_files[i].id)) {
+                    continue;
+                }
+                device_file_t *dst = &s_model_build.files[out];
+                memset(dst, 0, sizeof(*dst));
+                strncpy(dst->id, s_model_files[i].id, sizeof(dst->id) - 1u);
+                dst->size = s_model_files[i].size;
+                dst->duration_ms = s_model_files[i].durationMs;
+                dst->synced = sync_marks_has(dst->id);
+                out++;
+            }
+            s_model_build.file_count = out;
+            s_model_build.total_count = (uint16_t)(total > UINT16_MAX ? UINT16_MAX : total);
+            device_model_recount(&s_model_build);
+        }
+    }
+    s_model_build.refreshing = false;
+    device_model_publish(&s_model_build);
+}
+
+static void handle_local_setting(buzz_local_setting_t setting)
+{
+    switch (setting) {
+    case BUZZ_LOCAL_SETTING_SCREEN_OFF: {
+        const uint8_t old = settings_get_u8(SETTINGS_SCREEN_OFF_S);
+        const uint8_t next = old == 10u ? 30u : old == 30u ? 60u : old == 60u ? 0u : 10u;
+        settings_set_u8(SETTINGS_SCREEN_OFF_S, next);
+        screen_pwr_set_timeout_ms((uint32_t)next * 1000u);
+        break;
+    }
+    case BUZZ_LOCAL_SETTING_QUALITY: {
+        const uint8_t next = settings_get_u8(SETTINGS_REC_QUALITY) == 0u ? 1u : 0u;
+        settings_set_u8(SETTINGS_REC_QUALITY, next);
+        buzz_recorder_set_bitrate(next == 1u ? 24000 : 0);
+        break;
+    }
+    case BUZZ_LOCAL_SETTING_BEEP: {
+        const uint8_t next = settings_get_u8(SETTINGS_BEEP_ENABLED) == 0u ? 1u : 0u;
+        settings_set_u8(SETTINGS_BEEP_ENABLED, next);
+        beep_set_enabled(next != 0u);
+        break;
+    }
+    default:
+        return;
+    }
+    const bool save_ok = settings_last_save_ok();
+    refresh_model(false);
+    if (!save_ok) {
+        publish_notice(DEVICE_NOTICE_SETTING_SAVE_FAILED);
+    }
+}
+
+static void handle_local_format(buzz_format_action_t action)
+{
+    device_model_snapshot(&s_model_build);
+    const bool busy = buzz_recorder_state() != BUZZ_REC_STATE_IDLE || buzz_dl_busy();
+    device_storage_state_t state = s_model_build.storage_state;
+    device_format_event_t evt;
+    if (action == BUZZ_FORMAT_CANCEL) {
+        evt = DEVICE_FORMAT_EVT_CANCEL;
+    } else if (action == BUZZ_FORMAT_CONFIRM) {
+        if (state == DEVICE_STORAGE_FORMAT_CANDIDATE ||
+            state == DEVICE_STORAGE_FORMAT_FAILED) {
+            state = device_format_transition(state, DEVICE_FORMAT_EVT_REQUEST, busy);
+        }
+        evt = DEVICE_FORMAT_EVT_CONFIRM;
+    } else {
+        evt = DEVICE_FORMAT_EVT_REQUEST;
+    }
+    const device_storage_state_t next = device_format_transition(state, evt, busy);
+    if (busy && (action == BUZZ_FORMAT_CONFIRM || action == BUZZ_FORMAT_REQUEST)) {
+        publish_notice(DEVICE_NOTICE_BUSY);
+        return;
+    }
+    if (next == DEVICE_STORAGE_FORMATTING) {
+        s_formatting = true;
+        server_reset();
+    }
+    s_model_build.storage_state = next;
+    device_model_publish(&s_model_build);
+    if (next != DEVICE_STORAGE_FORMATTING) {
+        return;
+    }
+
+    refresh_model(false);
+    const esp_err_t ret = buzz_sdcard_format();
+    s_formatting = false;
+    device_model_snapshot(&s_model_build);
+    state = device_format_transition(DEVICE_STORAGE_FORMATTING,
+                                     ret == ESP_OK ? DEVICE_FORMAT_EVT_SUCCEEDED
+                                                   : DEVICE_FORMAT_EVT_FAILED,
+                                     false);
+    s_model_build.storage_state = state;
+    s_model_build.storage_error = (int32_t)ret;
+    device_model_publish(&s_model_build);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "format failed: %s", esp_err_to_name(ret));
+        publish_notice(DEVICE_NOTICE_FORMAT_FAILED);
+        return;
+    }
+
+    const int clear_rc = sync_marks_clear();
+    (void)buzz_file_index_init(&s_file_io);
+    refresh_model(true);
+    publish_notice(clear_rc == 0 ? DEVICE_NOTICE_FORMAT_DONE
+                                 : DEVICE_NOTICE_FORMAT_SAVE_FAILED);
+}
+
 // ---------- 业务 JSON 组装 ----------
 
 // INFO（§8.1）：M5.4 起 battery/charging 取 AXP2101 平滑快照，未知电量报 -1；
@@ -239,6 +469,7 @@ static int handle_time_set(const char *json, char *resp, size_t resp_cap, int *e
         return (int)build_error_json(resp, resp_cap, BUZZ_ERR_CODE_INTERNAL,
                                      "rtc write failed");
     }
+    model_note_time_set(&local);
     const int n = snprintf(resp, resp_cap,
                            "{\"status\":\"ok\",\"epochMs\":%lld}",
                            (long long)epoch_ms);
@@ -366,6 +597,11 @@ static int control_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
     json[n] = '\0';
     char *out = (char *)resp; // server 响应缓冲（resp_cap = BUZZ_SERVER_RESP_CAP）
 
+    if (s_reject_storage_io &&
+        (req->type == BUZZ_TYPE_LIST_REQ || req->type == BUZZ_TYPE_FILE_INFO_REQ)) {
+        return (int)build_error_json(out, resp_cap, BUZZ_ERR_CODE_BUSY, "formatting busy");
+    }
+
     switch (req->type) {
     case BUZZ_TYPE_INFO_GET: {
         const size_t len = build_info_json(out, resp_cap);
@@ -412,6 +648,14 @@ static int server_send_glue(void *ctx, const uint8_t *frame, size_t len)
 static int file_handler(void *ctx, const buzz_frame_t *req, uint8_t *resp,
                         size_t resp_cap, int *err_code, const char **err_msg)
 {
+    if (s_reject_storage_io && req->type == BUZZ_TYPE_DL_BEGIN_REQ) {
+        if (resp_cap < 13u) {
+            return 0;
+        }
+        memset(resp, 0, 13u);
+        resp[0] = BUZZ_STATUS_BUSY;
+        return 13;
+    }
     return buzz_dl_handle_request(ctx, req, resp, resp_cap, err_code, err_msg);
 }
 
@@ -477,6 +721,7 @@ static void handle_event(buzz_ble_evt_t evt)
     default:
         break;
     }
+    refresh_model(false);
 }
 
 // ---------- host 任务上下文入口（只推队列，绝不碰 server/文件） ----------
@@ -490,6 +735,7 @@ static void on_gatt_write(const uint8_t *data, uint16_t len, void *ctx)
     }
     buzz_cmds_item_t item = {0};
     item.kind = BUZZ_CMDS_ITEM_CMD;
+    item.storage_busy = __atomic_load_n(&s_formatting, __ATOMIC_ACQUIRE);
     item.len = len;
     memcpy(item.data, data, len);
     if (xQueueSend(s_queue, &item, 0) != pdPASS) {
@@ -512,42 +758,97 @@ static void on_ble_evt(buzz_ble_evt_t evt, void *ctx)
     }
 }
 
+// ---------- 本地 UI / REPL 请求入口 ----------
+
+static esp_err_t post_local_item(buzz_cmds_item_kind_t kind, uint8_t value)
+{
+    if (s_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    buzz_cmds_item_t item = {0};
+    item.kind = (uint8_t)kind;
+    item.len = 1u;
+    item.data[0] = value;
+    return xQueueSend(s_queue, &item, 0) == pdPASS ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
+esp_err_t buzz_cmds_request_refresh(void)
+{
+    if (s_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (__atomic_test_and_set(&s_refresh_queued, __ATOMIC_ACQ_REL)) {
+        return ESP_OK;
+    }
+    const esp_err_t ret = post_local_item(BUZZ_CMDS_ITEM_REFRESH, 0u);
+    if (ret != ESP_OK) {
+        __atomic_clear(&s_refresh_queued, __ATOMIC_RELEASE);
+    }
+    return ret;
+}
+
+esp_err_t buzz_cmds_cycle_setting(buzz_local_setting_t setting)
+{
+    if (setting > BUZZ_LOCAL_SETTING_BEEP) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return post_local_item(BUZZ_CMDS_ITEM_SETTING, (uint8_t)setting);
+}
+
+esp_err_t buzz_cmds_format_action(buzz_format_action_t action)
+{
+    if (action > BUZZ_FORMAT_CONFIRM) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return post_local_item(BUZZ_CMDS_ITEM_FORMAT, (uint8_t)action);
+}
+
 // ---------- 服务任务 ----------
 
 static void buzz_cmds_task(void *arg)
 {
     (void)arg;
     buzz_cmds_item_t item;
+    int64_t last_progress_us = 0;
     ESP_LOGI(TAG, "service task started");
+    refresh_model(true);
     for (;;) {
-        // 下载进行中用 2ms 短滴答做背压轮询续发（TX 池由控制器完成包释放后
-        // 重试入队）；平时 1s 滴答兼作空闲断开计时（D10）。
         const TickType_t wait =
             buzz_dl_busy() ? pdMS_TO_TICKS(2) : pdMS_TO_TICKS(1000);
         if (xQueueReceive(s_queue, &item, wait) == pdPASS) {
             if (item.kind == BUZZ_CMDS_ITEM_CMD) {
-                s_idle_sec = 0; // 有入向流量即复位空闲计时（D10）
+                s_idle_sec = 0;
+                const bool was_busy = buzz_dl_busy();
+                s_reject_storage_io = item.storage_busy != 0u;
                 const int rc = buzz_server_feed(&s_server, item.data, item.len);
+                s_reject_storage_io = false;
                 if (rc != BUZZ_OK) {
                     ESP_LOGW(TAG, "server feed rc=%d", rc);
                 }
-                // 命令处理完立即泵推流：DL_BEGIN 受理后马上出首块（流控在 pump 内）
                 const int sent = buzz_dl_pump();
                 if (sent != 0) {
-                    s_idle_sec = 0; // 出向进度同样复位空闲计时（D10）
+                    s_idle_sec = 0;
                 }
-            } else {
+                refresh_model(was_busy && !buzz_dl_busy());
+            } else if (item.kind == BUZZ_CMDS_ITEM_EVT) {
                 handle_event((buzz_ble_evt_t)item.data[0]);
+            } else if (item.kind == BUZZ_CMDS_ITEM_REFRESH) {
+                __atomic_clear(&s_refresh_queued, __ATOMIC_RELEASE);
+                refresh_model(true);
+            } else if (item.kind == BUZZ_CMDS_ITEM_SETTING) {
+                handle_local_setting((buzz_local_setting_t)item.data[0]);
+            } else if (item.kind == BUZZ_CMDS_ITEM_FORMAT) {
+                handle_local_format((buzz_format_action_t)item.data[0]);
             }
             continue;
         }
         if (buzz_dl_busy()) {
-            // 传输即活跃（D10）：不计空闲；泵一次尝试续发（ENOMEM 时本轮 0 进展，
-            // 下个 2ms 滴答再试）。
             s_idle_sec = 0;
             const int sent = buzz_dl_pump();
-            if (sent != 0) {
-                s_idle_sec = 0;
+            const int64_t now = esp_timer_get_time();
+            if (now - last_progress_us >= 100000 || sent < 0) {
+                refresh_model(false);
+                last_progress_us = now;
             }
             continue;
         }
@@ -575,6 +876,7 @@ esp_err_t buzz_cmds_init(void)
     if (s_task != NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+    device_model_init();
     const int frc = buzz_file_index_init(&s_file_io);
     if (frc != BUZZ_OK) {
         ESP_LOGE(TAG, "file_index init failed rc=%d", frc);

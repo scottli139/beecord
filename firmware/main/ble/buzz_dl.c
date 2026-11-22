@@ -332,3 +332,18 @@ bool buzz_dl_busy(void)
 {
     return s_state != BUZZ_DL_STATE_IDLE;
 }
+
+void buzz_dl_snapshot(buzz_dl_snapshot_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    out->active = s_state != BUZZ_DL_STATE_IDLE;
+    out->wait_end = s_state == BUZZ_DL_STATE_WAIT_END;
+    out->sent_chunks = s_seq;
+    out->total_chunks = s_total_chunks;
+    if (out->active) {
+        strncpy(out->id, s_id, sizeof(out->id) - 1u);
+    }
+}

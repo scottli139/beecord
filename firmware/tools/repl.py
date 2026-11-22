@@ -69,7 +69,7 @@ def main() -> int:
     last_exc = None
     for attempt in range(5):
         try:
-            ser = serial.Serial(args.port, 115200, dsrdtr=False, timeout=0.1)
+            ser = serial.Serial(args.port, 115200, dsrdtr=False, timeout=0.1, write_timeout=2)
             break
         except OSError as exc:
             last_exc = exc

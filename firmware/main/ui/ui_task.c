@@ -9,6 +9,7 @@
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
 #include "bsp/touch.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch_ft5x06.h"
 #include "esp_log.h"
@@ -16,6 +17,7 @@
 #include "freertos/queue.h"
 
 #include "audio/buzz_recorder.h"
+#include "buzz_cmds.h"
 #include "screen_pwr.h"
 #include "scr_home.h"
 #include "scr_rec.h"
@@ -27,6 +29,8 @@
 #include "theme.h"
 #include "touch_indev.h"
 #include "ui_console.h"
+#include "ui_model.h"
+#include "scr_format.h"
 #include "ui_rec.h"
 #include "ui_snapshot.h"
 #include "ui_toast.h"
@@ -122,6 +126,10 @@ static void on_tile_changed(lv_event_t *e)
     // tile 是其父容器中第 N 个加入的子对象：index = row * 3 + col
     uint32_t idx = lv_obj_get_index(tile);
     dots_update((uint8_t)(idx % 3), idx / 3 == TILE_ROW_MAIN);
+    if (idx / 3 == TILE_ROW_MAIN &&
+        (idx % 3 == TILE_COL_LIST || idx % 3 == TILE_COL_SYNC)) {
+        (void)buzz_cmds_request_refresh();
+    }
 }
 
 // ---------- 导航 ----------
@@ -229,6 +237,12 @@ static void msg_pump(lv_timer_t *timer)
             // code=1：快照请求（渲染栈需求大，必须在 LVGL 任务执行）
             if (msg.code == 1) {
                 ui_snapshot_execute_from_ui_task();
+            } else if (msg.code == 2) {
+                scr_list_debug_scroll(msg.value);
+            } else if (msg.code == 3) {
+                scr_settings_debug_click((uint16_t)msg.value);
+            } else if (msg.code == 4) {
+                scr_format_debug_click(msg.value != 0);
             } else {
                 printf("ui msg: DEBUG code=%d value=%d\n", (int)msg.code, (int)msg.value);
             }
@@ -246,6 +260,10 @@ static void msg_pump(lv_timer_t *timer)
                                      evt == BUZZ_REC_EVT_MARKED);
             if (evt == BUZZ_REC_EVT_STOPPED) {
                 ui_toast_show("已保存", false);
+            }
+            if (evt == BUZZ_REC_EVT_STOPPED || evt == BUZZ_REC_EVT_ERROR ||
+                evt == BUZZ_REC_EVT_AUTO_STOPPED) {
+                (void)buzz_cmds_request_refresh();
             }
             break;
         }
@@ -427,6 +445,9 @@ esp_err_t ui_init(void)
 
     lv_screen_load(s_scr_main);
     bsp_display_brightness_set(100);
+    ui_model_start();
+    ESP_LOGI(TAG, "UI model up, internal free=%u bytes",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 
     bsp_display_unlock();
 

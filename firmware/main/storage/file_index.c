@@ -310,7 +310,9 @@ static int cmp_id_desc(const void *a, const void *b)
 // ---------- 索引重建 ----------
 
 typedef struct {
-    uint32_t count; // 已收集条数（达容量后忽略多余条目，total 另计）
+    uint32_t count;
+    uint32_t total;
+    bool io_error;
 } collect_ctx_t;
 
 static void collect_cb(void *cb_ctx, const char *name)
@@ -319,6 +321,21 @@ static void collect_cb(void *cb_ctx, const char *name)
     if (!buzz_file_index_id_match(name)) {
         return;
     }
+    void *fh = open_by_id(name);
+    if (fh == NULL) {
+        c->io_error = true;
+        return;
+    }
+    const long size = s_io.size(s_io.ctx, fh);
+    s_io.close(s_io.ctx, fh);
+    if (size < 0) {
+        c->io_error = true;
+        return;
+    }
+    if (size == 0) {
+        return;
+    }
+    c->total++;
     if (c->count < BUZZ_INDEX_MAX_FILES) {
         memset(&s_ids[c->count], 0, sizeof(s_ids[c->count]));
         strncpy(s_ids[c->count].id, name, BUZZ_FILE_ID_MAX_LEN);
@@ -327,16 +344,43 @@ static void collect_cb(void *cb_ctx, const char *name)
     }
 }
 
-typedef struct {
-    uint32_t total; // 匹配条目真实总数（不受容量截断影响）
-} count_ctx_t;
-
-static void count_cb(void *cb_ctx, const char *name)
+bool buzz_file_orphan_candidate(const char *name, uint32_t size, bool is_regular)
 {
-    count_ctx_t *c = cb_ctx;
-    if (buzz_file_index_id_match(name)) {
-        c->total++;
+    return is_regular && size == 0u && buzz_file_index_id_match(name);
+}
+
+static int index_list(uint32_t offset, uint32_t limit, buzz_file_entry_t *entries,
+                      uint32_t entries_cap, uint32_t *out_total, uint32_t *out_count)
+{
+    if (!s_ready || entries == NULL || out_total == NULL || out_count == NULL) {
+        return BUZZ_ERR_NULL;
     }
+    if (limit == 0u || limit > BUZZ_INDEX_MAX_FILES || entries_cap < limit) {
+        return BUZZ_ERR_ARG;
+    }
+
+    collect_ctx_t collector = {0};
+    const long n_list = s_io.listdir(s_io.ctx, collect_cb, &collector);
+    if (n_list < 0 || collector.io_error) {
+        return BUZZ_INDEX_ERR_IO;
+    }
+    const uint32_t stored = collector.count;
+    qsort(s_ids, stored, sizeof(s_ids[0]), cmp_id_desc);
+
+    uint32_t count = 0;
+    if (offset < stored) {
+        count = stored - offset;
+        if (count > limit) {
+            count = limit;
+        }
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        entries[i] = s_ids[offset + i];
+        (void)fill_entry(&entries[i]);
+    }
+    *out_total = collector.total;
+    *out_count = count;
+    return BUZZ_OK;
 }
 
 // ---------- 公开 API ----------
@@ -357,50 +401,19 @@ int buzz_file_index_init(const buzz_file_io_t *io)
 int buzz_file_index_list(uint32_t offset, uint32_t limit, buzz_file_entry_t *entries,
                          uint32_t entries_cap, uint32_t *out_total, uint32_t *out_count)
 {
-    if (!s_ready || entries == NULL || out_total == NULL || out_count == NULL) {
-        return BUZZ_ERR_NULL;
-    }
     if (limit == 0u) {
-        limit = BUZZ_INDEX_PAGE_MAX; // 缺省 16（§5.2）
+        limit = BUZZ_INDEX_PAGE_MAX;
     }
     if (limit > BUZZ_INDEX_PAGE_MAX) {
-        limit = BUZZ_INDEX_PAGE_MAX; // 上限 16
+        limit = BUZZ_INDEX_PAGE_MAX;
     }
-    if (entries_cap < limit) {
-        return BUZZ_ERR_ARG;
-    }
+    return index_list(offset, limit, entries, entries_cap, out_total, out_count);
+}
 
-    // 第一遍：计数（total 为真实总数，可大于索引容量）
-    count_ctx_t counter = {0};
-    const long n_total = s_io.listdir(s_io.ctx, count_cb, &counter);
-    if (n_total < 0) {
-        return BUZZ_INDEX_ERR_IO;
-    }
-
-    // 第二遍：收集 + 降序排序
-    collect_ctx_t collector = {0};
-    const long n_list = s_io.listdir(s_io.ctx, collect_cb, &collector);
-    if (n_list < 0) {
-        return BUZZ_INDEX_ERR_IO;
-    }
-    const uint32_t stored = collector.count;
-    qsort(s_ids, stored, sizeof(s_ids[0]), cmp_id_desc);
-
-    // 切片 [offset, offset+limit) ∩ [0, stored)
-    uint32_t count = 0;
-    if (offset < stored) {
-        count = stored - offset;
-        if (count > limit) {
-            count = limit;
-        }
-    }
-    for (uint32_t i = 0; i < count; i++) {
-        entries[i] = s_ids[offset + i]; // 先拷贝 id，再填元数据（失败则降级 0 值条目）
-        (void)fill_entry(&entries[i]);
-    }
-    *out_total = counter.total;
-    *out_count = count;
-    return BUZZ_OK;
+int buzz_file_index_list_all(buzz_file_entry_t *entries, uint32_t entries_cap,
+                             uint32_t *out_total, uint32_t *out_count)
+{
+    return index_list(0u, entries_cap, entries, entries_cap, out_total, out_count);
 }
 
 int buzz_file_index_info(const char *id, buzz_file_info_t *out)

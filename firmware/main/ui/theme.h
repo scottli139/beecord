@@ -29,7 +29,7 @@ extern "C" {
 #define UI_COLOR_TEXT_TERTIARY lv_color_hex(0x6E6E73)  // text.tertiary：弱提示
 // scrim.overlay rgba(0,0,0,.66)：遮罩用"黑底 + 透明度"两段式表达
 #define UI_COLOR_SCRIM lv_color_hex(0x000000)
-#define UI_OPA_SCRIM LV_OPA_66
+#define UI_OPA_SCRIM ((lv_opa_t)168)
 
 // 录音中横幅：红边 1px + state.recording 深红底（低不透明度的红，AMOLED 上近似深红）
 #define UI_COLOR_REC_BANNER_BG UI_COLOR_RECORDING

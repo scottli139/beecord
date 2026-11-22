@@ -151,3 +151,10 @@ bool sync_marks_last_save_ok(void)
 {
     return s_save_ok;
 }
+
+int sync_marks_clear(void)
+{
+    memset(s_names, 0, sizeof(s_names));
+    s_count = 0;
+    return persist() < 0 ? -2 : 0;
+}

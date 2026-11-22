@@ -56,6 +56,17 @@ int buzz_dl_pump(void);
 // 幂等；任意上下文可调用（仅触碰本模块静态状态，无 IO 发送）。
 void buzz_dl_cancel(void);
 
+typedef struct {
+    bool active;
+    bool wait_end;
+    char id[BUZZ_FILE_ID_MAX_LEN + 1u];
+    uint32_t sent_chunks;
+    uint32_t total_chunks;
+} buzz_dl_snapshot_t;
+
+// 当前文件进度（服务任务上下文读取；值为拷贝，不暴露内部缓冲）。
+void buzz_dl_snapshot(buzz_dl_snapshot_t *out);
+
 // 是否有活动传输（STREAMING / WAIT_END）。
 bool buzz_dl_busy(void);
 

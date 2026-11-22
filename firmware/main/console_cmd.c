@@ -13,6 +13,7 @@
 #include "bsp/esp32_s3_touch_amoled_2_06.h"
 #include "driver/i2c_master.h"
 #include "esp_check.h"
+#include "esp_attr.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -24,11 +25,13 @@
 #include "audio/buzz_recorder.h"
 #include "audio/rec_pipe.h"
 #include "ble/buzz_ble.h"
+#include "ble/buzz_cmds.h"
 #include "sys/keyd_gpio.h"
 #include "sys/power_axp.h"
 #include "sys/rtc.h"
 #include "sys/rtc_pcf.h"
 #include "sys/settings.h"
+#include "ui/device_model.h"
 
 static const char *TAG = "console";
 
@@ -264,7 +267,8 @@ static int cmd_heap(int argc, char **argv)
     (void)argv;
     printf("internal free: %" PRIu32 " B\n", esp_get_free_internal_heap_size());
     printf("total free:    %" PRIu32 " B (含 PSRAM)\n", esp_get_free_heap_size());
-    printf("min internal:  %" PRIu32 " B\n", esp_get_minimum_free_heap_size());
+    printf("min internal:  %" PRIu32 " B\n",
+           (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
     return 0;
 }
 
@@ -488,6 +492,44 @@ static int cmd_rtc(int argc, char **argv)
     return 0;
 }
 
+static EXT_RAM_BSS_ATTR device_snapshot_t s_debug_snapshot;
+
+static int cmd_model(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    device_model_snapshot(&s_debug_snapshot);
+    printf("generation: %" PRIu32 "\n", s_debug_snapshot.generation);
+    printf("storage:    state=%d error=%" PRId32 " total=%llu free=%llu\n",
+           (int)s_debug_snapshot.storage_state, s_debug_snapshot.storage_error,
+           (unsigned long long)s_debug_snapshot.storage_total,
+           (unsigned long long)s_debug_snapshot.storage_free);
+    printf("files:      count=%u total=%u pending=%u refreshing=%u\n",
+           (unsigned)s_debug_snapshot.file_count, (unsigned)s_debug_snapshot.total_count,
+           (unsigned)s_debug_snapshot.pending_count, (unsigned)s_debug_snapshot.refreshing);
+    printf("ble:        connected=%u subscribed=%u transfer=%d sent=%" PRIu32 "/%" PRIu32 "\n",
+           (unsigned)s_debug_snapshot.ble_connected, (unsigned)s_debug_snapshot.ble_subscribed,
+           (int)s_debug_snapshot.transfer_state, s_debug_snapshot.sent_chunks,
+           s_debug_snapshot.total_chunks);
+    return 0;
+}
+
+static int cmd_format(int argc, char **argv)
+{
+    if (argc < 2 || strcmp(argv[1], "confirm") != 0) {
+        printf("警告：格式化会清除卡上全部数据，且仅在无法识别的卡上可用。\n");
+        printf("用法: format confirm  显式确认并异步提交；结果见日志和屏幕\n");
+        return 1;
+    }
+    const esp_err_t ret = buzz_cmds_format_action(BUZZ_FORMAT_CONFIRM);
+    if (ret != ESP_OK) {
+        printf("格式化请求提交失败: %s\n", esp_err_to_name(ret));
+        return 1;
+    }
+    printf("格式化请求已提交，结果见日志和屏幕\n");
+    return 0;
+}
+
 // ---------- REPL 启动 ----------
 
 esp_err_t console_cmd_start_repl(void)
@@ -587,6 +629,18 @@ esp_err_t console_cmd_start_repl(void)
         .hint = "0|1",
         .func = &cmd_quality,
     };
+    const esp_console_cmd_t format_cmd = {
+        .command = "format",
+        .help = "格式化无法识别的 TF 卡（必须显式 confirm）",
+        .hint = "confirm",
+        .func = &cmd_format,
+    };
+    const esp_console_cmd_t model_cmd = {
+        .command = "model",
+        .help = "设备 UI 模型快照（存储/文件/BLE/传输状态）",
+        .hint = NULL,
+        .func = &cmd_model,
+    };
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rec_cmd), TAG, "register rec failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&ls_cmd), TAG, "register ls failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&get_cmd), TAG, "register get failed");
@@ -600,6 +654,8 @@ esp_err_t console_cmd_start_repl(void)
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&settings_cmd), TAG, "register settings failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&pwr_cmd), TAG, "register pwr failed");
     ESP_RETURN_ON_ERROR(esp_console_cmd_register(&rtc_cmd), TAG, "register rtc failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&format_cmd), TAG, "register format failed");
+    ESP_RETURN_ON_ERROR(esp_console_cmd_register(&model_cmd), TAG, "register model failed");
 
     ESP_RETURN_ON_ERROR(esp_console_start_repl(repl), TAG, "repl start failed");
 

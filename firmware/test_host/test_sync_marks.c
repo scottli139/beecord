@@ -206,6 +206,34 @@ static void test_capacity_boundary_exact(void)
     CHECK(sync_marks_add("REC_0000.OGG") == 1); // 已存在路径仍幂等
 }
 
+static void test_clear_persists_empty_and_allows_new_marks(void)
+{
+    backend_reset();
+    sync_marks_init(&s_store, NULL);
+    sync_marks_add("REC_0001.OGG");
+    sync_marks_add("REC_0002.WAV");
+    CHECK_EQ_INT(sync_marks_clear(), 0);
+    CHECK_EQ_INT(sync_marks_count(), 0u);
+    CHECK(!sync_marks_has("REC_0001.OGG"));
+    sync_marks_init(&s_store, NULL);
+    CHECK_EQ_INT(sync_marks_count(), 0u);
+    CHECK_EQ_INT(sync_marks_add("REC_0001.OGG"), 0);
+    CHECK(sync_marks_has("REC_0001.OGG"));
+}
+
+static void test_clear_empty_repeat_and_save_failure(void)
+{
+    backend_reset();
+    sync_marks_init(&s_store, NULL);
+    CHECK_EQ_INT(sync_marks_clear(), 0);
+    CHECK_EQ_INT(sync_marks_clear(), 0);
+    sync_marks_add("REC_0001.OGG");
+    s_fail_save = true;
+    CHECK_EQ_INT(sync_marks_clear(), -2);
+    CHECK_EQ_INT(sync_marks_count(), 0u);
+    CHECK(!sync_marks_last_save_ok());
+}
+
 int main(void)
 {
     RUN_TEST(test_add_has_count);
@@ -219,5 +247,7 @@ int main(void)
     RUN_TEST(test_save_failure_keeps_runtime);
     RUN_TEST(test_refresh_save_failure_returns_minus2);
     RUN_TEST(test_capacity_boundary_exact);
+    RUN_TEST(test_clear_persists_empty_and_allows_new_marks);
+    RUN_TEST(test_clear_empty_repeat_and_save_failure);
     return test_report();
 }

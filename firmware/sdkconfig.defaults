@@ -23,6 +23,7 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
 
 # Opus 定点模式（M3）：micro-opus 在 ESP32-S3 上默认启用浮点（有硬件 FPU），
 # 但其官方 benchmark 显示浮点 SILK 编码比定点慢 4~6 倍、最低复杂度也无法实时；
@@ -48,9 +49,9 @@ CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=50
 
 # LVGL（M5.1）：
 # - 快照组件：REPL `ui snap` 截图手段（lv_snapshot_take）。
-# - malloc 走 C 库（esp heap）：IDF 在 PSRAM 启用时 malloc 优先内部 RAM、
-#   耗尽自动落 8MB PSRAM；避免 LVGL 内置 64KB 池与音频/BLE 争内部 RAM，
-#   快照 ~412KB 缓冲因此可落 PSRAM。
+# - malloc 走 C 库（esp heap），避免 LVGL 内置 64KB 池与音频/BLE 争内部 RAM。
+#   普通 malloc 在 CAPS_ALLOC 模式下不会自动落 PSRAM：大快照缓冲显式 heap_caps
+#   分配；M5.5 的设备模型/虚拟列表快照以 EXT_RAM_BSS_ATTR 落 PSRAM。
 # - LVGL 行缓冲 40 行（BSP 该板型未暴露 PSRAM 缓冲开关，缓冲在内部 RAM：
 #   100 行 ≈82KB → 40 行 ≈33KB，余量留给 BLE/音频）。
 CONFIG_LV_USE_SNAPSHOT=y

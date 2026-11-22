@@ -38,8 +38,7 @@ static void fs_reset(void)
     g_read_bytes = 0;
 }
 
-// 同名覆盖（构造"同名不同 size"场景的测试工具）
-static void fs_add(const char *name, const uint8_t *data, uint32_t size)
+static void fs_put(const char *name, const uint8_t *data, uint32_t size)
 {
     for (int i = 0; i < g_fs_count; i++) {
         if (strcmp(g_fs[i].name, name) == 0) {
@@ -56,6 +55,20 @@ static void fs_add(const char *name, const uint8_t *data, uint32_t size)
     g_fs[g_fs_count].data = data;
     g_fs[g_fs_count].size = size;
     g_fs_count++;
+}
+
+static void fs_add(const char *name, const uint8_t *data, uint32_t size)
+{
+    if (data == NULL && size == 0u) {
+        data = (const uint8_t *)"x";
+        size = 1u;
+    }
+    fs_put(name, data, size);
+}
+
+static void fs_add_zero(const char *name)
+{
+    fs_put(name, NULL, 0u);
 }
 
 static void *fake_open(void *ctx, const char *path)
@@ -381,8 +394,8 @@ static void test_ogg_false_oggs_in_payload(void)
 static void test_zero_byte_files(void)
 {
     fixture();
-    fs_add("REC_0001.OGG", NULL, 0);
-    fs_add("REC_0002.WAV", NULL, 0);
+    fs_add_zero("REC_0001.OGG");
+    fs_add_zero("REC_0002.WAV");
     buzz_file_info_t ogg;
     buzz_file_info_t wav;
     CHECK_EQ_INT(buzz_file_index_info("REC_0001.OGG", &ogg), BUZZ_OK);
@@ -398,9 +411,37 @@ static void test_zero_byte_files(void)
     uint32_t total = 0;
     uint32_t count = 0;
     CHECK_EQ_INT(buzz_file_index_list(0, 16, g_entries, 16, &total, &count), BUZZ_OK);
-    CHECK_EQ_INT(count, 2);
-    CHECK_EQ_INT(g_entries[0].size, 0u);
-    CHECK_EQ_INT(g_entries[1].size, 0u);
+    CHECK_EQ_INT(total, 0u);
+    CHECK_EQ_INT(count, 0u);
+}
+
+static void test_zero_filter_mixed_and_list_all(void)
+{
+    fixture();
+    fs_add_zero("REC_0004.OGG");
+    fs_add_zero("REC_0003.WAV");
+    fs_add("REC_0002.OGG", NULL, 0);
+    fs_add_zero("README.TXT");
+    fs_add("REC_0001.WAV", NULL, 0);
+    static buzz_file_entry_t all[BUZZ_INDEX_MAX_FILES];
+    uint32_t total = 0;
+    uint32_t count = 0;
+    CHECK_EQ_INT(buzz_file_index_list_all(all, BUZZ_INDEX_MAX_FILES, &total, &count), BUZZ_OK);
+    CHECK_EQ_INT(total, 2u);
+    CHECK_EQ_INT(count, 2u);
+    CHECK(strcmp(all[0].id, "REC_0002.OGG") == 0);
+    CHECK(strcmp(all[1].id, "REC_0001.WAV") == 0);
+    CHECK(all[0].size > 0u && all[1].size > 0u);
+}
+
+static void test_orphan_candidate_rules(void)
+{
+    CHECK(buzz_file_orphan_candidate("REC_0001.OGG", 0u, true));
+    CHECK(buzz_file_orphan_candidate("REC_0002.WAV", 0u, true));
+    CHECK(!buzz_file_orphan_candidate("REC_0001.OGG", 1u, true));
+    CHECK(!buzz_file_orphan_candidate("REC_0001.OGG", 0u, false));
+    CHECK(!buzz_file_orphan_candidate("README.TXT", 0u, true));
+    CHECK(!buzz_file_orphan_candidate(NULL, 0u, true));
 }
 
 static void test_info_not_found(void)
@@ -599,6 +640,8 @@ int main(void)
     RUN_TEST(test_ogg_large_file_tail_scan);
     RUN_TEST(test_ogg_false_oggs_in_payload);
     RUN_TEST(test_zero_byte_files);
+    RUN_TEST(test_zero_filter_mixed_and_list_all);
+    RUN_TEST(test_orphan_candidate_rules);
     RUN_TEST(test_info_not_found);
     RUN_TEST(test_info_path_rejected);
     RUN_TEST(test_crc16_streaming_equivalence);

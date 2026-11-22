@@ -25,7 +25,7 @@
 > [`BRAND.md`](BRAND.md)（品牌资产）。实施约束：[`CODING_STANDARDS.md`](CODING_STANDARDS.md)、
 > [`TESTING.md`](TESTING.md)。
 > 已决工程参数：部署目标 **macOS 15**；原生 `.xcodeproj` 入库；仓内签名为 Manual + ad-hoc
-> （CI 用 `CODE_SIGNING_ALLOWED=NO`；本地真机调试用命令行覆盖个人证书，签名信息不入库）；
+> （CI 用 `CODE_SIGNING_ALLOWED=NO`；本地设备调试用命令行覆盖个人证书，签名信息不入库）；
 > Bundle ID `com.beeuc.beecord.studio`；Swift 6.3 / SwiftUI。
 
 ## 1. 目标与范围
