@@ -43,6 +43,7 @@
 > 关系：[`BRAND.md`](BRAND.md)（品牌：为什么长这样）→ **本文**（令牌+组件：长什么样）
 > → [`ux-design.md`](ux-design.md) / [`ux-device.md`](ux-device.md)（流程：怎么用）。
 > 图版：§7 三张 PNG（源文件 SVG 同目录）。
+> 演进储备：[UI 与主题架构演进储备](UI_THEME_STRATEGY.md)（非现行规范；后续实施须独立评审）。
 
 ## 1. 设计令牌（Design Tokens）
 
