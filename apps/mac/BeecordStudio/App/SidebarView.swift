@@ -1,14 +1,14 @@
 import SwiftUI
 
 /// 侧栏：品牌头 + 导航（设备/录音库/控制台[开发者模式门控]）+ 底部脚标行（连接状态 + 设置齿轮）。
-/// 设置为应用级入口（脚标行齿轮，打开标准 Settings 窗口 ⌘,），不占导航项、无 active 态（原型 v0.3）。
+/// 设置为应用级入口（脚标行齿轮，与 ⌘, 同开 Window(id: "settings")），不占导航项、无 active 态（原型 v0.3）。
 /// AX：`sidebar.brand` / `sidebar.navItem.{devices,library,console}` / `sidebar.deviceStatus` / `sidebar.settingsButton`。
 struct SidebarView: View {
     @Bindable var appModel: AppModel
     let settingsModel: SettingsModel
     let deviceViewModel: DeviceViewModel
 
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: DesignTokens.Space.s2) {
@@ -65,7 +65,7 @@ struct SidebarView: View {
     }
 
     /// 底部脚标行：连接状态（灰=未连接 / 绿=已连接 / 黄=蓝牙不可用）+ 右侧设置齿轮。
-    /// 齿轮打开标准 Settings 窗口（⌘, 同入口）；设置是应用级操作，不占导航项（原型 .dev-status + .dev-gear）。
+    /// 齿轮与菜单、⌘, 共用显式 Window(id: "settings")；设置是应用级操作，不占导航项。
     private var footerRow: some View {
         HStack(spacing: DesignTokens.Space.s2) {
             Circle()
@@ -75,13 +75,13 @@ struct SidebarView: View {
                 .font(DesignTokens.FontToken.callout)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .accessibilityIdentifier("sidebar.deviceStatus")
             Spacer()
-            SettingsGearButton { openSettings() }
+            SettingsGearButton { openWindow(id: "settings") }
         }
         .padding(.horizontal, DesignTokens.Space.s2)
         .padding(.vertical, DesignTokens.Space.s2)
         .background(DesignTokens.ColorToken.surfaceCard2, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
-        .accessibilityIdentifier("sidebar.deviceStatus")
     }
 
     private var statusText: String {

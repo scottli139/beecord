@@ -42,14 +42,14 @@ enum DesignTokens {
         static let sidebarMin: CGFloat = 180
         static let sidebarIdeal: CGFloat = 216
         static let sidebarMax: CGFloat = 240
-        /// 窗口默认 1280×800，最小 1140×680。库页两栏布局详情区承载走带/操作行与
+        /// 窗口默认 1180×680，最小 1140×680。库页两栏布局详情区承载走带/操作行与
         /// 转写·纪要长文本：最小宽 1140 下详情区 ≈564pt（不截断 + 基本可读），
-        /// 理想宽 1280 下 ≈704pt 舒适阅读（13" MacBook 逻辑 1440×900 可容）；
-        /// 最小高 680 保证播放器卡 + Tab 卡纵向同屏。
+        /// 默认宽 1180 略增阅读空间，同时保留桌面边距；
+        /// 最小高 680 保证播放器卡 + Tab 卡纵向同屏，超出详情内容独立滚动。
         static let windowMinWidth: CGFloat = 1140
         static let windowMinHeight: CGFloat = 680
-        static let windowIdealWidth: CGFloat = 1280
-        static let windowIdealHeight: CGFloat = 800
+        static let windowIdealWidth: CGFloat = 1180
+        static let windowIdealHeight: CGFloat = 680
         /// 空态卡片最小高度（原型 v0.2 `.card.empty-state` min-height 400）。
         static let emptyCardMinHeight: CGFloat = 400
     }

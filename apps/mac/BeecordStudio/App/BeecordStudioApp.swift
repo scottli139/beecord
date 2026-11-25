@@ -94,6 +94,16 @@ struct BeecordStudioApp: App {
         ))
     }
 
+    /// 连接方式变化后重建依赖传输层的设备/控制台栈；录音库与全局页面模型保持复用。
+    private func rebuildDeviceStackForTransportChange() {
+        deviceViewModel.prepareForReplacement()
+        let replacement = DeviceViewModel(appModel: appModel, settings: settingsModel)
+        deviceViewModel = replacement
+        consoleViewModel = ConsoleViewModel(appModel: appModel, deviceViewModel: replacement)
+        appModel.selectPage(.device)
+        replacement.onAppear()
+    }
+
     var body: some Scene {
         // 每次求值注入 openWindow 动作（幂等）；无恢复态冷启动时窗口补建靠 AppDelegate。
         let _ = appDelegate.openWindowAction = openWindow
@@ -137,7 +147,9 @@ struct BeecordStudioApp: App {
         }
         // 显式设置窗（替代自动 Settings 场景；同 id 幂等聚焦，不叠窗）
         Window("设置", id: "settings") {
-            SettingsView(settingsModel: settingsModel)
+            SettingsView(settingsModel: settingsModel) { _ in
+                rebuildDeviceStackForTransportChange()
+            }
         }
         .windowResizability(.contentSize)
     }

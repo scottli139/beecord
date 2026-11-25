@@ -8,6 +8,8 @@ import SwiftUI
 /// 字段真实持久化：AppStorage（key 前缀 `settings.`）+ API Key 走 Keychain。
 struct SettingsView: View {
     @Bindable var settingsModel: SettingsModel
+    /// 连接方式变化通知；默认空实现保证 Preview 与独立测试无需装配应用级重建逻辑。
+    var onTransportModeChange: (TransportMode) -> Void = { _ in }
 
     private let logger = Logger(subsystem: "com.beeuc.beecord.studio", category: "settings")
 
@@ -32,7 +34,11 @@ struct SettingsView: View {
         Section("通用") {
             Picker("连接方式", selection: Binding(
                 get: { TransportMode(rawValue: settingsModel.transportMode) ?? .loopback },
-                set: { settingsModel.setTransportMode($0) }
+                set: { mode in
+                    guard mode.rawValue != settingsModel.transportMode else { return }
+                    settingsModel.setTransportMode(mode)
+                    onTransportModeChange(mode)
+                }
             )) {
                 ForEach(TransportMode.allCases) { mode in
                     Text(mode.displayName).tag(mode)

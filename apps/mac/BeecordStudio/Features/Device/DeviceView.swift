@@ -35,6 +35,10 @@ struct DeviceView: View {
             Text("连接 Beecord 录音设备，同步机内录音")
                 .font(DesignTokens.FontToken.body)
                 .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+            Text("当前连接方式：\(viewModel.activeTransportMode.displayName)")
+                .font(DesignTokens.FontToken.caption)
+                .foregroundStyle(DesignTokens.ColorToken.textSecondary)
+                .accessibilityIdentifier("device.transportMode.\(viewModel.activeTransportMode.rawValue)")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, DesignTokens.Layout.mainPaddingHorizontal)

@@ -41,6 +41,9 @@ final class DeviceViewModel {
     /// 非 nil = 显示蓝牙权限面罩
     private(set) var permissionOverlay: PermissionReason?
 
+    /// 当前实际使用的传输方式（启动或运行时重建时确定；不直接读取可变的设置值）。
+    let activeTransportMode: TransportMode
+
     let settings: SettingsModel
 
     /// T7 帧旁听数据源（协议控制台订阅其 events；装配点 = init 的 tap 包装）
@@ -66,13 +69,17 @@ final class DeviceViewModel {
             state: .idle, rows: [], progress: nil, deviceInfo: nil, isStorageNearlyFull: false
         )
         // transport 工厂：loopback（默认）/ BLE（P0 单设备直连）
+        let transportMode = TransportMode(rawValue: settings.transportMode) ?? .loopback
+        self.activeTransportMode = transportMode
         let baseTransport: any BuzzLinkTransport
-        switch TransportMode(rawValue: settings.transportMode) ?? .loopback {
+        switch transportMode {
         case .ble:
             baseTransport = BLETransport()
         case .loopback:
             baseTransport = LoopbackTransport()
         }
+        LaunchTrace.mark("deviceVM.transport.\(transportMode.rawValue)")
+        logger.info("设备传输层已初始化：\(transportMode.rawValue, privacy: .public)")
         // T7 编辑点①：包 tap 装饰器——控制台帧旁听数据源；同步路径仅 copy + 增量重组
         // （FrameTapTransport 头注释），BLE/loopback 行为一致。
         let tap = FrameTapTransport(wrapping: baseTransport)
@@ -185,6 +192,14 @@ final class DeviceViewModel {
         }
     }
 
+    /// 传输方式切换前停用旧连接栈：静默取消流消费并断开，避免旧引擎继续上报或重连。
+    func prepareForReplacement() {
+        consumption.cancelAll()
+        Task { [engine] in
+            await engine.disconnect()
+        }
+    }
+
     func refreshTapped() {
         Task { [engine] in
             await engine.refresh()
@@ -272,9 +287,12 @@ final class DeviceViewModel {
             appModel.markSyncCompleted()
             appModel.showToast(ToastMessage(kind: .info, text: "同步完成，新增 \(newFiles) 个录音"))
         case .syncFailed(let message):
-            // BLE 模式授权就绪却连不上 → 推断蓝牙未开启/不支持，出面罩（不弹 toast）
-            if isBLEMode, BuzzLinkBluetooth.currentStatus() == .ready {
-                permissionOverlay = .bluetoothOff
+            // 只有传输层明确报告 bluetoothUnavailable 才显示电源/权限面罩；
+            // 扫描超时、服务发现失败等必须保留原始错误，不能误报为“蓝牙未开启”。
+            if isBLEMode, message == BuzzLinkError.bluetoothUnavailable.localizedDescription {
+                permissionOverlay = BuzzLinkBluetooth.currentStatus() == .denied
+                    ? .bluetoothDenied
+                    : .bluetoothOff
             } else if !(isLoopbackMode && isAutoConnectAttempt) {
                 appModel.showToast(ToastMessage(kind: .error, text: message))
             }

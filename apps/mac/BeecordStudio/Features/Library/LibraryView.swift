@@ -48,6 +48,7 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, DesignTokens.Layout.mainPaddingHorizontal)
         .padding(.vertical, DesignTokens.Layout.mainPaddingVertical)
+        .accessibilityIdentifier("library.pageHeader")
     }
 
     // MARK: - 空态（原型 library-empty：卡片 + 聚簇 +【前往设备同步】）
@@ -81,9 +82,16 @@ struct LibraryView: View {
         HStack(alignment: .top, spacing: DesignTokens.Space.s4) {
             recordingList
             Divider()
-            detailArea
+            ScrollView {
+                detailArea
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.bottom, DesignTokens.Layout.mainPaddingVertical)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("library.detailScrollView")
         }
         .padding(.horizontal, DesignTokens.Layout.mainPaddingHorizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     /// 左栏：排序标注 + 列表（列宽 280，规格见 DESIGN_SYSTEM §2 库列表行）
@@ -115,6 +123,7 @@ struct LibraryView: View {
             .accessibilityIdentifier("library.recordingTable")
         }
         .frame(width: 280)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
     /// 右栏：未选择态 / 详情占位

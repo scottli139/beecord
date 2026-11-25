@@ -139,7 +139,100 @@ final class BeecordStudioUITests: XCTestCase {
         XCTAssertTrue(element("settings.about.tagline").exists)
     }
 
-    // MARK: - 4. 开发者模式门控控制台
+    // MARK: - 4. 侧栏设置入口
+
+    func testSidebarSettingsButtonOpensSettingsWindow() throws {
+        launchWithSidebar()
+        let settingsButton = element("sidebar.settingsButton")
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5), "侧栏应显示设置按钮")
+        settingsButton.click()
+        XCTAssertTrue(
+            element("settings.autoSyncToggle").waitForExistence(timeout: 5),
+            "点击侧栏设置按钮应打开设置窗口"
+        )
+    }
+
+    // MARK: - 5. 切换连接方式后重建传输层
+
+    func testTransportModeChangeRebuildsDeviceStack() throws {
+        launchWithSidebar()
+        openSettings()
+        let picker = element("settings.transportPicker")
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "设置窗口应显示连接方式")
+        picker.click()
+        let bleItem = app.menuItems["蓝牙（BLE）"]
+        XCTAssertTrue(bleItem.waitForExistence(timeout: 3), "连接方式菜单应包含蓝牙")
+        bleItem.click()
+
+        XCTAssertTrue(
+            element("device.transportMode.ble").waitForExistence(timeout: 10),
+            "切换蓝牙后应重建并显示实际生效的 BLE 传输层"
+        )
+    }
+
+    // MARK: - 6. 录音详情展开不改变窗口与侧栏几何
+
+    func testLibrarySelectionKeepsWindowAndSidebarAnchored() throws {
+        guard let rootIndex = app.launchArguments.firstIndex(of: "-libraryRoot"),
+              app.launchArguments.indices.contains(rootIndex + 1) else {
+            XCTFail("缺少测试库根参数")
+            return
+        }
+        let root = URL(fileURLWithPath: app.launchArguments[rootIndex + 1], isDirectory: true)
+        for index in 0..<1 {
+            let id = String(format: "REC_LAYOUT_%02d", index)
+            let recordingURL = root.appendingPathComponent("Library/\(id)", isDirectory: true)
+            try FileManager.default.createDirectory(at: recordingURL, withIntermediateDirectories: true)
+            let meta: [String: Any] = [
+                "schemaVersion": 2,
+                "id": id,
+                "title": "布局回归录音 \(index + 1)",
+                "source": [
+                    "fileID": id, "deviceName": "布局设备",
+                    "deviceModel": "BCD", "fwVersion": "1.0"
+                ],
+                "durationMs": 120_000,
+                "sizeBytes": 0,
+                "crc16": 0,
+                "format": "ogg-opus",
+                "sampleRate": 16_000,
+                "channels": 1,
+                "importedAt": String(format: "2026-11-25T09:%02d:00Z", index),
+                "audio": ["ogg": "audio.ogg", "m4a": "audio.m4a"],
+                "transcribe": ["status": "none"],
+                "summary": ["status": "none"]
+            ]
+            try JSONSerialization.data(withJSONObject: meta, options: [.sortedKeys])
+                .write(to: recordingURL.appendingPathComponent("meta.json"))
+            XCTAssertTrue(FileManager.default.createFile(
+                atPath: recordingURL.appendingPathComponent("audio.ogg").path, contents: Data()
+            ))
+            XCTAssertTrue(FileManager.default.createFile(
+                atPath: recordingURL.appendingPathComponent("audio.m4a").path, contents: Data()
+            ))
+        }
+
+        launchWithSidebar()
+        element("sidebar.navItem.library").click()
+        let row = element("library.recordingTable.row.REC_LAYOUT_00")
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "预置录音应出现在列表")
+        let windowBefore = app.windows["main"].frame
+        let brandBefore = element("sidebar.brand").frame
+        let headerBefore = element("library.pageHeader").frame
+        row.click()
+        XCTAssertTrue(element("library.player.playButton").waitForExistence(timeout: 10))
+
+        let windowAfter = app.windows["main"].frame
+        let brandAfter = element("sidebar.brand").frame
+        let headerAfter = element("library.pageHeader").frame
+        XCTAssertEqual(windowAfter.minY, windowBefore.minY, accuracy: 1, "主窗口不应上移")
+        XCTAssertEqual(windowAfter.height, windowBefore.height, accuracy: 1, "主窗口高度不应被详情撑大")
+        XCTAssertEqual(brandAfter.minY, brandBefore.minY, accuracy: 1, "侧栏品牌区不应上移")
+        XCTAssertEqual(headerAfter.minY, headerBefore.minY, accuracy: 1, "录音库页头不应上移")
+        XCTAssertTrue(element("sidebar.settingsButton").isHittable, "设置按钮应始终可见可点击")
+    }
+
+    // MARK: - 7. 开发者模式门控控制台
 
     func testDeveloperModeRevealsConsole() throws {
         launchWithSidebar()

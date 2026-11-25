@@ -128,6 +128,17 @@ public final class BLETransport: NSObject, BuzzLinkTransport, @unchecked Sendabl
         stateContinuation.yield(.disconnected)
     }
 
+    /// Notify 订阅生效后才允许上层发送命令，避免首个 INFO_GET 的响应丢失。
+    private func finishConnectIfReady() {
+        guard connectContinuation != nil,
+              writeCharacteristic != nil,
+              notifyCharacteristic?.isNotifying == true else { return }
+        stateContinuation.yield(.ready)
+        let continuation = connectContinuation
+        connectContinuation = nil
+        continuation?.resume()
+    }
+
     /// write-without-response 背压续传（GATT 队列满时 peripheralIsReady 回调再推）
     private func drainPendingWrites(peripheral: CBPeripheral) {
         guard let writeCharacteristic else { return }
@@ -240,17 +251,34 @@ extension BLETransport: CBPeripheralDelegate {
                 writeCharacteristic = characteristic
             } else if characteristic.uuid == CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString) {
                 notifyCharacteristic = characteristic
-                peripheral.setNotifyValue(true, for: characteristic)
             }
         }
-        guard writeCharacteristic != nil, notifyCharacteristic != nil else {
+        guard writeCharacteristic != nil, let notifyCharacteristic else {
             failConnect(.transport("BuzzLink 特征不全"))
             return
         }
-        stateContinuation.yield(.ready)
-        let continuation = connectContinuation
-        connectContinuation = nil
-        continuation?.resume()
+        if notifyCharacteristic.isNotifying {
+            finishConnectIfReady()
+        } else {
+            peripheral.setNotifyValue(true, for: notifyCharacteristic)
+        }
+    }
+
+    public func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateNotificationStateFor characteristic: CBCharacteristic,
+        error: (any Error)?
+    ) {
+        guard characteristic.uuid == CBUUID(string: BuzzLinkConstants.eventNotifyUUIDString) else { return }
+        if let error {
+            failConnect(.transport("Notify 订阅失败：\(error.localizedDescription)"))
+            return
+        }
+        guard characteristic.isNotifying else {
+            failConnect(.transport("Notify 订阅未启用"))
+            return
+        }
+        finishConnectIfReady()
     }
 
     public func peripheral(
