@@ -9,8 +9,12 @@ LVGL 字体生成流水线。手表 Flash 资源紧张，中文按 **UI 文案�
 
 | 文件 | 源字体 | 字号/字重 | 用途（theme.h 宏） |
 |---|---|---|---|
-| `ui_font_cjk10.c` | 思源黑体 CN Regular | 10/400 | `FONT_TINY`——提示语、状态小件标签 |
-| `ui_font_cjk13.c` | 思源黑体 CN Regular | 13/400 | `FONT_BODY`——日期、横幅、正文 |
+| `ui_font_cjk10.c` | 思源黑体 CN Regular | 10/400 | `FONT_TINY`——状态小件标签、弱装饰文本 |
+| `ui_font_cjk11.c` | 思源黑体 CN Regular | 11/400 | `FONT_CAPTION`——列表副标题、页面弱提示 |
+| `ui_font_cjk12.c` | 思源黑体 CN Regular | 12/400 | `FONT_CALLOUT`——状态栏、横幅、键值行、设置值、Toast |
+| `ui_font_cjk13.c` | 思源黑体 CN Regular | 13/400 | `FONT_BODY`——列表、正文 |
+| `ui_font_cjk13b.c` | 思源黑体 CN Bold | 13/700 | `FONT_BODY_STRONG`——卡片标题、告警标题（代设计 13/600） |
+| `ui_font_cjk14.c` | 思源黑体 CN Regular | 14/400 | `FONT_SUBTITLE`——表盘日期、次按钮文字 |
 | `ui_font_cjk15b.c` | 思源黑体 CN Bold | 15/700 | `FONT_TITLE`——页面标题、状态小件值（代设计 16/600，无对应字重） |
 | `ui_font_num56.c` | Montserrat Light | 56/300 | `FONT_TIMER`——录音计时（数字+冒号+连字符） |
 | `ui_font_num64.c` | Montserrat Light | 64/300 | `FONT_DISPLAY`——表盘时间（数字+冒号+连字符） |

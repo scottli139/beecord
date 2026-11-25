@@ -90,12 +90,12 @@ void scr_format_create(void)
     lv_obj_center(mark);
 
     s_title = lv_label_create(card);
-    ui_theme_apply_text(s_title, FONT_TITLE, UI_COLOR_TEXT_PRIMARY);
+    ui_theme_apply_text(s_title, FONT_BODY_STRONG, UI_COLOR_TEXT_PRIMARY);
     lv_obj_set_width(s_title, LV_PCT(100));
     lv_obj_set_style_text_align(s_title, LV_TEXT_ALIGN_CENTER, 0);
 
     s_description = lv_label_create(card);
-    ui_theme_apply_text(s_description, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
+    ui_theme_apply_text(s_description, FONT_CALLOUT, UI_COLOR_TEXT_SECONDARY);
     lv_obj_set_width(s_description, LV_PCT(100));
     lv_label_set_long_mode(s_description, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(s_description, LV_TEXT_ALIGN_CENTER, 0);

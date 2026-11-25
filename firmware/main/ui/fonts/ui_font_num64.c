@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 64 px
  * Bpp: 4
- * Opts: --font /Volumes/hagibis1t/huicom/study/ai-recorder/beecord/firmware/tools/font_gen/vendor/Montserrat_300Light.ttf --size 64 --bpp 4 --format lvgl --no-compress --symbols 0123456789:- --output /Volumes/hagibis1t/huicom/study/ai-recorder/beecord/firmware/tools/font_gen/../../main/ui/fonts/ui_font_num64.c
+ * Opts: --font /Volumes/hagibis1t/huicom/study/ai-recorder/beecord/beecord/firmware/tools/font_gen/vendor/Montserrat_300Light.ttf --size 64 --bpp 4 --format lvgl --no-compress --symbols 0123456789:- --output /Volumes/hagibis1t/huicom/study/ai-recorder/beecord/beecord/firmware/tools/font_gen/../../main/ui/fonts/ui_font_num64.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

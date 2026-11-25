@@ -16,7 +16,6 @@
 static lv_obj_t *s_rec_dot;
 static lv_obj_t *s_pct_label;
 static lv_obj_t *s_time_label;
-static lv_obj_t *s_sec_label;
 static lv_obj_t *s_date_label;
 static lv_obj_t *s_batt_fill;
 static lv_obj_t *s_bolt_canvas;
@@ -108,7 +107,7 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_style_pad_all(s_ble_dot, 0, 0);
     lv_obj_t *ble_txt = lv_label_create(ble);
     lv_label_set_text(ble_txt, "BLE");
-    ui_theme_apply_text(ble_txt, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
+    ui_theme_apply_text(ble_txt, FONT_CALLOUT, UI_COLOR_TEXT_SECONDARY);
 
     // 右：电量（M5.4 接 AXP2101：未知 "--%"+空壳，不伪造值）+ 电池壳 + 充电闪电 + REC 点
     lv_obj_t *pwr = lv_obj_create(bar);
@@ -123,7 +122,7 @@ static void status_bar_create(lv_obj_t *page)
     lv_obj_set_scrollable(pwr, false);
     s_pct_label = lv_label_create(pwr);
     lv_label_set_text(s_pct_label, "--%"); // 未读到有效数据的未知态
-    ui_theme_apply_text(s_pct_label, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
+    ui_theme_apply_text(s_pct_label, FONT_CALLOUT, UI_COLOR_TEXT_SECONDARY);
 
     // 充电闪电（§3：充电加闪电；2px 圆头线性小图标等效——I1 canvas 位图）
     s_bolt_canvas = lv_canvas_create(pwr);
@@ -214,11 +213,11 @@ static void banner_create(lv_obj_t *page)
     lv_obj_set_style_pad_all(s_banner_dot, 0, 0);
     s_banner_text = lv_label_create(left);
     lv_label_set_text(s_banner_text, "录音中 00:00");
-    ui_theme_apply_text(s_banner_text, FONT_CAPTION, UI_COLOR_TEXT_PRIMARY);
+    ui_theme_apply_text(s_banner_text, FONT_CALLOUT, UI_COLOR_TEXT_PRIMARY);
 
     lv_obj_t *go = lv_label_create(s_banner);
     lv_label_set_text(go, "查看 ›");
-    ui_theme_apply_text(go, FONT_CAPTION, UI_COLOR_TEXT_SECONDARY);
+    ui_theme_apply_text(go, FONT_CALLOUT, UI_COLOR_TEXT_SECONDARY);
 
     lv_obj_set_hidden(s_banner, true);
 }
@@ -372,16 +371,14 @@ static void clock_timer_cb(lv_timer_t *timer)
     bool valid = false;
     rtc_pcf_clock_snapshot(&dt, &valid);
     if (!valid) {
-        lv_label_set_text(s_time_label, "--:--");
-        lv_label_set_text(s_sec_label, "--");
+        lv_label_set_text(s_time_label, "--:--:--");
         lv_label_set_text(s_date_label, "未对时");
         return;
     }
     char buf[24];
-    snprintf(buf, sizeof(buf), "%02u:%02u", (unsigned)dt.hour, (unsigned)dt.minute);
+    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", (unsigned)dt.hour, (unsigned)dt.minute,
+             (unsigned)dt.second);
     lv_label_set_text(s_time_label, buf);
-    snprintf(buf, sizeof(buf), ":%02u", (unsigned)dt.second);
-    lv_label_set_text(s_sec_label, buf);
     snprintf(buf, sizeof(buf), "%u月%u日 %s", (unsigned)dt.month, (unsigned)dt.day,
              s_weekday_cn[rtc_weekday(&dt)]);
     lv_label_set_text(s_date_label, buf);
@@ -398,8 +395,7 @@ void scr_home_create(lv_obj_t *tile)
 
     status_bar_create(page);
 
-    // 大时间（M5.4 收尾接真：display64 HH:MM + 基线右侧小号秒 :SS；未对时 --:-- --）。
-    // 秒对齐：行容器底对齐 + 秒标签底部内缩（display 数字基线以下的下沉量）。
+    // 大时间：HH:MM:SS 统一 display64；两个冒号与时分秒同字号、同颜色、同基线。
     lv_obj_t *time_row = lv_obj_create(page);
     lv_obj_set_size(time_row, LV_SIZE_CONTENT, 84);
     lv_obj_set_style_bg_opa(time_row, 0, 0);
@@ -408,22 +404,16 @@ void scr_home_create(lv_obj_t *tile)
     lv_obj_set_flex_flow(time_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(time_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(time_row, 2, 0);
     lv_obj_set_scrollable(time_row, false);
     lv_obj_align(time_row, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_margin_top(time_row, UI_SPACE_8, 0);
 
     s_time_label = lv_label_create(time_row);
     ui_theme_apply_text(s_time_label, FONT_DISPLAY, UI_COLOR_TEXT_PRIMARY);
-    lv_label_set_text(s_time_label, "--:--");
-
-    s_sec_label = lv_label_create(time_row);
-    ui_theme_apply_text(s_sec_label, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
-    lv_label_set_text(s_sec_label, "--");
-    lv_obj_set_style_margin_bottom(s_sec_label, 8, 0); // 秒贴 display 基线
+    lv_label_set_text(s_time_label, "--:--:--");
 
     s_date_label = lv_label_create(page);
-    ui_theme_apply_text(s_date_label, FONT_BODY, UI_COLOR_TEXT_SECONDARY);
+    ui_theme_apply_text(s_date_label, FONT_SUBTITLE, UI_COLOR_TEXT_SECONDARY);
     lv_label_set_text(s_date_label, "未对时");
     lv_obj_set_style_text_align(s_date_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_date_label, LV_ALIGN_TOP_MID, 0, 0);

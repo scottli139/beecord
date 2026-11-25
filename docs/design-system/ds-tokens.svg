@@ -109,17 +109,20 @@
     <text x="60" y="960" font-size="18">0123456789 <tspan font-size="10" fill="#6E6E73">tabular · 计时/数值</tspan></text>
   </g>
   <g font-family="Helvetica Neue, PingFang SC, sans-serif" fill="#ECECF1">
-    <text x="620" y="836" font-size="56" font-weight="200">14:05</text>
-    <text x="830" y="836" font-size="10" fill="#6E6E73">display · Montserrat 64/200（图示 56）</text>
-    <text x="620" y="896" font-size="40" font-weight="200">00:12:34</text>
-    <text x="830" y="896" font-size="10" fill="#6E6E73">timer · Montserrat 56/200（图示 40）</text>
-    <text x="620" y="932" font-size="15" font-weight="600">页面标题 <tspan font-size="10" fill="#6E6E73">title · 思源 15/600</tspan></text>
-    <text x="620" y="956" font-size="13">录音列表正文 <tspan font-size="10" fill="#6E6E73">body · 思源 13/400</tspan></text>
-    <text x="620" y="976" font-size="11" fill="#C7C7CC">辅助说明 <tspan font-size="10" fill="#6E6E73">caption · 11/400</tspan></text>
-    <text x="620" y="994" font-size="10" fill="#9A9AA2">仅提示语 <tspan font-size="10" fill="#6E6E73">tiny · 10/400</tspan></text>
+    <text x="620" y="830" font-size="56" font-weight="200">14:05</text>
+    <text x="830" y="830" font-size="10" fill="#6E6E73">display · Montserrat 64/200（图示 56）</text>
+    <text x="620" y="882" font-size="40" font-weight="200">00:12:34</text>
+    <text x="830" y="882" font-size="10" fill="#6E6E73">timer · Montserrat 56/200（图示 40）</text>
+    <text x="620" y="912" font-size="15" font-weight="600">页面标题 <tspan font-size="10" fill="#6E6E73">title · 思源 15/600</tspan></text>
+    <text x="620" y="934" font-size="14" fill="#C7C7CC">表盘日期 <tspan font-size="10" fill="#6E6E73">subtitle · 思源 14/400</tspan></text>
+    <text x="620" y="956" font-size="13" font-weight="600">卡片标题 <tspan font-size="10" fill="#6E6E73">bodyStrong · 思源 13/600</tspan></text>
+    <text x="620" y="978" font-size="13">录音列表正文 <tspan font-size="10" fill="#6E6E73">body · 思源 13/400</tspan></text>
+    <text x="620" y="998" font-size="12" fill="#C7C7CC">状态与键值 <tspan font-size="10" fill="#6E6E73">callout · 12/400</tspan></text>
+    <text x="620" y="1018" font-size="11" fill="#C7C7CC">列表副标题 <tspan font-size="10" fill="#6E6E73">caption · 11/400</tspan></text>
+    <text x="620" y="1038" font-size="10" fill="#9A9AA2">小件与弱提示 <tspan font-size="10" fill="#6E6E73">tiny · 10/400</tspan></text>
   </g>
-  <line x1="580" y1="780" x2="580" y2="1010" stroke="#2A2A2E" stroke-width="1"/>
-  <line x1="1080" y1="780" x2="1080" y2="1010" stroke="#2A2A2E" stroke-width="1"/>
+  <line x1="580" y1="780" x2="580" y2="1050" stroke="#2A2A2E" stroke-width="1"/>
+  <line x1="1080" y1="780" x2="1080" y2="1050" stroke="#2A2A2E" stroke-width="1"/>
   <text x="60" y="750" font-size="12" fill="#8E8E93" font-family="Helvetica Neue, PingFang SC, sans-serif">Mac（左，SwiftUI 系统样式）· 手表（右，LVGL 字号）</text>
 
   <!-- ③ 间距与圆角 -->

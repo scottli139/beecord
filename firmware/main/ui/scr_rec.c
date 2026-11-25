@@ -336,7 +336,7 @@ void scr_rec_create(void)
     lv_obj_set_scrollable(s_pause_btn, false);
     lv_obj_set_clickable(s_pause_btn, true);
     s_pause_lab = lv_label_create(s_pause_btn);
-    ui_theme_apply_text(s_pause_lab, FONT_BODY, UI_COLOR_TEXT_PRIMARY);
+    ui_theme_apply_text(s_pause_lab, FONT_SUBTITLE, UI_COLOR_TEXT_PRIMARY);
     lv_label_set_text(s_pause_lab, "暂停");
     lv_obj_center(s_pause_lab);
     lv_obj_add_event_cb(s_pause_btn, pause_btn_event, LV_EVENT_CLICKED, NULL);
@@ -363,7 +363,7 @@ void scr_rec_create(void)
     lv_obj_set_scrollable(s_hold_fill, false);
     lv_obj_set_clickable(s_hold_fill, false);
     s_hold_lab = lv_label_create(s_hold_area);
-    ui_theme_apply_text(s_hold_lab, FONT_BODY, UI_COLOR_RECORDING);
+    ui_theme_apply_text(s_hold_lab, FONT_SUBTITLE, UI_COLOR_RECORDING);
     lv_label_set_text(s_hold_lab, "按住停止");
     lv_obj_center(s_hold_lab);
     // LVGL 9 add_event_cb 过滤参为单个事件码：按位或会注册到不存在的码上

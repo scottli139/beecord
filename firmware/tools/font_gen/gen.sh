@@ -2,10 +2,13 @@
 # Beecord 手表 UI 字体子集生成脚本（M5.1，词表法）。
 #
 # 产物（入仓，构建不依赖 node/网络）：
-#   main/ui/fonts/ui_font_cjk10.c    思源黑体 CN Regular 10px（tiny：提示语/状态小件标签）
-#   main/ui/fonts/ui_font_cjk11.c    思源黑体 CN Regular 11px（caption：状态栏/辅助说明）
-#   main/ui/fonts/ui_font_cjk13.c    思源黑体 CN Regular 13px（body：日期/正文）
-#   main/ui/fonts/ui_font_cjk15b.c   思源黑体 CN Bold    15px（title：页面标题/小件值，代设计 16/600）
+#   main/ui/fonts/ui_font_cjk10.c    思源黑体 CN Regular 10px（tiny：状态小件标签/弱装饰文本）
+#   main/ui/fonts/ui_font_cjk11.c    思源黑体 CN Regular 11px（caption：列表副标题/页面弱提示）
+#   main/ui/fonts/ui_font_cjk12.c    思源黑体 CN Regular 12px（callout：状态栏/键值行/Toast）
+#   main/ui/fonts/ui_font_cjk13.c    思源黑体 CN Regular 13px（body：列表/正文）
+#   main/ui/fonts/ui_font_cjk13b.c   思源黑体 CN Bold    13px（bodyStrong：卡片/告警标题，代 600）
+#   main/ui/fonts/ui_font_cjk14.c    思源黑体 CN Regular 14px（subtitle：表盘日期/次按钮）
+#   main/ui/fonts/ui_font_cjk15b.c   思源黑体 CN Bold    15px（title：页面标题/小件值，代 600）
 #   main/ui/fonts/ui_font_num56.c    Montserrat Light  56px（timer：录音计时，数字+冒号+连字符）
 #   main/ui/fonts/ui_font_num64.c    Montserrat Light  64px（display：表盘时间，数字+冒号+连字符）
 #
@@ -73,7 +76,10 @@ conv() { # $1=源字体 $2=字号 $3=产物名 $4=词表
 
 conv "$VENDOR/$SHANS_REG"   10 ui_font_cjk10  "$CHARS"
 conv "$VENDOR/$SHANS_REG"   11 ui_font_cjk11  "$CHARS"
+conv "$VENDOR/$SHANS_REG"   12 ui_font_cjk12  "$CHARS"
 conv "$VENDOR/$SHANS_REG"   13 ui_font_cjk13  "$CHARS"
+conv "$VENDOR/$SHANS_BOLD"  13 ui_font_cjk13b "$CHARS"
+conv "$VENDOR/$SHANS_REG"   14 ui_font_cjk14  "$CHARS"
 conv "$VENDOR/$SHANS_BOLD"  15 ui_font_cjk15b "$CHARS"
 
 # 大数字覆盖计时数字、冒号与未对时占位符连字符

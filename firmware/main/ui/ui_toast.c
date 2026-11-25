@@ -89,6 +89,6 @@ static void toast_ensure_created(void)
     lv_obj_align(s_toast, LV_ALIGN_TOP_MID, 0, UI_SAFE_TOP + UI_SPACE_1);
 
     s_label = lv_label_create(s_toast);
-    ui_theme_apply_text(s_label, FONT_CAPTION, UI_COLOR_TEXT_PRIMARY);
+    ui_theme_apply_text(s_label, FONT_CALLOUT, UI_COLOR_TEXT_PRIMARY);
     lv_obj_set_hidden(s_toast, true);
 }

@@ -69,16 +69,22 @@ extern "C" {
 #define UI_REC_PULSE_MS 1200     // REC 点 pulse 循环（透明度 1→0.25）
 
 // ---------- 字体（§1.2 手表列；生成物见 main/ui/fonts/ 与 tools/font_gen/） ----------
-extern const lv_font_t ui_font_cjk10;  // 思源黑体 CN 10/400（tiny，仅提示语与小件标签）
-extern const lv_font_t ui_font_cjk11;  // 思源黑体 CN 11/400（caption，辅助说明/状态栏）
+extern const lv_font_t ui_font_cjk10;  // 思源黑体 CN 10/400（tiny：小件标签与弱装饰文本）
+extern const lv_font_t ui_font_cjk11;  // 思源黑体 CN 11/400（caption：列表副标题/弱提示）
+extern const lv_font_t ui_font_cjk12;  // 思源黑体 CN 12/400（callout：状态栏/键值行/Toast）
 extern const lv_font_t ui_font_cjk13;  // 思源黑体 CN 13/400（body）
+extern const lv_font_t ui_font_cjk13b; // 思源黑体 CN 13/700（bodyStrong；代设计 600 档）
+extern const lv_font_t ui_font_cjk14;  // 思源黑体 CN 14/400（subtitle：日期/次按钮）
 extern const lv_font_t ui_font_cjk15b; // 思源黑体 CN 15/700（title；代设计 600 档）
 extern const lv_font_t ui_font_num56;  // Montserrat Light 56（timer）
 extern const lv_font_t ui_font_num64;  // Montserrat Light 64（display）
 
 #define FONT_TINY (&ui_font_cjk10)
 #define FONT_CAPTION (&ui_font_cjk11)
+#define FONT_CALLOUT (&ui_font_cjk12)
 #define FONT_BODY (&ui_font_cjk13)
+#define FONT_BODY_STRONG (&ui_font_cjk13b)
+#define FONT_SUBTITLE (&ui_font_cjk14)
 #define FONT_TITLE (&ui_font_cjk15b)
 #define FONT_TIMER (&ui_font_num56)
 #define FONT_DISPLAY (&ui_font_num64)
@@ -91,8 +97,24 @@ extern const lv_font_t ui_font_num64;  // Montserrat Light 64（display）
 #define UI_REC_BANNER_H 36        // 录音中横幅
 #define UI_PAGE_DOT 6             // 页面指示点
 #define UI_PAGE_DOT_GAP 6
+#define UI_PAGE_TITLE_BOTTOM 10   // 页面标题下留白（组件规格）
 #define UI_WIDGET_H 60            // 状态小件卡（3 等分）
 #define UI_TOUCH_MIN 48           // 触控目标最小边
+
+// 列表行：标题 + 副标题成组居中；10/12/14 等组件值以 §3 为准，不套用 4 倍数刻度
+#define UI_LIST_ROW_H 56
+#define UI_LIST_ROW_GAP UI_SPACE_2
+#define UI_LIST_ROW_STRIDE (UI_LIST_ROW_H + UI_LIST_ROW_GAP)
+#define UI_LIST_ROW_PAD_X 12
+#define UI_LIST_ROW_PAD_Y 10
+#define UI_LIST_TEXT_GAP UI_SPACE_1
+#define UI_LIST_SYNC_W 24
+
+// 卡片：同步页键值行与自然高度，空闲进度区不占位
+#define UI_CARD_PAD 14
+#define UI_CARD_GAP 10
+#define UI_CARD_TITLE_GAP UI_SPACE_2
+#define UI_CARD_KV_PAD_Y 3
 
 // 常用文字样式速设（须在持有 LVGL 锁时调用）
 void ui_theme_apply_screen(lv_obj_t *screen);           // 纯黑背景
