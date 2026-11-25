@@ -31,7 +31,7 @@
   .batt .shell i{ position:absolute;inset:1.5px;background:var(--green);border-radius:1px; }
 
   /* 表盘主页 */
-  .h-time{ font-size:64px;font-weight:200;text-align:center;margin-top:26px;letter-spacing:1px; }
+  .h-time{ font-size:64px;font-weight:200;text-align:center;margin-top:26px;letter-spacing:1px;font-variant-numeric:tabular-nums; }
   .h-date{ text-align:center;color:var(--text2);font-size:14px;margin-top:2px; }
   .h-comps{ display:flex;gap:10px;margin:30px 6px 0; }
   .comp{ flex:1;background:var(--card);border-radius:14px;padding:12px 8px;text-align:center; }
@@ -160,7 +160,7 @@
             <span class="ble" id="h-ble"><i></i>BLE</span>
             <span class="batt"><span id="h-batt">68%</span><span class="shell"><i id="h-batt-i" style="width:68%"></i></span></span>
           </div>
-          <div class="h-time" id="h-time">14:05<span id="h-sec" style="font-size:15px;font-weight:400;color:var(--text2);margin-left:4px;">:42</span></div>
+          <div class="h-time" id="h-time">14:05:42</div>
           <div class="h-date" id="h-date">10月14日 周二</div>
           <div class="h-recb" id="h-recb"><i></i><span id="h-recb-t">录音中 00:00</span><span style="margin-left:auto;color:var(--text2)">查看 ›</span></div>
           <div class="h-comps">
@@ -716,12 +716,10 @@ function updStatus(){
 /* ---------- 主循环 ---------- */
 setInterval(()=>{
   const now=Date.now(), d=new Date();
-  // 表盘时间：HH:MM（主）+ 基线右侧小号秒（固件 M5.4 收尾形态）；未对时态原型不模拟
-  const hm=p2(d.getHours())+":"+p2(d.getMinutes());
+  // 表盘时间：HH:MM:SS 同字号、同基线；tabular 数字位宽固定，未对时态原型不模拟
+  const hms=p2(d.getHours())+":"+p2(d.getMinutes())+":"+p2(d.getSeconds());
   const timeEl=$("h-time");
-  if(timeEl.childNodes[0].textContent!==hm) timeEl.childNodes[0].textContent=hm;
-  const sec=":"+p2(d.getSeconds());
-  if($("h-sec").textContent!==sec) $("h-sec").textContent=sec;
+  if(timeEl.textContent!==hms) timeEl.textContent=hms;
   if(S.power&&!S.screenOff&&now-lastAct>S.set.timeout*1000) setOff(true);
   if(S.rec&&!S.rec.paused){
     S.rec.t+=0.25;

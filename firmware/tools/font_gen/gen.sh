@@ -87,6 +87,9 @@ NUM_CHARS="0123456789:-"
 conv "$VENDOR/$MONTS_LIGHT" 56 ui_font_num56 "$NUM_CHARS"
 conv "$VENDOR/$MONTS_LIGHT" 64 ui_font_num64 "$NUM_CHARS"
 
+# Montserrat 源字体是比例数字：统一 0–9 advance 并将原始字形居中，避免时间/计时跳动。
+python3 "$GEN_DIR/tabularize.py" "$OUT_DIR/ui_font_num56.c" "$OUT_DIR/ui_font_num64.c"
+
 echo ">> 完成，产物："
 ls -l "$OUT_DIR"/ui_font_*.c
 echo ">> 总体积: $(du -ck "$OUT_DIR"/ui_font_*.c | tail -1 | cut -f1) KB（目标 <200KB）"

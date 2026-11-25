@@ -12,6 +12,8 @@ import re
 import sys
 from pathlib import Path
 
+from font_gen.tabularize import tabular_errors
+
 UI_DIR = Path(__file__).resolve().parent.parent / "main" / "ui"
 FONT_DIR = UI_DIR / "fonts"
 CHARSET = Path(__file__).resolve().parent / "font_gen" / "charset.txt"
@@ -65,7 +67,12 @@ def numeric_font_errors():
         chars = {chr(int(codepoint, 16)) for codepoint in GLYPH_COMMENT.findall(text)}
         missing = sorted(NUMERIC_REQUIRED - chars)
         if missing:
-            errors.append(f"{name}: {' '.join(missing)}")
+            errors.append(f"{name}: 缺少 {' '.join(missing)}")
+            continue
+        try:
+            errors.extend(f"{name}: {error}" for error in tabular_errors(text))
+        except ValueError as exc:
+            errors.append(f"{name}: {exc}")
     return errors
 
 
@@ -81,12 +88,12 @@ def main():
         return 1
     numeric_errors = numeric_font_errors()
     if numeric_errors:
-        print("数字字体缺字（num56/num64 必须包含 0-9、冒号和连字符）：")
+        print("数字字体检查失败（必须覆盖 0-9、冒号、连字符，且数字等宽居中）：")
         for error in numeric_errors:
             print(f"  {error}")
-        print("→ 检查 firmware/tools/font_gen/gen.sh 的 NUM_CHARS 后重跑 gen.sh")
+        print("→ 检查 firmware/tools/font_gen/gen.sh 后重跑 gen.sh")
         return 1
-    print(f"字体子集覆盖检查通过（UI 中文字符 {len(ui)} 个、数字字体占位符全收录）")
+    print(f"字体检查通过（UI 中文字符 {len(ui)} 个、数字占位符全收录、0–9 等宽居中）")
     return 0
 
 
