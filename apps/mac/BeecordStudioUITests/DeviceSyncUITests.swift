@@ -522,7 +522,41 @@ final class DeviceSyncUITests: XCTestCase {
         XCTAssertTrue(waitForExistence("library.noSelection", timeout: 10), "删除选中项后回未选中态")
     }
 
-    // MARK: - 8. 库流：空库空态 + 无选中态联动
+    // MARK: - 8. 删除后同 ID 重下：新任务必须重新转码
+
+    func testDeleteAndRedownloadSameRecordingTranscodesAgain() throws {
+        let id = "REC_0001.OGG"
+        let file = SimFile(id: id, durationMs: 1_000, data: SyntheticOgg.silence(durationSeconds: 1))
+        try startServerOrSkip(files: [file])
+        try launchApp()
+        ensureSidebarVisible()
+        requireDeviceCard()
+        XCTAssertTrue(waitForStatus(id, equal: "✓ 已校验", timeout: 30), "首次下载完成")
+        let m4aURL = state.libraryRoot!.appendingPathComponent("Library/\(id)/audio.m4a")
+        XCTAssertTrue(pollFileExists(m4aURL, timeout: 60), "首次转码生成 audio.m4a")
+
+        element("sidebar.navItem.library").click()
+        element("library.recordingTable.row.\(id)").click()
+        XCTAssertTrue(waitForExistence("library.player.playButton", timeout: 15), "首次详情就绪")
+        element("library.deleteButton").click()
+        XCTAssertTrue(waitForExistence("common.confirmDialog", timeout: 10))
+        element("library.deleteConfirmButton").click()
+        XCTAssertTrue(waitForDisappearance("library.recordingTable.row.\(id)", timeout: 10))
+        XCTAssertFalse(libraryContainsRecording(id), "删除后库目录已移除")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: m4aURL.path), "删除后旧转码产物已移除")
+
+        element("sidebar.navItem.devices").click()
+        element("device.refreshButton").click()
+        XCTAssertTrue(waitForStatus(id, equal: "✓ 已校验", timeout: 30), "同 ID 录音重新下载完成")
+        XCTAssertTrue(
+            pollFileExists(m4aURL, timeout: 30),
+            "重新入库是新任务，必须重新转码，不能受旧删除标记影响"
+        )
+        let audio = libraryMeta(id)?["audio"] as? [String: Any]
+        XCTAssertEqual(audio?["m4a"] as? String, "audio.m4a", "重下后的 meta 回填转码产物")
+    }
+
+    // MARK: - 9. 库流：空库空态 + 无选中态联动
 
     func testLibraryEmptyAndNoSelectionStates() throws {
         try startServerOrSkip()

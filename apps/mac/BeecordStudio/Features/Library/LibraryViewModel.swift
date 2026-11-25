@@ -53,6 +53,8 @@ final class LibraryViewModel {
     private var transcodeTask: Task<Void, Never>?
     private var transcodeQueue: [String] = []
     private var cancelledIDs: Set<String> = []
+    /// 每次重新入库都换代，阻止同 ID 的旧转码回写新录音。
+    private var transcodeGenerations: [String: UUID] = [:]
 
     init(appModel: AppModel, settings: SettingsModel) {
         self.appModel = appModel
@@ -228,6 +230,7 @@ final class LibraryViewModel {
     func deleteRecording(id: String) {
         // 标记取消：在飞/排队转码结果不再回写（转码自身会自然收敛）
         cancelledIDs.insert(id)
+        transcodeGenerations.removeValue(forKey: id)
         transcodeQueue.removeAll { $0 == id }
         Task {
             try? store.deleteRecording(id: id)
@@ -263,9 +266,20 @@ final class LibraryViewModel {
 
     private func applyCatalogChange(_ change: LibraryCatalog.Change) async {
         switch change {
-        case .added(let meta), .updated(let meta):
+        case .added(let meta):
+            // added 是新的入库生命周期：解除旧删除标记，并隔离同 ID 的在飞旧任务。
+            cancelledIDs.remove(meta.id)
+            transcodeGenerations[meta.id] = UUID()
+            transcodeQueue.removeAll { $0 == meta.id }
+            items.removeAll { $0.id == meta.id }
+            await upsert(meta: meta)
+        case .updated(let meta):
+            if transcodeGenerations[meta.id] == nil {
+                transcodeGenerations[meta.id] = UUID()
+            }
             await upsert(meta: meta)
         case .removed(let id):
+            transcodeGenerations.removeValue(forKey: id)
             items.removeAll { $0.id == id }
             if selectedID == id {
                 selectedID = nil
@@ -315,27 +329,53 @@ final class LibraryViewModel {
 
     private func runTranscode(id: String) async {
         guard !cancelledIDs.contains(id),
+              let generation = transcodeGenerations[id],
               let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].transcode = .running
-        let oggURL = store.libraryURL.appendingPathComponent(id).appendingPathComponent("audio.ogg")
-        let m4aURL = store.libraryURL.appendingPathComponent(id).appendingPathComponent("audio.m4a")
-        let result = await transcoder.transcribe(oggURL: oggURL, m4aURL: m4aURL)
-        // 任务期间模型可能已变化（删除/刷新）：以最新索引为准
-        guard let current = items.firstIndex(where: { $0.id == id }) else { return }
+        let directory = store.libraryURL.appendingPathComponent(id)
+        let oggURL = directory.appendingPathComponent("audio.ogg")
+        let m4aURL = directory.appendingPathComponent("audio.m4a")
+        // 每次执行独占产物，旧任务即使在重下后才结束，也无法覆盖新任务的 audio.m4a。
+        let temporaryURL = directory.appendingPathComponent(".transcode-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+        let existingSize = (try? FileManager.default.attributesOfItem(atPath: m4aURL.path)[.size] as? Int) ?? 0
+        let result: Result<Transcoder.Outcome, Transcoder.TranscodeError>
+        if existingSize > 0 {
+            result = .success(.alreadyExisted)
+        } else {
+            result = await transcoder.transcribe(oggURL: oggURL, m4aURL: temporaryURL)
+        }
+
+        // 任务期间可能已删除并以同 ID 重新入库：旧代次不得发布产物或修改新 UI。
+        guard transcodeGenerations[id] == generation,
+              !cancelledIDs.contains(id),
+              let current = items.firstIndex(where: { $0.id == id }) else { return }
         switch result {
         case .success(.transcribed), .success(.alreadyExisted):
+            if case .success(.transcribed) = result {
+                do {
+                    try FileManager.default.moveItem(at: temporaryURL, to: m4aURL)
+                } catch {
+                    items[current].transcode = .failed(error.localizedDescription)
+                    logger.error("发布转码产物 \(id) 失败：\(error.localizedDescription)")
+                    return
+                }
+            }
             var meta = items[current].meta
             meta.audio.m4a = "audio.m4a"
             try? store.updateMeta(meta)
             await catalog.applyLocalUpdate(meta)
-            if let latest = items.firstIndex(where: { $0.id == id }), items[latest].transcode == .running {
-                items[latest].transcode = .ready
-            }
+            guard transcodeGenerations[id] == generation,
+                  !cancelledIDs.contains(id),
+                  let latest = items.firstIndex(where: { $0.id == id }),
+                  items[latest].transcode == .running else { return }
+            items[latest].transcode = .ready
         case .success(.cancelled):
             if items[current].transcode == .running { items[current].transcode = .pending }
         case .failure(let error):
             items[current].transcode = .failed(error.localizedDescription)
-            logger.error("转码 \(id) 失败：\(error.localizedDescription)")
+            logger.error("转码 \(id, privacy: .public) 失败：\(error.localizedDescription, privacy: .public)")
         }
     }
 }
