@@ -69,6 +69,7 @@ final class AccessibilityAuditUITests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         libraryRoot = root
         app = XCUIApplication()
+        dismissSystemBluetoothAlert()
         app.launchArguments = ["-resetSettings", "-libraryRoot", root.path, "-uiTestWindow"]
         app.launch()
         app.activate()

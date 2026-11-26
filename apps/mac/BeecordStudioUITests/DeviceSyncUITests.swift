@@ -120,6 +120,7 @@ final class DeviceSyncUITests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         state.libraryRoot = root
         let app = XCUIApplication()
+        dismissSystemBluetoothAlert()
         var arguments = ["-resetSettings", "-libraryRoot", root.path, "-uiTestWindow"]
         if autoSyncOff {
             arguments.append("-autoSyncOff")

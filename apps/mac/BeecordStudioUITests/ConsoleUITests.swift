@@ -116,6 +116,7 @@ final class ConsoleUITests: XCTestCase {
         libraryRoot = root
         exportPath = root.appendingPathComponent("console-export.json")
         app = XCUIApplication()
+        dismissSystemBluetoothAlert()
         app.launchArguments = [
             "-resetSettings", "-libraryRoot", root.path,
             "-consoleExportPath", exportPath!.path,

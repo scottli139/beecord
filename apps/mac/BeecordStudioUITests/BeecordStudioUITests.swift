@@ -18,6 +18,7 @@ final class BeecordStudioUITests: XCTestCase {
 
     /// 启动并保障主窗口存在 + 侧栏可见。
     private func launchWithSidebar() {
+        dismissSystemBluetoothAlert()
         app.launch()
         app.activate()
         diag("after-launch")
@@ -168,6 +169,9 @@ final class BeecordStudioUITests: XCTestCase {
             element("device.transportMode.ble").waitForExistence(timeout: 10),
             "切换蓝牙后应重建并显示实际生效的 BLE 传输层"
         )
+        // 首次实例化 CBCentralManager 触发系统授权弹窗（异步出现），有界等待并消除，
+        // 避免滞留盖住后续用例控件
+        dismissSystemBluetoothAlert(timeout: 15)
     }
 
     // MARK: - 6. 录音详情展开不改变窗口与侧栏几何
