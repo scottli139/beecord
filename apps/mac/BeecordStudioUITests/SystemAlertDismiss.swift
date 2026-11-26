@@ -11,7 +11,9 @@ func dismissSystemBluetoothAlert(timeout: TimeInterval = 0) {
     let deadline = Date().addingTimeInterval(timeout)
     while true {
         for title in ["Allow", "允许"] {
-            let button = center.buttons[title]
+            // 限定 dialog 内：runner 虚拟机的 TouchBar 会镜像弹窗按钮，
+            // 全 app 查询会双匹配致点击歧义失败（CI run 45743395877）
+            let button = center.dialogs.buttons[title].firstMatch
             if button.exists {
                 button.click()
                 return
